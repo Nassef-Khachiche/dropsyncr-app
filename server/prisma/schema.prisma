@@ -1,0 +1,251 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            Int                @id @default(autoincrement())
+  email         String             @unique
+  password      String
+  name          String
+  role          String             @default("user")
+  isGlobalAdmin Boolean            @default(false)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  orders        Order[]
+  tickets       Ticket[]
+  installations UserInstallation[]
+}
+
+model Installation {
+  id           Int                @id @default(autoincrement())
+  name         String
+  type         String
+  country      String
+  contract     String?
+  active       Boolean            @default(true)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  analytics    Analytics[]
+  carriers     Carrier[]
+  integrations Integration[]
+  orders       Order[]
+  products     Product[]
+  users        UserInstallation[]
+}
+
+model UserInstallation {
+  id             Int          @id @default(autoincrement())
+  userId         Int
+  installationId Int
+  createdAt      DateTime     @default(now())
+  installation   Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, installationId])
+  @@index([userId])
+  @@index([installationId])
+}
+
+model Order {
+  id               Int          @id @default(autoincrement())
+  orderNumber      String       @unique
+  installationId   Int
+  userId           Int
+  customerName     String
+  customerEmail    String?
+  address          String
+  country          String
+  storeName        String
+  platform         String
+  orderDate        DateTime
+  deliveryDate     DateTime?
+  orderStatus      String
+  shippingStatus   String?
+  orderValue       Float
+  itemCount        Int          @default(1)
+  supplierTracking String?
+  status           String
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  label            Label?
+  installation     Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderItems       OrderItem[]
+  tracking         Tracking?
+
+  @@index([installationId])
+  @@index([userId])
+  @@index([orderStatus])
+}
+
+model OrderItem {
+  id           Int      @id @default(autoincrement())
+  orderId      Int
+  productId    Int?
+  productName  String
+  productImage String?
+  ean          String?
+  sku          String?
+  quantity     Int      @default(1)
+  price        Float    @db.Float
+  weight       String?
+  supplier     String?
+  createdAt    DateTime @default(now())
+  unitPrice    Float    @default(0) @db.Float
+  order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product      Product? @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+model Product {
+  id               Int               @id @default(autoincrement())
+  installationId   Int
+  sku              String
+  ean              String?
+  name             String
+  image            String?
+  brand            String?
+  price            Float
+  totalStock       Int               @default(0)
+  availableStock   Int               @default(0)
+  fulfillmentStock Int               @default(0)
+  internalRef      String?
+  bundled          Boolean           @default(false)
+  archived         Boolean           @default(false)
+  salesPerMonth    Int               @default(0)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  orderItems       OrderItem[]
+  installation     Installation      @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  locations        ProductLocation[]
+
+  @@unique([installationId, sku])
+  @@index([installationId])
+  @@index([archived])
+}
+
+model ProductLocation {
+  id        Int      @id @default(autoincrement())
+  productId Int
+  location  String
+  quantity  Int      @default(0)
+  createdAt DateTime @default(now())
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+}
+
+model Tracking {
+  id           Int      @id @default(autoincrement())
+  orderId      Int?     @unique
+  trackingCode String
+  supplier     String?
+  source       String
+  status       String
+  dateAdded    DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  order        Order?   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([status])
+}
+
+model Label {
+  id        Int      @id @default(autoincrement())
+  orderId   Int      @unique
+  carrierId Int?
+  labelUrl  String?
+  status    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  carrier   Carrier? @relation(fields: [carrierId], references: [id])
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([carrierId], map: "Label_carrierId_fkey")
+}
+
+model Carrier {
+  id             Int          @id @default(autoincrement())
+  installationId Int
+  carrierType    String
+  contractName   String
+  active         Boolean      @default(true)
+  credentials    String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  installation   Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  labels         Label[]
+
+  @@index([installationId])
+}
+
+model Integration {
+  id             Int          @id @default(autoincrement())
+  installationId Int
+  platform       String
+  active         Boolean      @default(true)
+  credentials    String
+  settings       String?
+  lastSync       DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  installation   Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+
+  @@index([installationId])
+}
+
+model Ticket {
+  id             Int             @id @default(autoincrement())
+  ticketNumber   String          @unique
+  userId         Int
+  installationId Int?
+  subject        String
+  category       String
+  status         String
+  priority       String
+  orderReference String?
+  assignedTo     String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages       TicketMessage[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+model TicketMessage {
+  id          Int      @id @default(autoincrement())
+  ticketId    Int
+  sender      String
+  senderType  String
+  message     String
+  attachments String?
+  createdAt   DateTime @default(now())
+  ticket      Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+}
+
+model Analytics {
+  id             Int          @id @default(autoincrement())
+  installationId Int
+  date           DateTime
+  revenue        Float        @default(0)
+  orders         Int          @default(0)
+  createdAt      DateTime     @default(now())
+  installation   Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+
+  @@unique([installationId, date])
+  @@index([installationId, date])
+}

@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: dropsyncr-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: dropsyncr
+      MYSQL_USER: dropsyncr
+      MYSQL_PASSWORD: dropsyncr
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # phpMyAdmin
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: dropsyncr-phpmyadmin
+    restart: unless-stopped
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_USER: root
+      PMA_PASSWORD: rootpassword
+      MYSQL_ROOT_PASSWORD: rootpassword
+    ports:
+      - "8080:80"
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  # Backend Server
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: dropsyncr-backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "mysql://dropsyncr:dropsyncr@mysql:3306/dropsyncr"
+      PORT: 5000
+      JWT_SECRET: "your-super-secret-jwt-key-change-this-in-production"
+      NODE_ENV: development
+      CHOKIDAR_USEPOLLING: "true" # Enable polling for file watching in Docker
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./server:/app
+      - /app/node_modules
+    depends_on:
+      mysql:
+        condition: service_healthy
+    command: sh -c "sleep 3 && npm run dev"
+
+  # Frontend React App
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dropsyncr-frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: "http://localhost:5000/api"
+      CHOKIDAR_USEPOLLING: "true" # Enable polling for file watching in Docker
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    stdin_open: true # Keep STDIN open for Vite
+    tty: true # Allocate a pseudo-TTY
+
+volumes:
+  mysql_data:
+
