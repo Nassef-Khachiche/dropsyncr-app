@@ -1,6 +1,7 @@
 import { useState, useEffect, Fragment } from 'react';
 import { api } from '../services/api';
 import { Loader2 } from 'lucide-react';
+import { toast } from 'sonner@2.0.3';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
@@ -38,9 +39,24 @@ import {
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from './ui/dialog';
 
 interface OrdersOverviewProps {
   activeProfile: string;
+}
+
+interface CarrierContract {
+  id: number;
+  carrierType: string;
+  contractName: string;
+  active: boolean;
 }
 
 // Extended mock orders data
@@ -165,12 +181,27 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterStore, setFilterStore] = useState('all');
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
+  const [showLabelDialog, setShowLabelDialog] = useState(false);
+  const [labelOrder, setLabelOrder] = useState<any | null>(null);
+  const [carrierContracts, setCarrierContracts] = useState<CarrierContract[]>([]);
+  const [loadingCarriers, setLoadingCarriers] = useState(false);
+  const [selectedContractId, setSelectedContractId] = useState<string>('');
+  const [generatingLabel, setGeneratingLabel] = useState(false);
+  const [labelPreviewUrl, setLabelPreviewUrl] = useState<string>('');
 
   useEffect(() => {
     if (activeProfile) {
       loadOrders();
     }
   }, [activeProfile, filterStatus, searchQuery]);
+
+  useEffect(() => {
+    if (activeProfile) {
+      loadCarrierContracts();
+    } else {
+      setCarrierContracts([]);
+    }
+  }, [activeProfile]);
 
   const loadOrders = async () => {
     try {
@@ -186,6 +217,66 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
       console.error('Failed to load orders:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadCarrierContracts = async () => {
+    try {
+      setLoadingCarriers(true);
+      const data = await api.getCarriers(activeProfile);
+      const filtered = (data || [])
+        .filter((carrier: any) => carrier.active)
+        .map((carrier: any) => ({
+          id: carrier.id,
+          carrierType: carrier.carrierType,
+          contractName: carrier.contractName,
+          active: carrier.active,
+        }));
+      setCarrierContracts(filtered);
+    } catch (error) {
+      console.error('Failed to load carriers:', error);
+    } finally {
+      setLoadingCarriers(false);
+    }
+  };
+
+  const handleOpenLabelDialog = (order: any) => {
+    setLabelOrder(order);
+    setSelectedContractId('');
+    setLabelPreviewUrl('');
+    setShowLabelDialog(true);
+  };
+
+  const handleGenerateLabel = async () => {
+    if (!labelOrder) return;
+    if (!selectedContractId) return;
+
+    try {
+      setGeneratingLabel(true);
+      const result = await api.generateCarrierLabels(Number(selectedContractId), {
+        shippingMethod: null,
+        packages: [
+          {
+            id: labelOrder.orderNumber || labelOrder.id,
+            orderNumber: labelOrder.orderNumber,
+            customerName: labelOrder.customerName,
+            address: labelOrder.address,
+            country: labelOrder.country,
+          },
+        ],
+      });
+
+      const label = (result.labels || [])[0];
+      if (label?.labelUrl) {
+        setLabelPreviewUrl(label.labelUrl);
+      }
+    } catch (error) {
+      console.error('Failed to generate label:', error);
+      toast.error('Kon label niet genereren', {
+        description: error instanceof Error ? error.message : 'Probeer het opnieuw',
+      });
+    } finally {
+      setGeneratingLabel(false);
     }
   };
 
@@ -443,7 +534,12 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                                   <span className="text-slate-600">{order.orderNumber}</span>
                                 </div>
                                 <div className="flex gap-2">
-                                  <Button variant="outline" size="sm" className="border-slate-200">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="border-slate-200"
+                                    onClick={() => handleOpenLabelDialog(order)}
+                                  >
                                     <Package className="w-4 h-4 mr-2" />
                                     Label genereren
                                   </Button>
@@ -606,6 +702,79 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={showLabelDialog} onOpenChange={setShowLabelDialog}>
+        <DialogContent className="sm:max-w-5xl h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Label genereren</DialogTitle>
+            <DialogDescription>
+              Selecteer een contract en genereer een verzendlabel voor {labelOrder?.orderNumber || 'de order'}.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 flex-1 overflow-auto">
+            <div className="space-y-2">
+              <label className="text-sm text-slate-700">Contract</label>
+              <Select value={selectedContractId} onValueChange={setSelectedContractId}>
+                <SelectTrigger className="border-slate-200 shadow-sm">
+                  <SelectValue placeholder={loadingCarriers ? 'Contracten laden...' : 'Kies een contract'} />
+                </SelectTrigger>
+                <SelectContent className="border-slate-200 shadow-lg">
+                  {carrierContracts.length === 0 && !loadingCarriers && (
+                    <div className="px-3 py-2 text-sm text-slate-500">Geen actieve contracten</div>
+                  )}
+                  {carrierContracts.map((contract) => (
+                    <SelectItem key={contract.id} value={String(contract.id)}>
+                      {contract.contractName} ({contract.carrierType.toUpperCase()})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {labelPreviewUrl && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-slate-700">Label preview</span>
+                  <a
+                    href={labelPreviewUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-sm text-indigo-600 hover:text-indigo-700"
+                  >
+                    Open PDF
+                  </a>
+                </div>
+                <div className="border border-slate-200 rounded-lg overflow-hidden">
+                  <iframe
+                    title="Label preview"
+                    src={labelPreviewUrl}
+                    className="w-full h-full min-h-[680px]"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowLabelDialog(false)}
+              className="border-slate-200"
+            >
+              Sluiten
+            </Button>
+            <Button
+              onClick={handleGenerateLabel}
+              disabled={!selectedContractId || generatingLabel}
+              className="gap-2 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600"
+            >
+              {generatingLabel && <Loader2 className="w-4 h-4 animate-spin" />}
+              Label genereren
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

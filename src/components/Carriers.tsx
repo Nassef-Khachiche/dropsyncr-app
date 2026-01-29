@@ -72,8 +72,9 @@ const availableCarriers = [
     bgColor: 'from-red-50 to-red-100/50',
     fields: [
       { name: 'contractName', label: 'Contractnaam', type: 'text', placeholder: 'Bijv. DPD Classic Contract' },
-      { name: 'username', label: 'Username', type: 'text', placeholder: 'Voer je username in' },
+      { name: 'delisId', label: 'Delis ID', type: 'text', placeholder: 'Voer je Delis ID in' },
       { name: 'password', label: 'Password', type: 'password', placeholder: 'Enter new password' },
+      { name: 'depotNumber', label: 'Depotnummer', type: 'text', placeholder: 'Voer je depotnummer in' },
     ],
     hasCheckbox: { name: 'sandbox', label: 'Sandbox' }
   },
