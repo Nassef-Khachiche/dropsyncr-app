@@ -5,12 +5,15 @@
 
 set -e  # Exit on any error
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENV_FILE="$SCRIPT_DIR/.env.production"
+
 echo "🚀 Dropsyncr Production Deployment"
 echo "=================================="
 echo ""
 
 # Check if .env.production exists
-if [ ! -f .env.production ]; then
+if [ ! -f "$ENV_FILE" ]; then
     echo "❌ Error: .env.production file not found!"
     echo "Please copy .env.production.example to .env.production and configure it."
     exit 1
@@ -35,18 +38,18 @@ echo ""
 
 # Step 1: Stop existing containers
 echo "🛑 Stopping existing containers..."
-docker-compose -f docker-compose.prod.yml --env-file .env.production down || true
+docker-compose -f "$SCRIPT_DIR/docker-compose.prod.yml" --env-file "$ENV_FILE" down || true
 echo "✅ Containers stopped"
 echo ""
 
 # Step 2: Build and start containers
 echo "🏗️  Building containers..."
-docker-compose -f docker-compose.prod.yml --env-file .env.production build --no-cache
+docker-compose -f "$SCRIPT_DIR/docker-compose.prod.yml" --env-file "$ENV_FILE" build --no-cache
 echo "✅ Build complete"
 echo ""
 
 echo "🚀 Starting containers..."
-docker-compose -f docker-compose.prod.yml --env-file .env.production up -d
+docker-compose -f "$SCRIPT_DIR/docker-compose.prod.yml" --env-file "$ENV_FILE" up -d
 echo "✅ Containers started"
 echo ""
 
@@ -79,12 +82,12 @@ fi
 
 # Step 6: Show container status
 echo "📊 Container Status:"
-docker-compose -f docker-compose.prod.yml ps
+docker-compose -f "$SCRIPT_DIR/docker-compose.prod.yml" ps
 echo ""
 
 # Step 7: Show logs (last 20 lines)
 echo "📋 Recent logs:"
-docker-compose -f docker-compose.prod.yml logs --tail=20
+docker-compose -f "$SCRIPT_DIR/docker-compose.prod.yml" logs --tail=20
 echo ""
 
 echo "✅ Deployment complete!"
