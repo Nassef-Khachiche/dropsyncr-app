@@ -26,8 +26,12 @@ if ! command -v docker &> /dev/null; then
     exit 1
 fi
 
-# Check if Docker Compose is installed
-if ! command -v docker-compose &> /dev/null; then
+# Check if Docker Compose is installed (prefer v2)
+if command -v docker &> /dev/null && docker compose version &> /dev/null; then
+    COMPOSE=(docker compose)
+elif command -v docker-compose &> /dev/null; then
+    COMPOSE=(docker-compose)
+else
     echo "❌ Error: Docker Compose is not installed!"
     echo "Please install Docker Compose first."
     exit 1
@@ -38,18 +42,18 @@ echo ""
 
 # Step 1: Stop existing containers
 echo "🛑 Stopping existing containers..."
-docker-compose -f "$SCRIPT_DIR/docker-compose.prod.yml" --env-file "$ENV_FILE" down || true
+"${COMPOSE[@]}" -f "$SCRIPT_DIR/docker-compose.prod.yml" --env-file "$ENV_FILE" down || true
 echo "✅ Containers stopped"
 echo ""
 
 # Step 2: Build and start containers
 echo "🏗️  Building containers..."
-docker-compose -f "$SCRIPT_DIR/docker-compose.prod.yml" --env-file "$ENV_FILE" build --no-cache
+"${COMPOSE[@]}" -f "$SCRIPT_DIR/docker-compose.prod.yml" --env-file "$ENV_FILE" build --no-cache
 echo "✅ Build complete"
 echo ""
 
 echo "🚀 Starting containers..."
-docker-compose -f "$SCRIPT_DIR/docker-compose.prod.yml" --env-file "$ENV_FILE" up -d
+"${COMPOSE[@]}" -f "$SCRIPT_DIR/docker-compose.prod.yml" --env-file "$ENV_FILE" up -d
 echo "✅ Containers started"
 echo ""
 
@@ -82,12 +86,12 @@ fi
 
 # Step 6: Show container status
 echo "📊 Container Status:"
-docker-compose -f "$SCRIPT_DIR/docker-compose.prod.yml" ps
+"${COMPOSE[@]}" -f "$SCRIPT_DIR/docker-compose.prod.yml" ps
 echo ""
 
 # Step 7: Show logs (last 20 lines)
 echo "📋 Recent logs:"
-docker-compose -f "$SCRIPT_DIR/docker-compose.prod.yml" logs --tail=20
+"${COMPOSE[@]}" -f "$SCRIPT_DIR/docker-compose.prod.yml" logs --tail=20
 echo ""
 
 echo "✅ Deployment complete!"
