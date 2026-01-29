@@ -8,8 +8,8 @@ services:
     restart: always
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-changeme}
-      MYSQL_DATABASE: dropsyncr
-      MYSQL_USER: dropsyncr
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-dropsyncr}
+      MYSQL_USER: ${MYSQL_USER:-dropsyncr}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-changeme}
     volumes:
       - mysql_data_prod:/var/lib/mysql
@@ -29,7 +29,7 @@ services:
     container_name: dropsyncr-backend-prod
     restart: always
     environment:
-      DATABASE_URL: "mysql://dropsyncr:${MYSQL_PASSWORD:-changeme}@mysql:3306/dropsyncr"
+      DATABASE_URL: "mysql://${MYSQL_USER:-dropsyncr}:${MYSQL_PASSWORD:-changeme}@${MYSQL_HOST:-mysql}:${MYSQL_PORT:-3306}/${MYSQL_DATABASE:-dropsyncr}"
       PORT: 5000
       JWT_SECRET: ${JWT_SECRET:-changeme}
       NODE_ENV: production
