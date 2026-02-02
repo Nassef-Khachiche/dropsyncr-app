@@ -10,7 +10,7 @@ services:
       - .env.production
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-kax7H2gl%40%40MUwec4}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-dropsyncr}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-admin_dropsyncr}
       MYSQL_USER: ${MYSQL_USER:-dropsyncr_db}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-kax7H2gl%40%40MUwec4}
     volumes:
@@ -33,7 +33,7 @@ services:
     env_file:
       - .env.production
     environment:
-      DATABASE_URL: "mysql://${MYSQL_USER:-dropsyncr_db}:${MYSQL_PASSWORD:-kax7H2gl%40%40MUwec4}@${MYSQL_HOST:-mysql}:${MYSQL_PORT:-3306}/${MYSQL_DATABASE:-dropsyncr}"
+      DATABASE_URL: "mysql://${MYSQL_USER:-dropsyncr_db}:${MYSQL_PASSWORD:-kax7H2gl%40%40MUwec4}@${MYSQL_HOST:-mysql}:${MYSQL_PORT:-3306}/${MYSQL_DATABASE:-admin_dropsyncr}"
       PORT: 5000
       JWT_SECRET: ${JWT_SECRET:-your_very_secure_jwt_secret_at_least_32_characters_long_use_random_string}
       NODE_ENV: production
