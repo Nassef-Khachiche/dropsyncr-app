@@ -8,7 +8,6 @@ services:
     restart: always
     env_file:
       - .env.production
-      - ./server/.env
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-changeme}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-admin_dropsyncr}
@@ -33,6 +32,7 @@ services:
     restart: always
     env_file:
       - .env.production
+      - ./server/.env
     environment:
       PORT: 5000
       JWT_SECRET: ${JWT_SECRET:-your_very_secure_jwt_secret_at_least_32_characters_long_use_random_string}
