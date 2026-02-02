@@ -6,6 +6,8 @@ services:
     image: mysql:8.0
     container_name: dropsyncr-mysql-prod
     restart: always
+    env_file:
+      - .env.production
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-changeme}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-dropsyncr}
@@ -28,6 +30,8 @@ services:
       dockerfile: Dockerfile
     container_name: dropsyncr-backend-prod
     restart: always
+    env_file:
+      - .env.production
     environment:
       DATABASE_URL: "mysql://${MYSQL_USER:-dropsyncr}:${MYSQL_PASSWORD:-changeme}@${MYSQL_HOST:-mysql}:${MYSQL_PORT:-3306}/${MYSQL_DATABASE:-dropsyncr}"
       PORT: 5000
