@@ -8,6 +8,7 @@ services:
     restart: always
     env_file:
       - .env.production
+      - ./server/.env
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-changeme}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-admin_dropsyncr}
