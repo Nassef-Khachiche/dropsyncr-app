@@ -9,10 +9,10 @@ services:
     env_file:
       - .env.production
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-$Go$A96cdMvgbbf4}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-changeme}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-admin_dropsyncr}
       MYSQL_USER: ${MYSQL_USER:-dropsyncr_db}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-$Go$A96cdMvgbbf4}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-changeme}
     volumes:
       - mysql_data_prod:/var/lib/mysql
     healthcheck:
@@ -32,15 +32,12 @@ services:
     restart: always
     env_file:
       - .env.production
-      - ./server/.env
     environment:
       PORT: 5000
       JWT_SECRET: ${JWT_SECRET:-your_very_secure_jwt_secret_at_least_32_characters_long_use_random_string}
       NODE_ENV: production
     ports:
       - "5000:5000"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     depends_on:
       mysql:
         condition: service_healthy
@@ -62,10 +59,10 @@ services:
     networks:
       - dropsyncr-network
 
-volumes:
-  mysql_data_prod:
-
 networks:
   dropsyncr-network:
     driver: bridge
+
+volumes:
+  mysql_data_prod:
 
