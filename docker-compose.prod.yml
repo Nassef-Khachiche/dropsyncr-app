@@ -9,10 +9,10 @@ services:
     env_file:
       - .env.production
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-kax7H2gl%40%40MUwec4}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-$Go$A96cdMvgbbf4}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-admin_dropsyncr}
       MYSQL_USER: ${MYSQL_USER:-dropsyncr_db}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-kax7H2gl%40%40MUwec4}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-$Go$A96cdMvgbbf4}
     volumes:
       - mysql_data_prod:/var/lib/mysql
     healthcheck:
