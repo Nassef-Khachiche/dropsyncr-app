@@ -94,6 +94,28 @@ async function bolApiRequest(credentials, endpoint, method = 'GET', body = null)
   return data;
 }
 
+async function fetchAllBolOrders(credentials) {
+  const allOrders = [];
+  const maxPages = 200;
+
+  for (let page = 1; page <= maxPages; page++) {
+    const response = await bolApiRequest(credentials, `/orders?fulfilment-method=FBR&page=${page}`);
+    const pageOrders = response?.orders || [];
+
+    if (pageOrders.length === 0) {
+      break;
+    }
+
+    allOrders.push(...pageOrders);
+
+    if (pageOrders.length < 50) {
+      break;
+    }
+  }
+
+  return allOrders;
+}
+
 /**
  * Sync orders from Bol.com
  */
@@ -120,16 +142,29 @@ export const syncBolOrders = async (req, res) => {
     }
 
     const credentials = await getBolCredentials(installationId);
-    
-    // Fetch orders from Bol.com
-    const bolOrders = await bolApiRequest(credentials, '/orders?fulfilment-method=FBR&page=1');
+    const integration = await prisma.integration.findFirst({
+      where: {
+        installationId: parseInt(installationId),
+        platform: 'bol.com',
+        active: true,
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
 
-    console.log('[BOL SYNC] Fetched orders from Bol.com:', bolOrders);
+    const integrationCredentials = integration ? JSON.parse(integration.credentials) : {};
+    const integrationShopName = integrationCredentials.shopName || 'Bol.com';
+    
+    // Fetch all order pages from Bol.com
+    const bolOrders = await fetchAllBolOrders(credentials);
+
+    console.log('[BOL SYNC] Fetched orders from Bol.com:', {
+      totalOrders: bolOrders.length,
+    });
     
     let importedCount = 0;
     let updatedCount = 0;
 
-    for (const bolOrder of bolOrders.orders || []) {
+    for (const bolOrder of bolOrders) {
       // Log the complete order data for debugging
       console.log('[BOL SYNC] ========================================');
       console.log('[BOL SYNC] Processing order:', bolOrder.orderId);
@@ -188,11 +223,11 @@ export const syncBolOrders = async (req, res) => {
           shipmentDetails?.city,
         ].filter(Boolean).join(', '),
         country: shipmentDetails?.countryCode || 'NL',
-        storeName: 'Bol.com',
+        storeName: integrationShopName,
         platform: 'bol.com',
         orderDate: new Date(orderPayload.orderPlacedDateTime),
         deliveryDate: orderPayload.deliveryPromise ? new Date(orderPayload.deliveryPromise) : null,
-        orderStatus: orderItems?.[0]?.fulfilmentStatus || bolOrder.orderItems?.[0]?.fulfilmentStatus || 'NEW',
+        orderStatus: mapBolStatusToInternal(orderItems?.[0]?.fulfilmentStatus || bolOrder.orderItems?.[0]?.fulfilmentStatus),
         shippingStatus: orderItems?.[0]?.fulfilmentStatus || bolOrder.orderItems?.[0]?.fulfilmentStatus || null,
         orderValue: parseFloat(orderItems?.reduce((sum, item) => {
           const unitPrice = parseFloat(item.unitPrice ?? item.totalPrice ?? item.offerPrice ?? 0) || 0;
@@ -402,6 +437,73 @@ export const handleBolReturn = async (req, res) => {
       details: error.message 
     });
   }
+};
+
+async function getFallbackSyncUserId(installationId) {
+  const installationUser = await prisma.userInstallation.findFirst({
+    where: { installationId },
+    select: { userId: true },
+    orderBy: { id: 'asc' },
+  });
+
+  if (installationUser?.userId) {
+    return installationUser.userId;
+  }
+
+  const globalAdmin = await prisma.user.findFirst({
+    where: { isGlobalAdmin: true },
+    select: { id: true },
+    orderBy: { id: 'asc' },
+  });
+
+  if (globalAdmin?.id) {
+    return globalAdmin.id;
+  }
+
+  throw new Error('No user available to assign imported Bol.com orders');
+}
+
+export const syncBolOrdersForInstallation = async ({ installationId } = {}) => {
+  if (!installationId) {
+    throw new Error('Installation ID is required');
+  }
+
+  const installationIdNumber = parseInt(installationId, 10);
+  if (!Number.isFinite(installationIdNumber)) {
+    throw new Error('Invalid Installation ID');
+  }
+
+  const syncUserId = await getFallbackSyncUserId(installationIdNumber);
+  let statusCode = 200;
+  let payload = null;
+
+  await syncBolOrders(
+    {
+      query: { installationId: String(installationIdNumber) },
+      user: { id: syncUserId, isGlobalAdmin: true },
+    },
+    {
+      status(code) {
+        statusCode = code;
+        return this;
+      },
+      json(data) {
+        payload = data;
+        return data;
+      },
+    }
+  );
+
+  if (statusCode >= 400) {
+    throw new Error(payload?.details || payload?.error || 'Failed to sync orders from Bol.com');
+  }
+
+  return payload || {
+    success: true,
+    imported: 0,
+    updated: 0,
+    total: 0,
+  };
 };
 
 // Helper function to map Bol status to internal status

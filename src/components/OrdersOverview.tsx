@@ -240,6 +240,34 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
     }
   };
 
+  const normalizeOrderStatus = (order: any): 'openstaand' | 'verzonden' => {
+    const rawStatus = String(order?.orderStatus || order?.status || '').toLowerCase();
+
+    const openStatuses = [
+      'openstaand',
+      'open',
+      'new',
+      'announced',
+      'arrived_at_wh',
+      'onderweg-ffm',
+      'binnengekomen-ffm',
+      'label-aangemaakt',
+    ];
+
+    const shippedStatuses = [
+      'verzonden',
+      'verstuurd',
+      'shipped',
+      'delivered',
+      'afgeleverd',
+    ];
+
+    if (shippedStatuses.includes(rawStatus)) return 'verzonden';
+    if (openStatuses.includes(rawStatus)) return 'openstaand';
+
+    return 'openstaand';
+  };
+
   const handleOpenLabelDialog = (order: any) => {
     setLabelOrder(order);
     setSelectedContractId('');
@@ -603,7 +631,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                                     <Package className="w-4 h-4" />
                                     <span>Orderstatus</span>
                                   </div>
-                                  <div>{getStatusBadge(order.orderStatus)}</div>
+                                  <div>{getStatusBadge(normalizeOrderStatus(order))}</div>
                                 </div>
 
                                 {/* Orderwaarde */}
@@ -693,10 +721,10 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
             <span className="text-sm text-slate-700">{filteredOrders.length} orders gevonden</span>
             <div className="flex gap-6 text-sm">
               <span className="text-slate-600">
-                <span className="text-orange-600">●</span> Openstaand: {filteredOrders.filter(o => o.orderStatus === 'openstaand').length}
+                <span className="text-orange-600">●</span> Openstaand: {filteredOrders.filter((o) => normalizeOrderStatus(o) === 'openstaand').length}
               </span>
               <span className="text-slate-600">
-                <span className="text-emerald-600">●</span> Verzonden: {filteredOrders.filter(o => o.orderStatus === 'verzonden').length}
+                <span className="text-emerald-600">●</span> Verzonden: {filteredOrders.filter((o) => normalizeOrderStatus(o) === 'verzonden').length}
               </span>
             </div>
           </div>

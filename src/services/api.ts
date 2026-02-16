@@ -40,6 +40,7 @@ class ApiService {
       const error = await response.json().catch(() => ({ error: 'Request failed' }));
       const errorMessage = error.error || 'Request failed';
       const errorDetails = error.details || '';
+      const endpointWithStatus = `${endpoint} (HTTP ${response.status})`;
       
       // Debug: Log 401 errors with full details
       if (response.status === 401) {
@@ -78,7 +79,9 @@ class ApiService {
       }
       
       // For other errors, prefer details if available (more specific), otherwise use main error message
-      const fullMessage = errorDetails || errorMessage;
+      const fullMessage = errorDetails
+        ? `${errorMessage}: ${errorDetails}`
+        : `${errorMessage} at ${endpointWithStatus}`;
       throw new Error(fullMessage);
     }
 
@@ -224,6 +227,26 @@ class ApiService {
     return this.request<any>('/tracking/bulk', {
       method: 'POST',
       body: JSON.stringify({ trackings }),
+    });
+  }
+
+  async refreshWeGrowTracking(carrierId: number, shipmentId: string) {
+    return this.request<{
+      success: boolean;
+      shipmentId: string;
+      carrierTrackingId: string | null;
+      eta: string | null;
+      events: any[];
+      latestStatus: {
+        time: string | null;
+        milestone: string | null;
+        code: string | null;
+        subCode: string | null;
+        description: string | null;
+      } | null;
+    }>('/tracking/wegrow/refresh', {
+      method: 'POST',
+      body: JSON.stringify({ carrierId, shipmentId }),
     });
   }
 

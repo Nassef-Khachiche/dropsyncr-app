@@ -1,0 +1,37 @@
+Error: SyntaxError: Unexpected token e in JSON at position 1
+    at JSON.parse (<anonymous>)
+    at parse (C:\xampp\htdocs\2026\Dropsyncr system\server\node_modules\body-parser\lib\types\json.js:92:19)
+    at C:\xampp\htdocs\2026\Dropsyncr system\server\node_modules\body-parser\lib\read.js:128:18
+    at AsyncResource.runInAsyncScope (node:async_hooks:204:9)
+    at invokeCallback (C:\xampp\htdocs\2026\Dropsyncr system\server\node_modules\raw-body\index.js:238:16)
+    at done (C:\xampp\htdocs\2026\Dropsyncr system\server\node_modules\raw-body\index.js:227:7)
+    at IncomingMessage.onEnd (C:\xampp\htdocs\2026\Dropsyncr system\server\node_modules\raw-body\index.js:287:7)
+    at IncomingMessage.emit (node:events:513:28)
+    at endReadableNT (node:internal/streams/readable:1359:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:82:21) {
+  expose: true,
+  statusCode: 400,
+  status: 400,
+  body: '{email:admin@dropsyncr.com,password:admin123}',
+  type: 'entity.parse.failed'
+}
+Sync Bol orders error: Error: Bol.com account is niet actief. Neem contact op met Bol.com partnerservice (partnerservice@bol.com) om je API toegang te activeren.
+    at bolApiRequest (file:///C:/xampp/htdocs/2026/Dropsyncr%20system/server/src/controllers/bolController.js:84:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async syncBolOrders (file:///C:/xampp/htdocs/2026/Dropsyncr%20system/server/src/controllers/bolController.js:125:23)
+    at async syncBolOrdersForInstallation (file:///C:/xampp/htdocs/2026/Dropsyncr%20system/server/src/controllers/bolController.js:445:3)
+    at async runBolSyncCycle (file:///C:/xampp/htdocs/2026/Dropsyncr%20system/server/src/jobs/bolSyncJob.js:36:24)
+[BOL CRON] Sync failed for installation {
+  installationId: 2,
+  error: 'Bol.com account is niet actief. Neem contact op met Bol.com partnerservice (partnerservice@bol.com) om je API toegang te activeren.'
+}
+Sync Bol orders error: Error: Ongeldige Bol.com API credentials. Controleer je Client ID en Client Secret.
+    at bolApiRequest (file:///C:/xampp/htdocs/2026/Dropsyncr%20system/server/src/controllers/bolController.js:45:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async syncBolOrders (file:///C:/xampp/htdocs/2026/Dropsyncr%20system/server/src/controllers/bolController.js:125:23)
+    at async syncBolOrdersForInstallation (file:///C:/xampp/htdocs/2026/Dropsyncr%20system/server/src/controllers/bolController.js:445:3)
+    at async runBolSyncCycle (file:///C:/xampp/htdocs/2026/Dropsyncr%20system/server/src/jobs/bolSyncJob.js:36:24)
+[BOL CRON] Sync failed for installation {
+  installationId: 1,
+  error: 'Ongeldige Bol.com API credentials. Controleer je Client ID en Client Secret.'
+}

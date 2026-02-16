@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type MouseEvent } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
@@ -37,9 +37,12 @@ interface IntegrationsProps {
 interface Store {
   id: number;
   platform: string;
+  platformId: string;
   name: string;
   connected: boolean;
   apiKey?: string;
+  hasSecret?: boolean;
+  processOrders?: boolean;
   active: boolean;
   logo: string;
   color: string;
@@ -62,6 +65,7 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
   const [syncing, setSyncing] = useState(false);
   const [showConnectionDialog, setShowConnectionDialog] = useState(false);
   const [selectedPlatform, setSelectedPlatform] = useState<typeof availablePlatforms[0] | null>(null);
+  const [editingStore, setEditingStore] = useState<Store | null>(null);
   
   // Form state
   const [shopName, setShopName] = useState('');
@@ -91,9 +95,12 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
         return {
           id: integration.id,
           platform: integration.platform,
+          platformId,
           name: integration.credentials?.shopName || platform?.name || integration.platform,
           connected: true,
           apiKey: integration.credentials?.clientId || '••••••••',
+          hasSecret: integration.credentials?.hasSecret || false,
+          processOrders: integration.settings?.processOrders ?? false,
           active: integration.active,
           logo: platform?.logo || bolLogo,
           color: platform?.color || 'from-blue-500 to-blue-600',
@@ -110,18 +117,43 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
   };
 
   const handleConnectPlatform = (platform: typeof availablePlatforms[0]) => {
+    setEditingStore(null);
     setSelectedPlatform(platform);
     setShowConnectionDialog(true);
     // Reset form
     setShopName('');
     setApiKey('');
     setApiSecret('');
-    setProcessOrders(false);
+    setProcessOrders(true);
     setIsActive(true);
   };
 
+  const handleOpenSettings = (store: Store) => {
+    const platform = availablePlatforms.find(p => p.id === store.platformId);
+    if (!platform) {
+      toast.error('Platform instellingen niet gevonden');
+      return;
+    }
+
+    setEditingStore(store);
+    setSelectedPlatform(platform);
+    setShowConnectionDialog(true);
+    setShopName(store.name || '');
+    setApiKey('');
+    setApiSecret('');
+    setProcessOrders(store.processOrders ?? false);
+    setIsActive(store.active);
+  };
+
   const handleSubmitConnection = async () => {
-    if (!shopName || !apiKey || !apiSecret) {
+    const normalizedShopName = shopName.trim();
+
+    if (!normalizedShopName) {
+      toast.error('Shopnaam is verplicht');
+      return;
+    }
+
+    if (!editingStore && (!apiKey || !apiSecret)) {
       toast.error('Vul alle verplichte velden in');
       return;
     }
@@ -136,9 +168,9 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
         installationId: parseInt(activeProfile),
         platform: selectedPlatform?.id === 'bol' ? 'bol.com' : selectedPlatform?.id || '',
         credentials: {
-          clientId: apiKey,
-          clientSecret: apiSecret,
-          shopName: shopName,
+          ...(apiKey ? { clientId: apiKey } : {}),
+          ...(apiSecret ? { clientSecret: apiSecret } : {}),
+          shopName: normalizedShopName,
         },
         settings: {
           processOrders: processOrders,
@@ -154,21 +186,50 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
         hasClientSecret: !!integrationData.credentials.clientSecret,
       });
 
-      // Always create a new integration - allow multiple stores per platform
-      const result = await api.createIntegration(integrationData);
-      console.log('[Integration] Integration created:', result);
-      toast.success(`${selectedPlatform?.name} winkel succesvol gekoppeld!`, {
-        description: `${shopName} is nu actief in Dropsyncr`
-      });
+      if (editingStore) {
+        const result = await api.updateIntegration(editingStore.id, {
+          credentials: integrationData.credentials,
+          settings: integrationData.settings,
+          active: integrationData.active,
+        });
+
+        const updatedShopName = result.integration?.credentials?.shopName || normalizedShopName;
+        setConnectedStores((prevStores) =>
+          prevStores.map((store) =>
+            store.id === editingStore.id
+              ? {
+                  ...store,
+                  name: updatedShopName,
+                  active: integrationData.active,
+                  processOrders: integrationData.settings.processOrders,
+                }
+              : store
+          )
+        );
+
+        console.log('[Integration] Integration updated:', result);
+        toast.success(`${selectedPlatform?.name} instellingen bijgewerkt!`, {
+          description: `${normalizedShopName} wijzigingen zijn opgeslagen`
+        });
+      } else {
+        const result = await api.createIntegration(integrationData);
+        console.log('[Integration] Integration created:', result);
+        toast.success(`${selectedPlatform?.name} winkel succesvol gekoppeld!`, {
+          description: `${normalizedShopName} is nu actief in Dropsyncr`
+        });
+      }
       
       setShowConnectionDialog(false);
       setSelectedPlatform(null);
+      setEditingStore(null);
       
-      // Reload integrations
-      await loadIntegrations();
+      // Reload integrations (required for newly created integrations)
+      if (!editingStore) {
+        await loadIntegrations();
+      }
     } catch (error: any) {
-      console.error('[Integration] Failed to create integration:', error);
-      toast.error('Kon integratie niet koppelen', {
+      console.error('[Integration] Failed to save integration:', error);
+      toast.error(editingStore ? 'Kon integratie niet bijwerken' : 'Kon integratie niet koppelen', {
         description: error.message || 'Probeer het opnieuw'
       });
     }
@@ -304,7 +365,7 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
                         </div>
                       </div>
 
-                      <div className="flex gap-2">
+                      <div className="flex items-center gap-2">
                         {store.platform === 'bol.com' && (
                           <Button 
                             variant="outline" 
@@ -321,14 +382,25 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
                             Sync Orders
                           </Button>
                         )}
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          className="flex-1 gap-2 border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300"
-                          onClick={() => handleDisconnect(store.id)}
-                        >
-                          Ontkoppelen
-                        </Button>
+                        <div className="ml-auto flex items-center gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 px-2 gap-1 border-slate-200"
+                            onClick={() => handleOpenSettings(store)}
+                          >
+                            <Settings className="w-3.5 h-3.5" />
+                            Instellingen
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="h-8 px-2 gap-1 border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300"
+                            onClick={() => handleDisconnect(store.id)}
+                          >
+                            Ontkoppelen
+                          </Button>
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -361,7 +433,7 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
                     <Button 
                       size="sm" 
                       className={`gap-2 bg-gradient-to-r ${platform.color} hover:opacity-90 shadow-md`}
-                      onClick={(e) => {
+                      onClick={(e: MouseEvent<HTMLButtonElement>) => {
                         e.stopPropagation();
                         handleConnectPlatform(platform);
                       }}
@@ -411,7 +483,15 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
       </Card>
 
       {/* Connection Dialog */}
-      <Dialog open={showConnectionDialog} onOpenChange={setShowConnectionDialog}>
+      <Dialog
+        open={showConnectionDialog}
+        onOpenChange={(open: boolean) => {
+          setShowConnectionDialog(open);
+          if (!open) {
+            setEditingStore(null);
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <div className="flex items-center justify-between">
@@ -421,7 +501,9 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
                     <img src={selectedPlatform.logo} alt={selectedPlatform.name} className="w-full h-full object-contain" />
                   </div>
                 )}
-                <DialogTitle>{selectedPlatform?.name}</DialogTitle>
+                <DialogTitle>
+                  {editingStore ? `${selectedPlatform?.name} Instellingen` : selectedPlatform?.name}
+                </DialogTitle>
               </div>
               <a 
                 href="#" 
@@ -455,7 +537,11 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
               </Label>
               <Input
                 id="apikey"
-                placeholder={selectedPlatform?.id === 'bol' ? 'Voer je Client ID in' : 'Voer je API key in'}
+                placeholder={
+                  editingStore
+                    ? (selectedPlatform?.id === 'bol' ? 'Laat leeg om huidige Client ID te behouden' : 'Laat leeg om huidige API key te behouden')
+                    : (selectedPlatform?.id === 'bol' ? 'Voer je Client ID in' : 'Voer je API key in')
+                }
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 className="border-slate-200"
@@ -469,7 +555,11 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
               <Input
                 id="apisecret"
                 type="password"
-                placeholder={selectedPlatform?.id === 'bol' ? 'Voer je Client Secret in' : 'Voer je API secret in'}
+                placeholder={
+                  editingStore
+                    ? (selectedPlatform?.id === 'bol' ? 'Laat leeg om huidige Client Secret te behouden' : 'Laat leeg om huidige API secret te behouden')
+                    : (selectedPlatform?.id === 'bol' ? 'Voer je Client Secret in' : 'Voer je API secret in')
+                }
                 value={apiSecret}
                 onChange={(e) => setApiSecret(e.target.value)}
                 className="border-slate-200"
@@ -480,7 +570,7 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
               <Checkbox 
                 id="process-orders" 
                 checked={processOrders}
-                onCheckedChange={(checked) => setProcessOrders(checked as boolean)}
+                onCheckedChange={(checked: boolean | 'indeterminate') => setProcessOrders(checked === true)}
               />
               <Label 
                 htmlFor="process-orders" 
@@ -508,7 +598,7 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
               onClick={handleSubmitConnection}
               className="w-full bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-600 hover:to-cyan-600 shadow-lg"
             >
-              Koppelen
+              {editingStore ? 'Wijzigingen Opslaan' : 'Koppelen'}
             </Button>
           </DialogFooter>
         </DialogContent>

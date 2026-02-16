@@ -104,11 +104,6 @@ export function Login() {
               )}
             </Button>
 
-            <div className="mt-4 p-3 bg-slate-50 rounded-md text-xs text-slate-600">
-              <p className="font-semibold mb-1">Demo Credentials:</p>
-              <p>Email: admin@dropsyncr.com</p>
-              <p>Password: admin123</p>
-            </div>
           </form>
         </CardContent>
       </Card>

@@ -1,4 +1,5 @@
 import prisma from '../config/database.js';
+import fetch from 'node-fetch';
 
 export const getTrackings = async (req, res) => {
   try {
@@ -133,6 +134,97 @@ export const bulkCreateTracking = async (req, res) => {
   } catch (error) {
     console.error('Bulk create tracking error:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const refreshWeGrowTracking = async (req, res) => {
+  try {
+    const { carrierId, shipmentId } = req.body;
+
+    if (!carrierId || !shipmentId) {
+      return res.status(400).json({ error: 'carrierId en shipmentId zijn verplicht' });
+    }
+
+    const carrier = await prisma.carrier.findUnique({
+      where: { id: parseInt(carrierId) },
+    });
+
+    if (!carrier) {
+      return res.status(404).json({ error: 'Carrier not found' });
+    }
+
+    if (carrier.carrierType !== 'wegrow') {
+      return res.status(400).json({ error: 'Carrier is not a WeGrow carrier' });
+    }
+
+    if (!carrier.active) {
+      return res.status(400).json({ error: 'Carrier contract is inactive' });
+    }
+
+    if (!req.user.isGlobalAdmin) {
+      const hasAccess = await prisma.userInstallation.findFirst({
+        where: {
+          userId: req.user.id,
+          installationId: carrier.installationId,
+        },
+      });
+
+      if (!hasAccess) {
+        return res.status(403).json({ error: 'Access denied to this installation' });
+      }
+    }
+
+    const credentials = JSON.parse(carrier.credentials || '{}');
+    const apiKey = credentials.apiKey || process.env.WEGROW_API_KEY;
+    const apiVersion = credentials.apiVersion || 'v1';
+
+    if (!apiKey) {
+      return res.status(400).json({ error: 'WeGrow API key ontbreekt' });
+    }
+
+    const sandboxDefault = process.env.WEGROW_SANDBOX_URL || 'https://api-sandbox.wegrow.eu';
+    const productionDefault = process.env.WEGROW_PRODUCTION_URL || 'https://api.wegrow.eu';
+    const useSandbox = credentials.sandbox === true || credentials.environment === 'sandbox';
+    const baseUrl = (credentials.baseUrl || process.env.WEGROW_BASE_URL || (useSandbox ? sandboxDefault : productionDefault)).replace(/\/+$/, '');
+
+    const response = await fetch(`${baseUrl}/shipments/${encodeURIComponent(String(shipmentId))}/track`, {
+      method: 'GET',
+      headers: {
+        'x-key': apiKey,
+        'x-version': apiVersion,
+      },
+    });
+
+    const responseData = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return res.status(502).json({
+        error: 'Failed to fetch WeGrow tracking',
+        details: responseData?.detail || responseData?.error || 'Unknown WeGrow error',
+      });
+    }
+
+    const events = responseData?.events || responseData?.event || [];
+    const latestEvent = Array.isArray(events) && events.length > 0 ? events[events.length - 1] : null;
+
+    return res.json({
+      success: true,
+      shipmentId: String(shipmentId),
+      carrierTrackingId: responseData?.carrier_tracking_id || null,
+      eta: responseData?.eta || null,
+      events,
+      latestStatus: latestEvent
+        ? {
+          time: latestEvent?.time || null,
+          milestone: latestEvent?.codes?.milestone || null,
+          code: latestEvent?.codes?.code || null,
+          subCode: latestEvent?.codes?.sub_code || null,
+          description: latestEvent?.codes?.description || null,
+        }
+        : null,
+    });
+  } catch (error) {
+    console.error('Refresh WeGrow tracking error:', error);
+    res.status(500).json({ error: 'Failed to refresh WeGrow tracking' });
   }
 };
 

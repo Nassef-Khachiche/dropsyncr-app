@@ -1,5 +1,14 @@
 import prisma from '../config/database.js';
 
+const parseJsonSafely = (value, fallback = {}) => {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+};
+
 /**
  * Get all integrations for an installation
  */
@@ -34,13 +43,17 @@ export const getIntegrations = async (req, res) => {
 
     // Don't expose full credentials in the response
     const sanitizedIntegrations = integrations.map(integration => {
-      const credentials = JSON.parse(integration.credentials);
+      const credentials = parseJsonSafely(integration.credentials);
+      const settings = parseJsonSafely(integration.settings);
+
       return {
         ...integration,
         credentials: {
+          shopName: credentials.shopName || null,
           clientId: credentials.clientId ? `${credentials.clientId.substring(0, 8)}...` : null,
           hasSecret: !!credentials.clientSecret,
         },
+        settings,
       };
     });
 
@@ -148,9 +161,32 @@ export const updateIntegration = async (req, res) => {
       }
     }
 
+    const existingCredentials = parseJsonSafely(integration.credentials);
+    const existingSettings = parseJsonSafely(integration.settings);
+
+    const mergedCredentials = credentials
+      ? {
+          ...existingCredentials,
+          ...credentials,
+        }
+      : existingCredentials;
+
+    const mergedSettings = settings
+      ? {
+          ...existingSettings,
+          ...settings,
+        }
+      : existingSettings;
+
+    if (integration.platform === 'bol.com') {
+      if (!mergedCredentials.clientId || !mergedCredentials.clientSecret) {
+        return res.status(400).json({ error: 'Client ID and Client Secret are required for Bol.com' });
+      }
+    }
+
     const updateData = {};
-    if (credentials) updateData.credentials = JSON.stringify(credentials);
-    if (settings) updateData.settings = JSON.stringify(settings);
+    if (credentials) updateData.credentials = JSON.stringify(mergedCredentials);
+    if (settings) updateData.settings = JSON.stringify(mergedSettings);
     if (active !== undefined) updateData.active = active;
 
     const updatedIntegration = await prisma.integration.update({
@@ -161,10 +197,12 @@ export const updateIntegration = async (req, res) => {
     // Don't expose full credentials in response
     const sanitizedIntegration = {
       ...updatedIntegration,
-      credentials: credentials ? {
-        clientId: credentials.clientId ? `${credentials.clientId.substring(0, 8)}...` : null,
-        hasSecret: !!credentials.clientSecret,
-      } : JSON.parse(updatedIntegration.credentials),
+      credentials: {
+        shopName: mergedCredentials.shopName || null,
+        clientId: mergedCredentials.clientId ? `${mergedCredentials.clientId.substring(0, 8)}...` : null,
+        hasSecret: !!mergedCredentials.clientSecret,
+      },
+      settings: mergedSettings,
     };
 
     res.json({ integration: sanitizedIntegration });

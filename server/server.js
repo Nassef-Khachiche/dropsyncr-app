@@ -14,6 +14,7 @@ import adminRoutes from './src/routes/adminRoutes.js';
 import installationRoutes from './src/routes/installationRoutes.js';
 import integrationRoutes from './src/routes/integrationRoutes.js';
 import bolRoutes from './src/routes/bolRoutes.js';
+import { startBolSyncCronJob } from './src/jobs/bolSyncJob.js';
 
 dotenv.config();
 
@@ -67,5 +68,6 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
   console.log(`Default user: admin@dropsyncr.com / admin123`);
+  startBolSyncCronJob();
 });
 

@@ -26,16 +26,64 @@ export const getOrders = async (req, res) => {
       };
     }
 
-    const finalWhere = {
-      ...baseWhere,
-      ...(status && status !== 'all' && { orderStatus: status }),
-      ...(search && {
+    const andConditions = [];
+
+    if (status && status !== 'all') {
+      const normalizedStatus = String(status).toLowerCase();
+
+      if (normalizedStatus === 'openstaand') {
+        andConditions.push({
+          OR: [
+            {
+              orderStatus: {
+                in: ['openstaand', 'OPEN', 'NEW', 'ANNOUNCED', 'ARRIVED_AT_WH', 'onderweg-ffm', 'binnengekomen-ffm', 'label-aangemaakt'],
+              },
+            },
+            {
+              status: {
+                in: ['openstaand', 'onderweg-ffm', 'binnengekomen-ffm', 'label-aangemaakt'],
+              },
+            },
+          ],
+        });
+      } else if (normalizedStatus === 'verzonden') {
+        andConditions.push({
+          OR: [
+            {
+              orderStatus: {
+                in: ['verzonden', 'verstuurd', 'SHIPPED', 'DELIVERED', 'afgeleverd'],
+              },
+            },
+            {
+              status: {
+                in: ['verzonden', 'verstuurd', 'afgeleverd'],
+              },
+            },
+          ],
+        });
+      } else {
+        andConditions.push({
+          OR: [
+            { orderStatus: String(status) },
+            { status: String(status) },
+          ],
+        });
+      }
+    }
+
+    if (search) {
+      andConditions.push({
         OR: [
           { orderNumber: { contains: search } },
           { customerName: { contains: search } },
           { supplierTracking: { contains: search } },
         ],
-      }),
+      });
+    }
+
+    const finalWhere = {
+      ...baseWhere,
+      ...(andConditions.length > 0 ? { AND: andConditions } : {}),
     };
 
     const [orders, total] = await Promise.all([

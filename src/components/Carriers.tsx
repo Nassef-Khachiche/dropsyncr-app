@@ -75,6 +75,28 @@ const availableCarriers = [
       { name: 'delisId', label: 'Delis ID', type: 'text', placeholder: 'Voer je Delis ID in' },
       { name: 'password', label: 'Password', type: 'password', placeholder: 'Enter new password' },
       { name: 'depotNumber', label: 'Depotnummer', type: 'text', placeholder: 'Voer je depotnummer in' },
+      { name: 'senderName1', label: 'Afzender naam', type: 'text', placeholder: 'Bijv. Dropsyncr Warehouse' },
+      { name: 'senderStreet', label: 'Afzender straat', type: 'text', placeholder: 'Bijv. Industrieweg 10' },
+      { name: 'senderZipCode', label: 'Afzender postcode', type: 'text', placeholder: 'Bijv. 1234AB' },
+      { name: 'senderCity', label: 'Afzender plaats', type: 'text', placeholder: 'Bijv. Utrecht' },
+      { name: 'senderCountry', label: 'Afzender landcode', type: 'text', placeholder: 'Bijv. NL' },
+      { name: 'senderPhone', label: 'Afzender telefoon (optioneel)', type: 'text', placeholder: 'Bijv. +31101234567' },
+      { name: 'senderEmail', label: 'Afzender email (optioneel)', type: 'text', placeholder: 'Bijv. support@bedrijf.nl' },
+      { name: 'authToken', label: 'Auth token (optioneel)', type: 'password', placeholder: 'Laat leeg om Password te gebruiken' },
+      { name: 'endpointUrl', label: 'Endpoint URL (optioneel)', type: 'text', placeholder: 'Bijv. https://wsshipper.dpd.nl/services/ShipmentService/V35' },
+    ],
+    hasCheckbox: { name: 'sandbox', label: 'Sandbox' }
+  },
+  {
+    id: 'wegrow',
+    name: 'WeGrow',
+    logo: 'https://images.unsplash.com/photo-1556740749-887f6717d7e4?w=200',
+    color: 'from-emerald-500 to-teal-600',
+    bgColor: 'from-emerald-50 to-teal-100/50',
+    fields: [
+      { name: 'contractName', label: 'Contractnaam', type: 'text', placeholder: 'Bijv. WeGrow EU Contract' },
+      { name: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Voer je WeGrow API key in' },
+      { name: 'serviceCode', label: 'Service Code', type: 'text', placeholder: 'Bijv. wegrow_home_premium' },
     ],
     hasCheckbox: { name: 'sandbox', label: 'Sandbox' }
   },
@@ -85,6 +107,7 @@ export function Carriers({ activeProfile }: CarriersProps) {
   const [loading, setLoading] = useState(true);
 
   const [showDialog, setShowDialog] = useState(false);
+  const [editingContract, setEditingContract] = useState<Contract | null>(null);
   const [selectedCarrier, setSelectedCarrier] = useState<string>('');
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [isActive, setIsActive] = useState(true);
@@ -131,10 +154,28 @@ export function Carriers({ activeProfile }: CarriersProps) {
       toast.error('Selecteer eerst een installatie');
       return;
     }
+    setEditingContract(null);
     setShowDialog(true);
     setSelectedCarrier('');
     setFormData({});
     setIsActive(true);
+    setShowPasswords({});
+  };
+
+  const handleOpenSettings = (contract: Contract) => {
+    if (!activeProfile) {
+      toast.error('Selecteer eerst een installatie');
+      return;
+    }
+
+    setEditingContract(contract);
+    setShowDialog(true);
+    setSelectedCarrier(contract.carrier);
+    setFormData({
+      contractName: contract.contractName,
+      ...(contract.credentials || {}),
+    });
+    setIsActive(contract.active);
     setShowPasswords({});
   };
 
@@ -185,24 +226,34 @@ export function Carriers({ activeProfile }: CarriersProps) {
     try {
       const { contractName, ...credentials } = formData;
       const carrierData = {
-        installationId: parseInt(activeProfile),
-        carrierType: selectedCarrier,
         contractName: contractName,
         active: isActive,
         credentials: credentials,
       };
 
-      await api.createCarrier(carrierData);
+      if (editingContract) {
+        await api.updateCarrier(editingContract.id, carrierData);
+        toast.success(`${carrier.name} contract bijgewerkt!`, {
+          description: `${contractName} instellingen zijn opgeslagen`
+        });
+      } else {
+        await api.createCarrier({
+          installationId: parseInt(activeProfile),
+          carrierType: selectedCarrier,
+          ...carrierData,
+        });
 
-      toast.success(`${carrier.name} contract succesvol toegevoegd!`, {
-        description: `${contractName} is nu actief`
-      });
+        toast.success(`${carrier.name} contract succesvol toegevoegd!`, {
+          description: `${contractName} is nu actief`
+        });
+      }
 
       setShowDialog(false);
+      setEditingContract(null);
       await loadCarriers();
     } catch (error: any) {
-      console.error('Failed to create carrier:', error);
-      toast.error('Kon contract niet toevoegen', {
+      console.error('Failed to save carrier:', error);
+      toast.error('Kon contract niet opslaan', {
         description: error.message || 'Probeer het opnieuw'
       });
     }
@@ -332,7 +383,7 @@ export function Carriers({ activeProfile }: CarriersProps) {
                         variant="outline" 
                         size="sm" 
                         className="flex-1 gap-2 border-slate-200"
-                        onClick={() => toast.info('Instellingen openen...')}
+                        onClick={() => handleOpenSettings(contract)}
                       >
                         <Settings className="w-4 h-4" />
                         Instellingen
@@ -404,9 +455,11 @@ export function Carriers({ activeProfile }: CarriersProps) {
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Contract Toevoegen</DialogTitle>
+            <DialogTitle>{editingContract ? 'Contract Instellingen' : 'Contract Toevoegen'}</DialogTitle>
             <DialogDescription>
-              Voeg een nieuw verzendcontract toe aan je account
+              {editingContract
+                ? 'Wijzig naam, API key en credentials van dit contract'
+                : 'Voeg een nieuw verzendcontract toe aan je account'}
             </DialogDescription>
           </DialogHeader>
           
@@ -414,7 +467,7 @@ export function Carriers({ activeProfile }: CarriersProps) {
             {/* Carrier Selection */}
             <div className="space-y-2">
               <Label htmlFor="carrier">Vervoerder</Label>
-              <Select value={selectedCarrier} onValueChange={handleCarrierChange}>
+              <Select value={selectedCarrier} onValueChange={handleCarrierChange} disabled={!!editingContract}>
                 <SelectTrigger className="border-slate-200">
                   <SelectValue placeholder="Selecteer een vervoerder..." />
                 </SelectTrigger>
@@ -504,7 +557,7 @@ export function Carriers({ activeProfile }: CarriersProps) {
               disabled={!selectedCarrier}
               className="w-full bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-600 hover:to-cyan-600 shadow-lg"
             >
-              Opslaan
+              {editingContract ? 'Wijzigingen Opslaan' : 'Opslaan'}
             </Button>
           </DialogFooter>
         </DialogContent>

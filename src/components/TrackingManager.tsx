@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { Alert, AlertDescription } from './ui/alert';
 import { toast } from 'sonner@2.0.3';
+import { api } from '../services/api';
 
 interface TrackingManagerProps {
   activeProfile: string;
@@ -76,6 +77,10 @@ const mockTrackings = [
 export function TrackingManager({ activeProfile }: TrackingManagerProps) {
   const [bulkTracking, setBulkTracking] = useState('');
   const [manualTracking, setManualTracking] = useState('');
+  const [wegrowCarrierId, setWegrowCarrierId] = useState('');
+  const [wegrowShipmentId, setWegrowShipmentId] = useState('');
+  const [wegrowLoading, setWegrowLoading] = useState(false);
+  const [wegrowResult, setWegrowResult] = useState<any>(null);
 
   const handleBulkAdd = () => {
     if (!bulkTracking.trim()) return;
@@ -90,6 +95,27 @@ export function TrackingManager({ activeProfile }: TrackingManagerProps) {
     
     toast.success('Tracking code toegevoegd');
     setManualTracking('');
+  };
+
+  const handleRefreshWeGrowTracking = async () => {
+    if (!wegrowCarrierId.trim() || !wegrowShipmentId.trim()) {
+      toast.error('Vul carrier ID en shipment ID in');
+      return;
+    }
+
+    try {
+      setWegrowLoading(true);
+      const response = await api.refreshWeGrowTracking(parseInt(wegrowCarrierId), wegrowShipmentId.trim());
+      setWegrowResult(response);
+      toast.success('WeGrow tracking vernieuwd');
+    } catch (error: any) {
+      console.error('Failed to refresh WeGrow tracking:', error);
+      toast.error('Kon WeGrow tracking niet verversen', {
+        description: error.message || 'Probeer het opnieuw',
+      });
+    } finally {
+      setWegrowLoading(false);
+    }
   };
 
   const linkedCount = mockTrackings.filter(t => t.status === 'linked').length;
@@ -198,6 +224,64 @@ export function TrackingManager({ activeProfile }: TrackingManagerProps) {
                 Bulk Toevoegen
               </Button>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-slate-200 shadow-sm bg-gradient-to-br from-white to-teal-50/20">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <div className="p-2 bg-gradient-to-br from-teal-500 to-cyan-500 rounded-lg">
+                <LinkIcon className="w-4 h-4 text-white" />
+              </div>
+              WeGrow Tracking Refresh
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm text-slate-700">Carrier ID</label>
+              <Input
+                placeholder="Bijv. 12"
+                value={wegrowCarrierId}
+                onChange={(e) => setWegrowCarrierId(e.target.value)}
+                className="border-slate-200 shadow-sm"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm text-slate-700">Shipment ID</label>
+              <Input
+                placeholder="Bijv. ef22723b-77ec-40ce-816d-6b44f3da8df7"
+                value={wegrowShipmentId}
+                onChange={(e) => setWegrowShipmentId(e.target.value)}
+                className="border-slate-200 shadow-sm"
+              />
+            </div>
+
+            <Button
+              onClick={handleRefreshWeGrowTracking}
+              disabled={wegrowLoading || !activeProfile}
+              className="w-full gap-2 bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-600 hover:to-cyan-600 shadow-sm"
+            >
+              {wegrowLoading ? 'Verversen...' : 'Ververs WeGrow Status'}
+            </Button>
+
+            {wegrowResult?.latestStatus && (
+              <Alert className="border-teal-200 bg-teal-50/50">
+                <AlertDescription className="text-slate-700">
+                  <div className="text-sm">
+                    <strong>Status:</strong> {wegrowResult.latestStatus.milestone || '-'} / {wegrowResult.latestStatus.code || '-'}
+                  </div>
+                  <div className="text-xs text-slate-600 mt-1">
+                    {wegrowResult.latestStatus.description || 'Geen omschrijving'}
+                  </div>
+                  {wegrowResult.carrierTrackingId && (
+                    <div className="text-xs text-slate-600 mt-1">
+                      Tracking: {wegrowResult.carrierTrackingId}
+                    </div>
+                  )}
+                </AlertDescription>
+              </Alert>
+            )}
           </CardContent>
         </Card>
       </div>
