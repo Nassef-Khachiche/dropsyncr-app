@@ -250,22 +250,8 @@ export const generateCarrierLabels = async (req, res) => {
       return false;
     };
 
-    const firstNonEmpty = (...values) => {
-      for (const value of values) {
-        if (value === undefined || value === null) continue;
-        const text = String(value).trim();
-        if (text.length > 0) return text;
-      }
-      return '';
-    };
-
-    const isProductionEnv = String(process.env.NODE_ENV || '').toLowerCase() === 'production';
-    const devFallbackSenderStreet = isProductionEnv ? '' : 'Street 1';
-    const devFallbackSenderZipCode = isProductionEnv ? '' : '1012AB';
-    const devFallbackSenderCity = isProductionEnv ? '' : 'Amsterdam';
-
-    const DPD_SANDBOX_DEFAULT_ENDPOINT = 'https://wsshippertest.dpd.nl/services/ShipmentService/V35';
-    const DPD_PRODUCTION_DEFAULT_ENDPOINT = 'https://wsshipper.dpd.nl/services/ShipmentService/V35';
+    const DPD_SANDBOX_DEFAULT_ENDPOINT = 'https://wsshippertest.dpd.nl/services/ShipmentService/V3_5';
+    const DPD_PRODUCTION_DEFAULT_ENDPOINT = 'https://wsshipper.dpd.nl/services/ShipmentService/V3_5';
 
     const normalizeDpdShipmentEndpoint = (value, fallback) => {
       const raw = String(value || '').trim();
@@ -278,43 +264,11 @@ export const generateCarrierLabels = async (req, res) => {
 
       const withoutTrailingSlash = endpoint.replace(/\/+$/, '');
       if (/\/soap\/ShipmentServiceV35$/i.test(withoutTrailingSlash)) {
-        return withoutTrailingSlash.replace(/\/soap\/ShipmentServiceV35$/i, '/services/ShipmentService/V35');
-      }
-
-      if (/\/services\/ShipmentService\/V3_5$/i.test(withoutTrailingSlash)) {
-        return withoutTrailingSlash.replace(/\/services\/ShipmentService\/V3_5$/i, '/services/ShipmentService/V35');
+        return withoutTrailingSlash.replace(/\/soap\/ShipmentServiceV35$/i, '/services/ShipmentService/V3_5');
       }
 
       return withoutTrailingSlash;
     };
-
-    const getDpdEndpointVariants = (endpoint) => {
-      const normalized = normalizeDpdShipmentEndpoint(endpoint, endpoint);
-      if (!normalized) return [];
-
-      const variants = [normalized];
-
-      if (/\/services\/ShipmentService\/V35$/i.test(normalized)) {
-        variants.push(normalized.replace(/\/services\/ShipmentService\/V35$/i, '/services/ShipmentService/V3_5'));
-      }
-
-      if (/\/services\/ShipmentService\/V3_5$/i.test(normalized)) {
-        variants.push(normalized.replace(/\/services\/ShipmentService\/V3_5$/i, '/services/ShipmentService/V35'));
-      }
-
-      return variants.filter((value, index, arr) => arr.indexOf(value) === index);
-    };
-
-    const getDpdSoapVersionForEndpoint = (endpoint = '') => {
-      const normalized = String(endpoint || '').toLowerCase();
-      if (/\/v4_5$/i.test(normalized)) return '4.5';
-      if (/\/v4_4$/i.test(normalized)) return '4.4';
-      return '3.5';
-    };
-
-    const getDpdSoapActionForVersion = (version = '3.5') => (
-      `http://dpd.com/common/service/types/ShipmentService/${version}/storeOrders`
-    );
 
     const getDpdShipmentEndpoint = (credentials) => {
       const isSandbox = isTruthy(credentials?.sandbox) || String(credentials?.environment || '').toLowerCase() === 'sandbox';
@@ -328,40 +282,15 @@ export const generateCarrierLabels = async (req, res) => {
 
     const getDpdEndpointCandidates = (credentials) => {
       if (credentials?.endpointUrl) {
-        return getDpdEndpointVariants(getDpdShipmentEndpoint(credentials));
+        return [getDpdShipmentEndpoint(credentials)];
       }
 
-      const isSandbox = isTruthy(credentials?.sandbox) || String(credentials?.environment || '').toLowerCase() === 'sandbox';
       const sandboxEndpoint = normalizeDpdShipmentEndpoint(process.env.DPD_SHIPMENT_URL_SANDBOX, DPD_SANDBOX_DEFAULT_ENDPOINT);
       const productionEndpoint = normalizeDpdShipmentEndpoint(process.env.DPD_SHIPMENT_URL, DPD_PRODUCTION_DEFAULT_ENDPOINT);
       const primary = getDpdShipmentEndpoint(credentials);
       const fallback = primary === sandboxEndpoint ? productionEndpoint : sandboxEndpoint;
-      const publicPrimary = isSandbox
-        ? [
-          'https://public-ws-stage.dpd.com/services/ShipmentService/V4_5',
-          'https://public-ws-stage.dpd.com/services/ShipmentService/V4_4',
-        ]
-        : [
-          'https://public-ws.dpd.com/services/ShipmentService/V4_5',
-          'https://public-ws.dpd.com/services/ShipmentService/V4_4',
-        ];
-      const publicFallback = isSandbox
-        ? [
-          'https://public-ws.dpd.com/services/ShipmentService/V4_5',
-          'https://public-ws.dpd.com/services/ShipmentService/V4_4',
-        ]
-        : [
-          'https://public-ws-stage.dpd.com/services/ShipmentService/V4_5',
-          'https://public-ws-stage.dpd.com/services/ShipmentService/V4_4',
-        ];
 
-      return [
-        ...getDpdEndpointVariants(primary),
-        ...getDpdEndpointVariants(fallback),
-        ...publicPrimary,
-        ...publicFallback,
-      ]
-        .filter((value, index, arr) => arr.indexOf(value) === index);
+      return [primary, fallback].filter((value, index, arr) => arr.indexOf(value) === index);
     };
 
     const extractSoapFault = (soapResponse = '') => {
@@ -388,111 +317,10 @@ export const generateCarrierLabels = async (req, res) => {
       return message ? message.replace(/\s+/g, ' ').trim() : null;
     };
 
-    const extractSoapTagValue = (soapResponse = '', tagName = '') => {
-      if (!tagName) return null;
-      const match = soapResponse.match(new RegExp(`<(?:\\w+:)?${tagName}>([\\s\\S]*?)<\\/(?:\\w+:)?${tagName}>`, 'i'));
-      return match?.[1] ? match[1].replace(/\s+/g, ' ').trim() : null;
-    };
-
-    const extractSoapFaultCode = (soapResponse = '') => extractSoapTagValue(soapResponse, 'errorCode');
-
-    const mapDpdFaultDetails = (faultCode, fallbackMessage) => {
-      if (faultCode === 'LOGIN_8') {
-        return 'DPD inloggegevens ongeldig (LOGIN_8). Controleer Delis ID/username en password/auth token in contractinstellingen.';
-      }
-
-      if (faultCode === 'LOGIN_5') {
-        return 'DPD auth token ongeldig of verlopen (LOGIN_5). Vul een geldige auth token in of controleer DPD login-gegevens.';
-      }
-
-      return fallbackMessage;
-    };
-
-    const getDpdLoginEndpointForShipmentEndpoint = (shipmentEndpoint = '') => {
-      const normalized = String(shipmentEndpoint || '').toLowerCase();
-      if (normalized.includes('public-ws-stage.dpd.com')) {
-        return 'https://public-ws-stage.dpd.com/services/LoginService/V2_0';
-      }
-      if (normalized.includes('public-ws.dpd.com')) {
-        return 'https://public-ws.dpd.com/services/LoginService/V2_0';
-      }
-      if (normalized.includes('wsshippertest.dpd.nl')) {
-        return 'https://public-ws-stage.dpd.com/services/LoginService/V2_0';
-      }
-      return 'https://public-ws.dpd.com/services/LoginService/V2_0';
-    };
-
-    const requestDpdAuthToken = async (credentials, shipmentEndpoint) => {
-      const delisId = credentials.delisId || credentials.username || '';
-      const password = credentials.password || '';
-
-      if (!delisId || !password) {
-        return {
-          authToken: null,
-          error: 'Delis ID/username en password zijn vereist om DPD authToken te vernieuwen.',
-          code: 'LOGIN_MISSING_CREDENTIALS',
-        };
-      }
-
-      const loginEndpoint = getDpdLoginEndpointForShipmentEndpoint(shipmentEndpoint);
-      const soapBody = `<?xml version="1.0" encoding="UTF-8"?>
-<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns="http://dpd.com/common/service/types/LoginService/2.0">
-  <soapenv:Header/>
-  <soapenv:Body>
-    <ns:getAuth>
-      <delisId>${escapeXml(delisId)}</delisId>
-      <password>${escapeXml(password)}</password>
-      <messageLanguage>nl_NL</messageLanguage>
-    </ns:getAuth>
-  </soapenv:Body>
-</soapenv:Envelope>`;
-
-      const response = await fetch(loginEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'text/xml; charset=utf-8',
-          SOAPAction: 'http://dpd.com/common/service/types/LoginService/2.0/getAuth',
-        },
-        body: soapBody,
-      });
-
-      const responseText = await response.text();
-      const authToken = extractSoapTagValue(responseText, 'authToken');
-
-      if (authToken) {
-        return { authToken, error: null, code: null };
-      }
-
-      const detailedErrorMessage = extractSoapTagValue(responseText, 'errorMessage');
-      return {
-        authToken: null,
-        error: detailedErrorMessage || extractSoapFault(responseText) || `DPD LoginService returned HTTP ${response.status}`,
-        code: extractSoapFaultCode(responseText),
-      };
-    };
-
-    const buildDpdSoapEnvelope = (credentials, pkg, shipmentServiceVersion = '3.5') => {
+    const buildDpdSoapEnvelope = (credentials, pkg) => {
       const delisId = credentials.delisId || credentials.username || '';
       const authToken = credentials.authToken || credentials.password || '';
       const sendingDepot = credentials.depotNumber || '';
-      const isV4ShipmentService = shipmentServiceVersion.startsWith('4.');
-
-      const splitStreetAndHouseNo = (value = '') => {
-        const text = String(value || '').trim();
-        if (!text) {
-          return { streetName: '', houseNo: '' };
-        }
-
-        const match = text.match(/^(.*?)[\s,]+(\d+[A-Za-z0-9\-\/]*)$/);
-        if (!match) {
-          return { streetName: text, houseNo: '' };
-        }
-
-        return {
-          streetName: (match[1] || '').trim() || text,
-          houseNo: (match[2] || '').trim(),
-        };
-      };
 
       const recipientName = pkg.customerName || 'Recipient';
       const recipientCountry = pkg.country || 'NL';
@@ -505,20 +333,6 @@ export const generateCarrierLabels = async (req, res) => {
       const reference2 = pkg.reference2 || pkg.trackingCode || '';
       const weight = String(pkg.weight || 500);
       const volume = String(pkg.volume || '000000000');
-      const parcelsXml = shipmentServiceVersion.startsWith('4.')
-        ? `
-        <parcels>
-          <customerReferenceNumber1>${escapeXml(reference1)}</customerReferenceNumber1>
-          <customerReferenceNumber2>${escapeXml(reference2)}</customerReferenceNumber2>
-          <weight>${escapeXml(weight)}</weight>
-        </parcels>`
-        : `
-        <parcels>
-          <customerReferenceNumber1>${escapeXml(reference1)}</customerReferenceNumber1>
-          <customerReferenceNumber2>${escapeXml(reference2)}</customerReferenceNumber2>
-          <volume>${escapeXml(volume)}</volume>
-          <weight>${escapeXml(weight)}</weight>
-        </parcels>`;
 
       const senderName1 = credentials.senderName1 || credentials.contractName || carrier.contractName || 'Dropsyncr';
       const senderName2 = credentials.senderName2 || '';
@@ -529,88 +343,9 @@ export const generateCarrierLabels = async (req, res) => {
       const senderCity = credentials.senderCity || '';
       const senderPhone = credentials.senderPhone || '';
       const senderEmail = credentials.senderEmail || '';
-      const shipmentProduct = isV4ShipmentService
-        ? (credentials.productCode || credentials.product || 'CL')
-        : (credentials.productCode || credentials.product || 'B2B');
-
-      const senderAddress = splitStreetAndHouseNo(senderStreet);
-      const recipientAddress = splitStreetAndHouseNo(street);
-      const optionalXmlTag = (tagName, value) => {
-        const text = String(value || '').trim();
-        if (!text) return '';
-        return `<${tagName}>${escapeXml(text)}</${tagName}>`;
-      };
-
-      const printOptionsXml = isV4ShipmentService
-        ? `
-      <printOptions>
-        <printOption>
-          <outputFormat>PDF</outputFormat>
-          <paperFormat>A6</paperFormat>
-        </printOption>
-      </printOptions>`
-        : `
-      <printOptions>
-        <printerLanguage>PDF</printerLanguage>
-        <paperFormat>A6</paperFormat>
-      </printOptions>`;
-
-      const senderXml = isV4ShipmentService
-        ? `
-          <sender>
-            <name1>${escapeXml(senderName1)}</name1>
-            <name2>${escapeXml(senderName2)}</name2>
-            <street>${escapeXml(senderAddress.streetName)}</street>
-            ${senderAddress.houseNo ? `<houseNo>${escapeXml(senderAddress.houseNo)}</houseNo>` : ''}
-            <country>${escapeXml(senderCountry)}</country>
-            <zipCode>${escapeXml(senderZipCode)}</zipCode>
-            <city>${escapeXml(senderCity)}</city>
-            ${optionalXmlTag('phone', senderPhone)}
-            ${optionalXmlTag('email', senderEmail)}
-          </sender>`
-        : `
-          <sender>
-            <name1>${escapeXml(senderName1)}</name1>
-            <name2>${escapeXml(senderName2)}</name2>
-            <street>${escapeXml(senderStreet)}</street>
-            <street2>${escapeXml(senderStreet2)}</street2>
-            <country>${escapeXml(senderCountry)}</country>
-            <zipCode>${escapeXml(senderZipCode)}</zipCode>
-            <city>${escapeXml(senderCity)}</city>
-            ${optionalXmlTag('phone', senderPhone)}
-            ${optionalXmlTag('email', senderEmail)}
-          </sender>`;
-
-      const recipientXml = isV4ShipmentService
-        ? `
-          <recipient>
-            <name1>${escapeXml(recipientName)}</name1>
-            <name2>${escapeXml(pkg.companyName || '')}</name2>
-            <street>${escapeXml(recipientAddress.streetName)}</street>
-            ${recipientAddress.houseNo ? `<houseNo>${escapeXml(recipientAddress.houseNo)}</houseNo>` : ''}
-            <country>${escapeXml(recipientCountry)}</country>
-            <zipCode>${escapeXml(zipCode)}</zipCode>
-            <city>${escapeXml(city)}</city>
-            <contact>${escapeXml(pkg.contact || recipientName)}</contact>
-            ${optionalXmlTag('phone', pkg.phone || '')}
-            ${optionalXmlTag('email', pkg.email || '')}
-          </recipient>`
-        : `
-          <recipient>
-            <name1>${escapeXml(recipientName)}</name1>
-            <name2>${escapeXml(pkg.companyName || '')}</name2>
-            <street>${escapeXml(street)}</street>
-            <street2>${escapeXml(pkg.street2 || '')}</street2>
-            <country>${escapeXml(recipientCountry)}</country>
-            <zipCode>${escapeXml(zipCode)}</zipCode>
-            <city>${escapeXml(city)}</city>
-            <contact>${escapeXml(pkg.contact || recipientName)}</contact>
-            ${optionalXmlTag('phone', pkg.phone || '')}
-            ${optionalXmlTag('email', pkg.email || '')}
-          </recipient>`;
 
       return `<?xml version="1.0" encoding="UTF-8"?>
-<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns="http://dpd.com/common/service/types/Authentication/2.0" xmlns:ns1="http://dpd.com/common/service/types/ShipmentService/${shipmentServiceVersion}">
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns="http://dpd.com/common/service/types/Authentication/2.0" xmlns:ns1="http://dpd.com/common/service/types/ShipmentService/3.5">
   <soapenv:Header>
     <ns:authentication>
       <delisId>${escapeXml(delisId)}</delisId>
@@ -620,15 +355,44 @@ export const generateCarrierLabels = async (req, res) => {
   </soapenv:Header>
   <soapenv:Body>
     <ns1:storeOrders>
-${printOptionsXml}
+      <printOptions>
+        <printerLanguage>PDF</printerLanguage>
+        <paperFormat>A6</paperFormat>
+      </printOptions>
       <order>
         <generalShipmentData>
           <sendingDepot>${escapeXml(sendingDepot)}</sendingDepot>
-          <product>${escapeXml(shipmentProduct)}</product>
-${senderXml}
-${recipientXml}
+          <product>B2B</product>
+          <sender>
+            <name1>${escapeXml(senderName1)}</name1>
+            <name2>${escapeXml(senderName2)}</name2>
+            <street>${escapeXml(senderStreet)}</street>
+            <street2>${escapeXml(senderStreet2)}</street2>
+            <country>${escapeXml(senderCountry)}</country>
+            <zipCode>${escapeXml(senderZipCode)}</zipCode>
+            <city>${escapeXml(senderCity)}</city>
+            <phone>${escapeXml(senderPhone)}</phone>
+            <email>${escapeXml(senderEmail)}</email>
+          </sender>
+          <recipient>
+            <name1>${escapeXml(recipientName)}</name1>
+            <name2>${escapeXml(pkg.companyName || '')}</name2>
+            <street>${escapeXml(street)}</street>
+            <street2>${escapeXml(pkg.street2 || '')}</street2>
+            <country>${escapeXml(recipientCountry)}</country>
+            <zipCode>${escapeXml(zipCode)}</zipCode>
+            <city>${escapeXml(city)}</city>
+            <contact>${escapeXml(pkg.contact || recipientName)}</contact>
+            <phone>${escapeXml(pkg.phone || '')}</phone>
+            <email>${escapeXml(pkg.email || '')}</email>
+          </recipient>
         </generalShipmentData>
-${parcelsXml}
+        <parcels>
+          <customerReferenceNumber1>${escapeXml(reference1)}</customerReferenceNumber1>
+          <customerReferenceNumber2>${escapeXml(reference2)}</customerReferenceNumber2>
+          <volume>${escapeXml(volume)}</volume>
+          <weight>${escapeXml(weight)}</weight>
+        </parcels>
         <productAndServiceData>
           <orderType>consignment</orderType>
         </productAndServiceData>
@@ -684,65 +448,11 @@ ${parcelsXml}
       const delisId = credentials.delisId || credentials.username;
       const authToken = credentials.authToken || credentials.password;
       const depotNumber = credentials.depotNumber;
-      const senderName1 = firstNonEmpty(
-        credentials.senderName1,
-        credentials.senderName,
-        credentials.companyName,
-        process.env.DPD_SENDER_NAME1,
-        carrier.contractName,
-      );
-      const senderStreet = firstNonEmpty(
-        credentials.senderStreet,
-        credentials.street,
-        credentials.address,
-        process.env.DPD_SENDER_STREET,
-        process.env.DPD_SENDER_STREET_DEFAULT,
-        devFallbackSenderStreet,
-      );
-      const senderZipCode = firstNonEmpty(
-        credentials.senderZipCode,
-        credentials.senderPostalCode,
-        credentials.postalCode,
-        credentials.zipCode,
-        process.env.DPD_SENDER_ZIP_CODE,
-        process.env.DPD_SENDER_POSTAL_CODE,
-        process.env.DPD_SENDER_ZIP_CODE_DEFAULT,
-        devFallbackSenderZipCode,
-      );
-      const senderCity = firstNonEmpty(
-        credentials.senderCity,
-        credentials.city,
-        process.env.DPD_SENDER_CITY,
-        process.env.DPD_SENDER_CITY_DEFAULT,
-        devFallbackSenderCity,
-      );
-      const senderCountry = firstNonEmpty(
-        credentials.senderCountry,
-        credentials.country,
-        process.env.DPD_SENDER_COUNTRY,
-        'NL',
-      );
-      const senderPhone = firstNonEmpty(
-        credentials.senderPhone,
-        credentials.phone,
-        process.env.DPD_SENDER_PHONE,
-      );
-      const senderEmail = firstNonEmpty(
-        credentials.senderEmail,
-        credentials.email,
-        process.env.DPD_SENDER_EMAIL,
-      );
-
-      const normalizedCredentials = {
-        ...credentials,
-        senderName1,
-        senderStreet,
-        senderZipCode,
-        senderCity,
-        senderCountry,
-        senderPhone,
-        senderEmail,
-      };
+      const senderName1 = credentials.senderName1;
+      const senderStreet = credentials.senderStreet;
+      const senderZipCode = credentials.senderZipCode;
+      const senderCity = credentials.senderCity;
+      const senderCountry = credentials.senderCountry || 'NL';
 
       if (!delisId || !authToken || !depotNumber) {
         return res.status(400).json({
@@ -761,79 +471,34 @@ ${parcelsXml}
       if (missingSenderFields.length > 0) {
         return res.status(400).json({
           error: 'DPD afzenderprofiel is incompleet',
-          details: `Ontbrekende velden: ${missingSenderFields.join(', ')}. Vul deze in via Vervoerders > DPD contractinstellingen of zet DPD_SENDER_* env defaults.`,
-        });
-      }
-
-      if (!isProductionEnv && (!credentials.senderStreet || !credentials.senderZipCode || !credentials.senderCity)) {
-        console.warn('DPD sender profile uses non-production fallback values for missing sender fields', {
-          carrierId: carrier.id,
-          senderStreet,
-          senderZipCode,
-          senderCity,
+          details: `Ontbrekende velden: ${missingSenderFields.join(', ')}. Vul deze in via Vervoerders > DPD contractinstellingen.`,
         });
       }
 
       const labels = [];
       for (let index = 0; index < (packages || []).length; index += 1) {
         const pkg = packages[index];
+        const soapBody = buildDpdSoapEnvelope(credentials, pkg);
         let response = null;
         let responseText = '';
         let usedEndpoint = endpointCandidates[0];
 
         for (const endpoint of endpointCandidates) {
           usedEndpoint = endpoint;
-          const soapVersion = getDpdSoapVersionForEndpoint(endpoint);
-          const soapAction = getDpdSoapActionForVersion(soapVersion);
-          const createShipmentRequest = async (credentialsForRequest) => {
-            const soapBody = buildDpdSoapEnvelope(credentialsForRequest, pkg, soapVersion);
-            const requestResponse = await fetch(endpoint, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'text/xml; charset=utf-8',
-                SOAPAction: soapAction,
-              },
-              body: soapBody,
-            });
+          const candidateResponse = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'text/xml; charset=utf-8',
+              SOAPAction: 'http://dpd.com/common/service/types/ShipmentService/3.5/storeOrders',
+            },
+            body: soapBody,
+          });
 
-            return {
-              response: requestResponse,
-              text: await requestResponse.text(),
-            };
-          };
+          const candidateText = await candidateResponse.text();
 
-          let { response: candidateResponse, text: candidateText } = await createShipmentRequest(normalizedCredentials);
-          const candidateFaultCode = extractSoapFaultCode(candidateText);
-
-          if (
-            soapVersion.startsWith('4.')
-            && candidateFaultCode === 'LOGIN_5'
-            && !normalizedCredentials.authToken
-          ) {
-            const tokenRefresh = await requestDpdAuthToken(normalizedCredentials, endpoint);
-            if (tokenRefresh.authToken) {
-              const retryCredentials = {
-                ...normalizedCredentials,
-                authToken: tokenRefresh.authToken,
-              };
-              const retryResult = await createShipmentRequest(retryCredentials);
-              candidateResponse = retryResult.response;
-              candidateText = retryResult.text;
-            } else {
-              candidateText = tokenRefresh.error
-                ? `<errorCode>${escapeXml(tokenRefresh.code || 'LOGIN_REFRESH_FAILED')}</errorCode><errorMessage>${escapeXml(tokenRefresh.error)}</errorMessage>`
-                : candidateText;
-            }
-          }
-
-          const hasNextCandidate = endpointCandidates.indexOf(endpoint) < endpointCandidates.length - 1;
-          const retryableStatusCodes = [404, 502, 503, 504];
-          const isRetryableStatus = retryableStatusCodes.includes(candidateResponse.status);
-
-          if (isRetryableStatus && hasNextCandidate) {
-            console.warn('DPD endpoint returned retryable status, trying fallback endpoint', {
+          if (candidateResponse.status === 404 && endpointCandidates.length > 1) {
+            console.warn('DPD endpoint returned 404, trying fallback endpoint', {
               endpoint,
-              status: candidateResponse.status,
               packageId: pkg.id || index,
             });
             response = candidateResponse;
@@ -855,7 +520,6 @@ ${parcelsXml}
 
         if (!response.ok) {
           const soapFault = extractSoapFault(responseText);
-          const soapFaultCode = extractSoapFaultCode(responseText);
           console.error('DPD label request failed:', response.status, usedEndpoint, responseText);
           const safeBodyPreview = (responseText || '').replace(/\s+/g, ' ').trim().slice(0, 600);
           const fallbackDetails = safeBodyPreview
@@ -863,16 +527,15 @@ ${parcelsXml}
             : `DPD endpoint ${usedEndpoint} returned HTTP ${response.status} without response body`;
           return res.status(502).json({
             error: 'Failed to generate DPD label',
-            details: mapDpdFaultDetails(soapFaultCode, soapFault || fallbackDetails),
+            details: soapFault || fallbackDetails,
           });
         }
 
         const soapFault = extractSoapFault(responseText);
         if (soapFault) {
-          const soapFaultCode = extractSoapFaultCode(responseText);
           return res.status(502).json({
             error: 'Failed to generate DPD label',
-            details: mapDpdFaultDetails(soapFaultCode, soapFault),
+            details: soapFault,
           });
         }
 

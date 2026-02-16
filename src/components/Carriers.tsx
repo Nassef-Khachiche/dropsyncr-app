@@ -83,7 +83,7 @@ const availableCarriers = [
       { name: 'senderPhone', label: 'Afzender telefoon (optioneel)', type: 'text', placeholder: 'Bijv. +31101234567' },
       { name: 'senderEmail', label: 'Afzender email (optioneel)', type: 'text', placeholder: 'Bijv. support@bedrijf.nl' },
       { name: 'authToken', label: 'Auth token (optioneel)', type: 'password', placeholder: 'Laat leeg om Password te gebruiken' },
-      { name: 'endpointUrl', label: 'Endpoint URL (optioneel)', type: 'text', placeholder: 'Bijv. https://wsshipper.dpd.nl/services/ShipmentService/V35' },
+      { name: 'endpointUrl', label: 'Endpoint URL (optioneel)', type: 'text', placeholder: 'Bijv. https://wsshipper.dpd.nl/services/ShipmentService/V3_5' },
     ],
     hasCheckbox: { name: 'sandbox', label: 'Sandbox' }
   },
