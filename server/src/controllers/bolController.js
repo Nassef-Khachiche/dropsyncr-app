@@ -6,14 +6,29 @@ import fetch from 'node-fetch';
  * Handles orders, tracking, labels, and returns from Bol.com
  */
 
-// Helper function to get Bol credentials for an installation
-async function getBolCredentials(installationId) {
+// Helper function to get Bol credentials for an installation/integration
+async function getBolIntegration(installationId, integrationId = null) {
+  const installationIdNumber = parseInt(installationId, 10);
+
+  if (!Number.isFinite(installationIdNumber)) {
+    throw new Error('Invalid installation ID');
+  }
+
+  const integrationIdNumber = integrationId ? parseInt(integrationId, 10) : null;
+  if (integrationId && !Number.isFinite(integrationIdNumber)) {
+    throw new Error('Invalid integration ID');
+  }
+
+  const where = {
+    installationId: installationIdNumber,
+    platform: 'bol.com',
+    active: true,
+    ...(integrationIdNumber ? { id: integrationIdNumber } : {}),
+  };
+
   const integration = await prisma.integration.findFirst({
-    where: {
-      installationId: parseInt(installationId),
-      platform: 'bol.com',
-      active: true,
-    },
+    where,
+    orderBy: { updatedAt: 'desc' },
   });
 
   if (!integration) {
@@ -21,7 +36,7 @@ async function getBolCredentials(installationId) {
   }
 
   const credentials = JSON.parse(integration.credentials);
-  return credentials;
+  return { integration, credentials };
 }
 
 // Helper function to make authenticated Bol API requests
@@ -73,7 +88,8 @@ async function bolApiRequest(credentials, endpoint, method = 'GET', body = null)
     try {
       const errorJson = JSON.parse(errorText);
       if (response.status === 403) {
-        errorMessage = 'Bol.com account is niet actief. Neem contact op met Bol.com partnerservice (partnerservice@bol.com) om je API toegang te activeren.';
+        const bolDetail = errorJson?.detail || errorJson?.title || 'Unauthorized request';
+        errorMessage = `Geen toegang tot Bol endpoint ${endpoint}: ${bolDetail}`;
       } else if (errorJson.detail) {
         errorMessage += ` - ${errorJson.detail}`;
       }
@@ -116,12 +132,183 @@ async function fetchAllBolOrders(credentials) {
   return allOrders;
 }
 
+const toNumber = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const firstNonEmptyString = (...values) => {
+  for (const value of values) {
+    if (value === null || value === undefined) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return null;
+};
+
+const findStringValueByKey = (input, keyRegex) => {
+  if (!input) return null;
+
+  if (Array.isArray(input)) {
+    for (const entry of input) {
+      const found = findStringValueByKey(entry, keyRegex);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  if (typeof input !== 'object') {
+    return null;
+  }
+
+  for (const [key, rawValue] of Object.entries(input)) {
+    if (typeof rawValue === 'string' && keyRegex.test(key) && rawValue.trim()) {
+      return rawValue.trim();
+    }
+
+    if (Array.isArray(rawValue)) {
+      for (const nested of rawValue) {
+        const found = findStringValueByKey(nested, keyRegex);
+        if (found) return found;
+      }
+      continue;
+    }
+
+    if (rawValue && typeof rawValue === 'object') {
+      const found = findStringValueByKey(rawValue, keyRegex);
+      if (found) return found;
+    }
+  }
+
+  return null;
+};
+
+const extractProductImage = (item = {}) => {
+  const images = item?.product?.images;
+
+  console.log('[BOL SYNC] Extracting product image from item:', {
+    itemId: item?.orderItemId || null,
+    productId: item?.product?.id || null,
+    images,
+  }); 
+
+  if (Array.isArray(images) && images.length > 0) {
+    const firstImage = images[0];
+    if (typeof firstImage === 'string') return firstImage;
+    if (firstImage && typeof firstImage === 'object') {
+      return firstNonEmptyString(firstImage.url, firstImage.href, firstImage.link);
+    }
+  }
+
+  const directImage = firstNonEmptyString(
+    item?.product?.image,
+    item?.product?.imageUrl,
+    item?.product?.mainImage,
+    item?.product?.thumbnail,
+    item?.productImage,
+    item?.imageUrl,
+    item?.image,
+  );
+
+  if (directImage) {
+    return directImage;
+  }
+
+  const imageFromLinks = firstNonEmptyString(
+    item?.product?.links?.[0]?.href,
+    item?.links?.[0]?.href,
+  );
+
+  if (imageFromLinks && /\.(png|jpe?g|webp|gif)(\?|$)/i.test(imageFromLinks)) {
+    return imageFromLinks;
+  }
+
+  return findStringValueByKey(item, /(image|imageUrl|thumbnail|photo|picture)/i);
+};
+
+const mergeBolOrderItems = (baseItems = [], detailItems = []) => {
+  if (!Array.isArray(detailItems) || detailItems.length === 0) {
+    return Array.isArray(baseItems) ? baseItems : [];
+  }
+
+  if (!Array.isArray(baseItems) || baseItems.length === 0) {
+    return detailItems;
+  }
+
+  return detailItems.map((detailItem) => {
+    const match = baseItems.find((baseItem) =>
+      (baseItem?.orderItemId && detailItem?.orderItemId && String(baseItem.orderItemId) === String(detailItem.orderItemId)) ||
+      (baseItem?.ean && detailItem?.ean && String(baseItem.ean) === String(detailItem.ean)) ||
+      (baseItem?.offerId && detailItem?.offerId && String(baseItem.offerId) === String(detailItem.offerId))
+    );
+
+    return {
+      ...(match || {}),
+      ...detailItem,
+      product: {
+        ...((match && match.product) || {}),
+        ...(detailItem.product || {}),
+      },
+    };
+  });
+};
+
+const tryBolApiRequest = async (credentials, endpoints = []) => {
+  for (const endpoint of endpoints) {
+    try {
+      const data = await bolApiRequest(credentials, endpoint);
+      if (data) {
+        return { endpoint, data };
+      }
+    } catch (error) {
+      console.warn('[BOL SYNC] Optional enrichment request failed', {
+        endpoint,
+        message: error.message,
+      });
+    }
+  }
+
+  return null;
+};
+
+// --- ENRICH PRODUCT VIA CONTENT API ONLY ---
+const enrichBolProductData = async ({ credentials, ean }) => {
+  const eanValue = firstNonEmptyString(ean);
+
+  if (!eanValue) {
+    console.log('[BOL ENRICHMENT] No EAN available, skipping enrichment');
+    return null;
+  }
+
+  try {
+    const endpoint = `/content/products/${encodeURIComponent(eanValue)}`;
+
+    const data = await bolApiRequest(credentials, endpoint);
+
+    console.log('[BOL ENRICHMENT SUCCESS]', {
+      ean: eanValue,
+      hasImages: Array.isArray(data?.images),
+      imageCount: data?.images?.length || 0,
+      brand: data?.brand,
+    });
+
+    return { endpoint, data };
+  } catch (error) {
+    console.warn('[BOL ENRICHMENT FAILED]', {
+      ean: eanValue,
+      message: error.message,
+    });
+
+    return null;
+  }
+};
+
 /**
  * Sync orders from Bol.com
  */
 export const syncBolOrders = async (req, res) => {
   try {
-    const { installationId } = req.query;
+    const { installationId, integrationId } = req.query;
 
     if (!installationId) {
       return res.status(400).json({ error: 'Installation ID is required' });
@@ -141,18 +328,9 @@ export const syncBolOrders = async (req, res) => {
       }
     }
 
-    const credentials = await getBolCredentials(installationId);
-    const integration = await prisma.integration.findFirst({
-      where: {
-        installationId: parseInt(installationId),
-        platform: 'bol.com',
-        active: true,
-      },
-      orderBy: { updatedAt: 'desc' },
-    });
-
-    const integrationCredentials = integration ? JSON.parse(integration.credentials) : {};
-    const integrationShopName = integrationCredentials.shopName || 'Bol.com';
+    const { integration, credentials } = await getBolIntegration(installationId, integrationId);
+    const integrationCredentials = JSON.parse(integration.credentials || '{}');
+    const integrationShopName = integrationCredentials.shopName || `Bol.com #${integration.id}`;
     
     // Fetch all order pages from Bol.com
     const bolOrders = await fetchAllBolOrders(credentials);
@@ -163,6 +341,7 @@ export const syncBolOrders = async (req, res) => {
     
     let importedCount = 0;
     let updatedCount = 0;
+    const enrichmentCache = new Map();
 
     for (const bolOrder of bolOrders) {
       // Log the complete order data for debugging
@@ -198,13 +377,57 @@ export const syncBolOrders = async (req, res) => {
       }
 
       const orderPayload = bolOrderDetails || bolOrder;
-      const orderItems = orderPayload.orderItems || bolOrder.orderItems || [];
+      const baseOrderItems = orderPayload.orderItems || bolOrder.orderItems || [];
+      const detailedOrderItems = bolOrderItemsDetails?.orderItems || [];
+      const orderItems = mergeBolOrderItems(baseOrderItems, detailedOrderItems);
       const shipmentDetails = orderPayload.shipmentDetails || orderPayload.billingDetails || {};
 
-      // Check if order already exists
-      const existingOrder = await prisma.order.findUnique({
-        where: { orderNumber: bolOrder.orderId },
+      // Check if order already exists (for import/update counters)
+      const existingOrder = await prisma.order.findFirst({
+        where: {
+          orderNumber: bolOrder.orderId,
+          installationId: parseInt(installationId),
+        },
+        select: {
+          id: true,
+          storeName: true,
+          installationId: true,
+        },
       });
+
+      const conflictingOrder = await prisma.order.findFirst({
+        where: {
+          orderNumber: bolOrder.orderId,
+          NOT: {
+            installationId: parseInt(installationId),
+          },
+        },
+        select: {
+          id: true,
+          installationId: true,
+          storeName: true,
+        },
+      });
+
+      if (!existingOrder && conflictingOrder) {
+        console.warn('[BOL SYNC] Skipping conflicting orderNumber from another installation', {
+          orderNumber: bolOrder.orderId,
+          targetInstallationId: parseInt(installationId),
+          conflictingInstallationId: conflictingOrder.installationId,
+          conflictingStoreName: conflictingOrder.storeName,
+        });
+        continue;
+      }
+
+      if (!integrationId && existingOrder && existingOrder.storeName && existingOrder.storeName !== integrationShopName) {
+        console.warn('[BOL SYNC] Skipping conflicting orderNumber from another integration/store', {
+          orderNumber: bolOrder.orderId,
+          existingStoreName: existingOrder.storeName,
+          incomingStoreName: integrationShopName,
+          installationId: parseInt(installationId),
+        });
+        continue;
+      }
 
       const firstName = shipmentDetails?.firstName || '';
       const surname = shipmentDetails?.surname || '';
@@ -223,7 +446,7 @@ export const syncBolOrders = async (req, res) => {
           shipmentDetails?.city,
         ].filter(Boolean).join(', '),
         country: shipmentDetails?.countryCode || 'NL',
-        storeName: integrationShopName,
+        storeName: existingOrder?.storeName || integrationShopName,
         platform: 'bol.com',
         orderDate: new Date(orderPayload.orderPlacedDateTime),
         deliveryDate: orderPayload.deliveryPromise ? new Date(orderPayload.deliveryPromise) : null,
@@ -244,44 +467,177 @@ export const syncBolOrders = async (req, res) => {
         orderStatus: orderData.orderStatus
       });
 
+      const savedOrder = existingOrder
+        ? await prisma.order.update({
+            where: { id: existingOrder.id },
+            data: orderData,
+            select: { id: true },
+          })
+        : await prisma.order.create({
+            data: orderData,
+            select: { id: true },
+          });
+
       if (existingOrder) {
-        await prisma.order.update({
-          where: { id: existingOrder.id },
-          data: orderData,
-        });
         updatedCount++;
       } else {
-        await prisma.order.create({
-          data: orderData,
-        });
         importedCount++;
       }
 
-      // Import order items
-      if (orderItems.length > 0) {
-        for (const item of orderItems) {
-          const existingItem = await prisma.orderItem.findFirst({
+      if (Array.isArray(orderItems)) {
+        await prisma.orderItem.deleteMany({
+          where: { orderId: savedOrder.id },
+        });
+
+        for (let index = 0; index < orderItems.length; index++) {
+          const item = orderItems[index];
+
+          const productName = firstNonEmptyString(
+            item?.product?.title,
+            item?.title,
+            item?.productTitle,
+            'Unknown Product'
+          );
+          const productBrand = firstNonEmptyString(
+            item?.product?.brand,
+            item?.product?.brandName,
+            item?.brand,
+            findStringValueByKey(item?.product, /brand/i),
+            findStringValueByKey(item, /brand/i)
+          );
+          const ean = firstNonEmptyString(item?.ean, item?.product?.ean);
+          const offerId = firstNonEmptyString(item?.offerId, item?.offer?.offerId);
+          const sku = firstNonEmptyString(
+            item?.sku,
+            item?.product?.sku,
+            item?.offerId,
+            item?.offer?.offerId,
+            item?.offerReference,
+            item?.offer?.reference,
+            ean,
+            `bol-${bolOrder.orderId}-${item?.orderItemId || index + 1}`
+          );
+          const internalRef = firstNonEmptyString(
+            item?.internalReference,
+            item?.internalRef,
+            item?.product?.internalReference,
+            item?.reference,
+            item?.offerReference,
+            item?.offerId,
+            item?.offer?.reference,
+            item?.offer?.offerId,
+            item?.orderItemId,
+            sku
+          );
+          const quantity = Math.max(1, parseInt(item?.quantity || 1, 10) || 1);
+          const unitPrice = toNumber(item?.unitPrice ?? item?.price ?? item?.offerPrice);
+          const totalPrice = toNumber(item?.totalPrice);
+          const effectiveUnitPrice = unitPrice > 0
+            ? unitPrice
+            : (totalPrice > 0 ? totalPrice / quantity : 0);
+          const productImage = extractProductImage(item);
+          let resolvedProductImage = productImage;
+          let resolvedProductBrand = productBrand;
+
+          const enrichmentCacheKey = firstNonEmptyString(ean, sku, offerId, item?.orderItemId);
+          if ((!resolvedProductImage || !resolvedProductBrand) && enrichmentCacheKey) {
+            if (!enrichmentCache.has(enrichmentCacheKey)) {
+            const enrichment = await enrichBolProductData({
+              credentials,
+              ean,
+            });
+              enrichmentCache.set(enrichmentCacheKey, enrichment || null);
+            }
+
+            const enrichmentResponse = enrichmentCache.get(enrichmentCacheKey);
+            if (enrichmentResponse) {
+              const enrichmentData = enrichmentResponse.data;
+              const enrichmentEndpoint = enrichmentResponse.endpoint;
+            if (!resolvedProductImage && Array.isArray(enrichmentData?.images)) {
+              const mainImage =
+                enrichmentData.images.find(img => img.type === 'MAIN') ||
+                enrichmentData.images[0];
+
+              resolvedProductImage = firstNonEmptyString(
+                mainImage?.url,
+                mainImage?.href
+              );
+
+              console.log('[BOL IMAGE RESOLVED]', {
+                ean,
+                resolvedProductImage,
+              });
+            }
+            }
+          }
+
+          if (!resolvedProductBrand) {
+            resolvedProductBrand = 'Bol.com';
+          }
+
+          const installationIdNumber = parseInt(installationId);
+          let product = await prisma.product.findFirst({
             where: {
-              orderId: existingOrder?.id || (await prisma.order.findUnique({ where: { orderNumber: bolOrder.orderId } }))?.id,
-              ean: item.ean || item.product?.ean,
+              installationId: installationIdNumber,
+              OR: [
+                { sku },
+                ...(ean ? [{ ean }] : []),
+              ],
+            },
+            select: {
+              id: true,
+              image: true,
             },
           });
 
-          const offerPrice = parseFloat(item.unitPrice ?? item.totalPrice ?? item.offerPrice ?? 0) || 0;
-          
-          const itemData = {
-            orderId: existingOrder?.id || (await prisma.order.findUnique({ where: { orderNumber: bolOrder.orderId } }))?.id,
-            productName: item.product?.title || 'Unknown Product',
-            productImage: item.product?.images?.[0] || null,
-            ean: item.ean || item.product?.ean,
-            quantity: item.quantity || 1,
-            price: offerPrice,
-            unitPrice: offerPrice,
-          };
-
-          if (!existingItem) {
-            await prisma.orderItem.create({ data: itemData });
+          if (product) {
+            product = await prisma.product.update({
+              where: { id: product.id },
+              data: {
+                ean: ean || undefined,
+                name: productName,
+                image: resolvedProductImage || undefined,
+                brand: resolvedProductBrand || undefined,
+                internalRef: internalRef || sku,
+                price: effectiveUnitPrice,
+              },
+              select: {
+                id: true,
+                image: true,
+              },
+            });
+          } else {
+            product = await prisma.product.create({
+              data: {
+                installationId: installationIdNumber,
+                sku,
+                ean,
+                name: productName,
+                image: resolvedProductImage,
+                brand: resolvedProductBrand,
+                internalRef: internalRef || sku,
+                price: effectiveUnitPrice,
+              },
+              select: {
+                id: true,
+                image: true,
+              },
+            });
           }
+
+          await prisma.orderItem.create({
+            data: {
+              orderId: savedOrder.id,
+              productId: product.id,
+              productName,
+              productImage: resolvedProductImage || product.image || null,
+              ean,
+              sku,
+              quantity,
+              price: effectiveUnitPrice,
+              unitPrice: effectiveUnitPrice,
+            },
+          });
         }
       }
     }
@@ -306,13 +662,13 @@ export const syncBolOrders = async (req, res) => {
  */
 export const getBolShippingLabel = async (req, res) => {
   try {
-    const { installationId, orderId } = req.query;
+    const { installationId, orderId, integrationId } = req.query;
 
     if (!installationId || !orderId) {
       return res.status(400).json({ error: 'Installation ID and Order ID are required' });
     }
 
-    const credentials = await getBolCredentials(installationId);
+    const { credentials } = await getBolIntegration(installationId, integrationId);
     
     // Request shipping label from Bol
     const labelData = await bolApiRequest(credentials, `/orders/${orderId}/shipment-label`);
@@ -332,14 +688,14 @@ export const getBolShippingLabel = async (req, res) => {
  */
 export const updateBolShipment = async (req, res) => {
   try {
-    const { installationId } = req.query;
+    const { installationId, integrationId } = req.query;
     const { orderId, shipmentReference, transporterCode, trackAndTrace } = req.body;
 
     if (!installationId || !orderId) {
       return res.status(400).json({ error: 'Installation ID and Order ID are required' });
     }
 
-    const credentials = await getBolCredentials(installationId);
+    const { credentials } = await getBolIntegration(installationId, integrationId);
     
     // Update shipment in Bol
     const shipmentData = {
@@ -381,13 +737,13 @@ export const updateBolShipment = async (req, res) => {
  */
 export const getBolReturns = async (req, res) => {
   try {
-    const { installationId, page = 1 } = req.query;
+    const { installationId, page = 1, integrationId } = req.query;
 
     if (!installationId) {
       return res.status(400).json({ error: 'Installation ID is required' });
     }
 
-    const credentials = await getBolCredentials(installationId);
+    const { credentials } = await getBolIntegration(installationId, integrationId);
     
     // Fetch returns from Bol
     const returns = await bolApiRequest(credentials, `/returns?page=${page}`);
@@ -407,14 +763,14 @@ export const getBolReturns = async (req, res) => {
  */
 export const handleBolReturn = async (req, res) => {
   try {
-    const { installationId } = req.query;
+    const { installationId, integrationId } = req.query;
     const { returnId, quantityReturned, handlingResult } = req.body;
 
     if (!installationId || !returnId) {
       return res.status(400).json({ error: 'Installation ID and Return ID are required' });
     }
 
-    const credentials = await getBolCredentials(installationId);
+    const { credentials } = await getBolIntegration(installationId, integrationId);
     
     // Handle return in Bol
     const returnData = {
@@ -463,7 +819,7 @@ async function getFallbackSyncUserId(installationId) {
   throw new Error('No user available to assign imported Bol.com orders');
 }
 
-export const syncBolOrdersForInstallation = async ({ installationId } = {}) => {
+export const syncBolOrdersForInstallation = async ({ installationId, integrationId } = {}) => {
   if (!installationId) {
     throw new Error('Installation ID is required');
   }
@@ -479,7 +835,10 @@ export const syncBolOrdersForInstallation = async ({ installationId } = {}) => {
 
   await syncBolOrders(
     {
-      query: { installationId: String(installationIdNumber) },
+      query: {
+        installationId: String(installationIdNumber),
+        ...(integrationId ? { integrationId: String(integrationId) } : {}),
+      },
       user: { id: syncUserId, isGlobalAdmin: true },
     },
     {

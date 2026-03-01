@@ -180,7 +180,7 @@ model Carrier {
   carrierType    String
   contractName   String
   active         Boolean      @default(true)
-  credentials    String
+  credentials    String       @db.Text
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   installation   Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)

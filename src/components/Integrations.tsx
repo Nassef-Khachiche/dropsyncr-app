@@ -7,6 +7,13 @@ import { Checkbox } from './ui/checkbox';
 import { Switch } from './ui/switch';
 import { Label } from './ui/label';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from './ui/select';
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -28,7 +35,7 @@ import {
 import { Alert, AlertDescription } from './ui/alert';
 import { toast } from 'sonner';
 import { api } from '../services/api';
-import bolLogo from '../assets/ac132ff5f6e671e3f57b4815a5d22230995c302e.png';
+import bolLogo from '../assets/bol-logo.png';
 
 interface IntegrationsProps {
   activeProfile: string;
@@ -36,6 +43,8 @@ interface IntegrationsProps {
 
 interface Store {
   id: number;
+  installationId?: number;
+  installationName?: string;
   platform: string;
   platformId: string;
   name: string;
@@ -60,6 +69,7 @@ const availablePlatforms = [
 ];
 
 export function Integrations({ activeProfile }: IntegrationsProps) {
+  const isAllStoresSelected = activeProfile === 'all';
   const [connectedStores, setConnectedStores] = useState<Store[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -73,6 +83,7 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
   const [apiSecret, setApiSecret] = useState('');
   const [processOrders, setProcessOrders] = useState(true);
   const [isActive, setIsActive] = useState(true);
+  const [selectedStoreFilter, setSelectedStoreFilter] = useState<string>('all');
 
   useEffect(() => {
     if (activeProfile) {
@@ -80,12 +91,19 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
     }
   }, [activeProfile]);
 
+  useEffect(() => {
+    setSelectedStoreFilter('all');
+  }, [activeProfile]);
+
   const loadIntegrations = async () => {
     if (!activeProfile) return;
     
     try {
       setLoading(true);
-      const data = await api.getIntegrations(activeProfile);
+      const data = await api.getIntegrations(
+        isAllStoresSelected ? undefined : activeProfile,
+        isAllStoresSelected
+      );
       
       // Map backend integrations to frontend format
       const mappedStores = data.integrations.map((integration: any) => {
@@ -94,6 +112,8 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
         const platform = availablePlatforms.find(p => p.id === platformId);
         return {
           id: integration.id,
+          installationId: integration.installationId,
+          installationName: integration.installation?.name,
           platform: integration.platform,
           platformId,
           name: integration.credentials?.shopName || platform?.name || integration.platform,
@@ -117,6 +137,11 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
   };
 
   const handleConnectPlatform = (platform: typeof availablePlatforms[0]) => {
+    if (isAllStoresSelected) {
+      toast.error('Selecteer een specifieke store om een integratie toe te voegen');
+      return;
+    }
+
     setEditingStore(null);
     setSelectedPlatform(platform);
     setShowConnectionDialog(true);
@@ -163,6 +188,11 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
       return;
     }
 
+    if (isAllStoresSelected) {
+      toast.error('Selecteer een specifieke store om een integratie te koppelen');
+      return;
+    }
+
     try {
       const integrationData = {
         installationId: parseInt(activeProfile),
@@ -193,20 +223,6 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
           active: integrationData.active,
         });
 
-        const updatedShopName = result.integration?.credentials?.shopName || normalizedShopName;
-        setConnectedStores((prevStores) =>
-          prevStores.map((store) =>
-            store.id === editingStore.id
-              ? {
-                  ...store,
-                  name: updatedShopName,
-                  active: integrationData.active,
-                  processOrders: integrationData.settings.processOrders,
-                }
-              : store
-          )
-        );
-
         console.log('[Integration] Integration updated:', result);
         toast.success(`${selectedPlatform?.name} instellingen bijgewerkt!`, {
           description: `${normalizedShopName} wijzigingen zijn opgeslagen`
@@ -222,11 +238,9 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
       setShowConnectionDialog(false);
       setSelectedPlatform(null);
       setEditingStore(null);
-      
-      // Reload integrations (required for newly created integrations)
-      if (!editingStore) {
-        await loadIntegrations();
-      }
+
+      // Reload integrations so UI always reflects persisted backend state
+      await loadIntegrations();
     } catch (error: any) {
       console.error('[Integration] Failed to save integration:', error);
       toast.error(editingStore ? 'Kon integratie niet bijwerken' : 'Kon integratie niet koppelen', {
@@ -274,9 +288,18 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
       return;
     }
 
+    const syncInstallationId = store.installationId
+      ? store.installationId.toString()
+      : activeProfile;
+
+    if (!syncInstallationId || syncInstallationId === 'all') {
+      toast.error('Selecteer een specifieke store om orders te synchroniseren');
+      return;
+    }
+
     try {
       setSyncing(true);
-      const result = await api.syncBolOrders(activeProfile);
+      const result = await api.syncBolOrders(syncInstallationId, storeId);
       
       toast.success('Orders gesynchroniseerd!', {
         description: `${result.imported} nieuwe orders, ${result.updated} bijgewerkt`
@@ -300,6 +323,18 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
       setSyncing(false);
     }
   };
+
+  const storeFilterOptions = Array.from(
+    new Map(
+      connectedStores
+        .filter((store) => !!store.installationId)
+        .map((store) => [store.installationId as number, store.installationName || `Store ${store.installationId}`])
+    ).entries()
+  ).map(([id, name]) => ({ id: id.toString(), name }));
+
+  const visibleStores = isAllStoresSelected && selectedStoreFilter !== 'all'
+    ? connectedStores.filter((store) => store.installationId?.toString() === selectedStoreFilter)
+    : connectedStores;
 
   return (
     <div className="space-y-6">
@@ -328,9 +363,28 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
           {/* Connected Stores */}
           {connectedStores.length > 0 && (
             <div className="space-y-4">
-              <h3 className="text-lg text-slate-900">Gekoppelde Stores ({connectedStores.length})</h3>
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <h3 className="text-lg text-slate-900">Gekoppelde Stores ({visibleStores.length})</h3>
+                {isAllStoresSelected && storeFilterOptions.length > 0 && (
+                  <div className="w-full md:w-64">
+                    <Select value={selectedStoreFilter} onValueChange={setSelectedStoreFilter}>
+                      <SelectTrigger className="border-slate-200">
+                        <SelectValue placeholder="Filter op store" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Alle stores</SelectItem>
+                        {storeFilterOptions.map((storeOption) => (
+                          <SelectItem key={storeOption.id} value={storeOption.id}>
+                            {storeOption.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {connectedStores.map((store) => (
+                {visibleStores.map((store) => (
                   <Card key={store.id} className="border-slate-200 shadow-sm hover:shadow-md transition-shadow">
                     <CardContent className="p-6">
                       <div className="flex items-start justify-between mb-4">
@@ -343,6 +397,9 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
                             <p className="text-sm text-slate-500">
                               {availablePlatforms.find(p => p.id === (store.platform === 'bol.com' ? 'bol' : store.platform))?.name || store.platform}
                             </p>
+                            {isAllStoresSelected && store.installationName && (
+                              <p className="text-xs text-slate-500 mt-0.5">Store: {store.installationName}</p>
+                            )}
                           </div>
                         </div>
                         <Badge className="bg-gradient-to-r from-emerald-500 to-teal-500 border-0 gap-1">

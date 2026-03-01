@@ -1,27 +1,11 @@
 import React, { useState } from 'react';
-import { 
-  RotateCcw, 
-  Plug, 
-  Truck,
-  Warehouse,
-  TrendingUp,
-  Sparkles,
-  ListChecks
-} from 'lucide-react';
 import { AppSidebar } from './components/AppSidebar';
-import { Dashboard } from './components/Dashboard';
 import { OrdersOverview } from './components/OrdersOverview';
 import { TrackingManager } from './components/TrackingManager';
 import { LabelPrinting } from './components/LabelPrinting';
 import { Integrations } from './components/Integrations';
 import { Carriers } from './components/Carriers';
-import { ProductOverview } from './components/ProductOverview';
-import { InventoryAnalysis } from './components/InventoryAnalysis';
-import { FulfillmentAnalytics } from './components/FulfillmentAnalytics';
-import { TicketSystem } from './components/TicketSystem';
-import { AIListingBuilder } from './components/AIListingBuilder';
 import { Settings } from './components/Settings';
-import { PlaceholderView } from './components/PlaceholderView';
 import { ProfileSwitcher } from './components/ProfileSwitcher';
 import { Login } from './components/Login';
 import { Administrative } from './components/Administrative';
@@ -31,7 +15,7 @@ import { Loader2 } from 'lucide-react';
 export default function App() {
   const { isAuthenticated, loading, logout } = useAuth();
   const [activeProfile, setActiveProfile] = useState<string | null>(null);
-  const [activeView, setActiveView] = useState('dashboard');
+  const [activeView, setActiveView] = useState('orders');
 
   // Listen for auth logout events (from API service)
   React.useEffect(() => {
@@ -45,46 +29,22 @@ export default function App() {
 
   const renderView = () => {
     switch (activeView) {
-      case 'dashboard':
-        return <Dashboard activeProfile={activeProfile} />;
       case 'orders':
         return <OrdersOverview activeProfile={activeProfile} />;
       case 'tracking':
         return <TrackingManager activeProfile={activeProfile} />;
       case 'labels':
         return <LabelPrinting activeProfile={activeProfile} />;
-      case 'returns':
-        return <PlaceholderView 
-          title="Retouren" 
-          description="Beheer en verwerk alle retouren van je klanten"
-          icon={RotateCcw}
-        />;
       case 'integrations':
         return <Integrations activeProfile={activeProfile} />;
       case 'carriers':
         return <Carriers activeProfile={activeProfile} />;
-      case 'inventory':
-        return <ProductOverview activeProfile={activeProfile} />;
-      case 'inventory-analysis':
-        return <InventoryAnalysis activeProfile={activeProfile} />;
-      case 'ai-listing':
-        return <AIListingBuilder activeProfile={activeProfile} />;
-      case 'assortment':
-        return <PlaceholderView 
-          title="Assortiment Checker" 
-          description="Analyseer en optimaliseer je productassortiment"
-          icon={ListChecks}
-        />;
       case 'settings':
         return <Settings activeProfile={activeProfile} />;
-      case 'fulfillment-analytics':
-        return <FulfillmentAnalytics activeProfile={activeProfile} />;
-      case 'tickets':
-        return <TicketSystem activeProfile={activeProfile} />;
       case 'administrative':
         return <Administrative activeProfile={activeProfile} />;
       default:
-        return <Dashboard activeProfile={activeProfile} />;
+        return <OrdersOverview activeProfile={activeProfile} />;
     }
   };
 

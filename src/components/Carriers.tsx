@@ -33,8 +33,11 @@ import {
   Loader2
 } from 'lucide-react';
 import { Alert, AlertDescription } from './ui/alert';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { api } from '../services/api';
+import dhlLogo from '../assets/dhl-logo.png';
+import dpdLogo from '../assets/dpd-logo.png';
+import wegrowLogo from '../assets/wegrow-logo.jpg';
 
 interface CarriersProps {
   activeProfile: string;
@@ -50,11 +53,32 @@ interface Contract {
   carrierColor: string;
 }
 
-const availableCarriers = [
+interface CarrierField {
+  name: string;
+  label: string;
+  type: string;
+  placeholder: string;
+  required?: boolean;
+}
+
+interface CarrierOption {
+  id: string;
+  name: string;
+  logo: string;
+  color: string;
+  bgColor: string;
+  fields: CarrierField[];
+  hasCheckbox?: {
+    name: string;
+    label: string;
+  };
+}
+
+const availableCarriers: CarrierOption[] = [
   {
     id: 'dhl',
     name: 'DHL',
-    logo: 'https://images.unsplash.com/photo-1566576721346-d4a3b4eaeb55?w=200',
+    logo: dhlLogo,
     color: 'from-yellow-400 to-red-500',
     bgColor: 'from-yellow-50 to-red-50/50',
     fields: [
@@ -67,30 +91,23 @@ const availableCarriers = [
   {
     id: 'dpd',
     name: 'DPD',
-    logo: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=200',
+    logo: dpdLogo,
     color: 'from-red-500 to-red-600',
     bgColor: 'from-red-50 to-red-100/50',
     fields: [
       { name: 'contractName', label: 'Contractnaam', type: 'text', placeholder: 'Bijv. DPD Classic Contract' },
       { name: 'delisId', label: 'Delis ID', type: 'text', placeholder: 'Voer je Delis ID in' },
-      { name: 'password', label: 'Password', type: 'password', placeholder: 'Enter new password' },
+      { name: 'authToken', label: 'Auth Token', type: 'password', placeholder: 'Voer je DPD verificatietoken in', required: false },
+      { name: 'password', label: 'Legacy Token veld (optioneel)', type: 'password', placeholder: 'Alleen voor bestaande configuraties', required: false },
       { name: 'depotNumber', label: 'Depotnummer', type: 'text', placeholder: 'Voer je depotnummer in' },
-      { name: 'senderName1', label: 'Afzender naam', type: 'text', placeholder: 'Bijv. Dropsyncr Warehouse' },
-      { name: 'senderStreet', label: 'Afzender straat', type: 'text', placeholder: 'Bijv. Industrieweg 10' },
-      { name: 'senderZipCode', label: 'Afzender postcode', type: 'text', placeholder: 'Bijv. 1234AB' },
-      { name: 'senderCity', label: 'Afzender plaats', type: 'text', placeholder: 'Bijv. Utrecht' },
-      { name: 'senderCountry', label: 'Afzender landcode', type: 'text', placeholder: 'Bijv. NL' },
-      { name: 'senderPhone', label: 'Afzender telefoon (optioneel)', type: 'text', placeholder: 'Bijv. +31101234567' },
-      { name: 'senderEmail', label: 'Afzender email (optioneel)', type: 'text', placeholder: 'Bijv. support@bedrijf.nl' },
-      { name: 'authToken', label: 'Auth token (optioneel)', type: 'password', placeholder: 'Laat leeg om Password te gebruiken' },
-      { name: 'endpointUrl', label: 'Endpoint URL (optioneel)', type: 'text', placeholder: 'Bijv. https://wsshipper.dpd.nl/services/ShipmentService/V3_5' },
+      { name: 'endpointUrl', label: 'Endpoint URL (optioneel)', type: 'text', placeholder: 'Bijv. https://wsshipper.dpd.nl/soap/services/ShipmentService/V3_5/', required: false },
     ],
-    hasCheckbox: { name: 'sandbox', label: 'Sandbox' }
+    hasCheckbox: { name: 'strictEndpoint', label: 'Gebruik alleen deze endpoint URL (geen fallback)' },
   },
   {
     id: 'wegrow',
     name: 'WeGrow',
-    logo: 'https://images.unsplash.com/photo-1556740749-887f6717d7e4?w=200',
+    logo: wegrowLogo,
     color: 'from-emerald-500 to-teal-600',
     bgColor: 'from-emerald-50 to-teal-100/50',
     fields: [
@@ -135,7 +152,7 @@ export function Carriers({ activeProfile }: CarriersProps) {
           contractName: carrier.contractName,
           active: carrier.active,
           credentials: carrier.credentials || {},
-          carrierLogo: carrierInfo?.logo || 'https://images.unsplash.com/photo-1566576721346-d4a3b4eaeb55?w=200',
+          carrierLogo: carrierInfo?.logo || dhlLogo,
           carrierColor: carrierInfo?.color || 'from-slate-400 to-slate-500',
         };
       });
@@ -212,7 +229,16 @@ export function Carriers({ activeProfile }: CarriersProps) {
     }
 
     // Check if all required fields are filled
-    const missingFields = carrier.fields.filter(field => !formData[field.name]);
+    const missingFields = carrier.fields.filter(field => field.required !== false && !formData[field.name]);
+
+    if (selectedCarrier === 'dpd') {
+      const hasToken = !!(formData.authToken || formData.password);
+      if (!hasToken) {
+        toast.error('DPD Auth Token is verplicht');
+        return;
+      }
+    }
+
     if (missingFields.length > 0) {
       toast.error('Vul alle verplichte velden in');
       return;
@@ -524,7 +550,7 @@ export function Carriers({ activeProfile }: CarriersProps) {
                     <Checkbox 
                       id={selectedCarrierData.hasCheckbox.name}
                       checked={formData[selectedCarrierData.hasCheckbox.name] || false}
-                      onCheckedChange={(checked) => handleInputChange(selectedCarrierData.hasCheckbox!.name, checked)}
+                      onCheckedChange={(checked: boolean | 'indeterminate') => handleInputChange(selectedCarrierData.hasCheckbox!.name, checked === true)}
                     />
                     <Label 
                       htmlFor={selectedCarrierData.hasCheckbox.name}

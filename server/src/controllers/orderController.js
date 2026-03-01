@@ -2,15 +2,24 @@ import prisma from '../config/database.js';
 
 export const getOrders = async (req, res) => {
   try {
-    const { installationId, status, search, page = 1, limit = 50 } = req.query;
+    const { installationId, userScoped, status, search, page = 1, limit = 50 } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
+    const isAllStoresMode = !installationId || installationId === 'all';
+    const forceUserScope = userScoped === 'true';
 
-    // Build where clause - global admins can see all, others only their installations
+    // Build where clause - global admins can see all unless userScoped=true
     let baseWhere = {};
-    if (req.user.isGlobalAdmin) {
-      baseWhere = {
-        ...(installationId && { installationId: parseInt(installationId) }),
-      };
+    if (req.user.isGlobalAdmin && !forceUserScope) {
+      if (!isAllStoresMode) {
+        const parsedInstallationId = parseInt(installationId, 10);
+        if (Number.isNaN(parsedInstallationId)) {
+          return res.status(400).json({ error: 'Invalid installation ID' });
+        }
+
+        baseWhere = {
+          installationId: parsedInstallationId,
+        };
+      }
     } else {
       // Get user's installation IDs
       const userInstallations = await prisma.userInstallation.findMany({
@@ -19,11 +28,27 @@ export const getOrders = async (req, res) => {
       });
       const installationIds = userInstallations.map(ui => ui.installationId);
 
-      baseWhere = {
-        userId: req.user.id,
-        installationId: { in: installationIds },
-        ...(installationId && installationIds.includes(parseInt(installationId)) && { installationId: parseInt(installationId) }),
-      };
+      if (!isAllStoresMode) {
+        const parsedInstallationId = parseInt(installationId, 10);
+        if (Number.isNaN(parsedInstallationId)) {
+          return res.status(400).json({ error: 'Invalid installation ID' });
+        }
+
+        if (!installationIds.includes(parsedInstallationId)) {
+          return res.status(403).json({ error: 'Access denied to this installation' });
+        }
+
+        baseWhere = {
+          userId: req.user.id,
+          installationId: parsedInstallationId,
+        };
+      } else {
+        baseWhere = {
+          userId: req.user.id,
+          installationId: { in: installationIds },
+        };
+      }
+
     }
 
     const andConditions = [];

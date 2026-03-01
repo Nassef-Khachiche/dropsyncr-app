@@ -107,6 +107,7 @@ class ApiService {
   // Orders
   async getOrders(params?: {
     installationId?: string;
+    userScoped?: boolean;
     status?: string;
     search?: string;
     page?: number;
@@ -114,6 +115,7 @@ class ApiService {
   }) {
     const queryParams = new URLSearchParams();
     if (params?.installationId) queryParams.append('installationId', params.installationId);
+    if (params?.userScoped) queryParams.append('userScoped', 'true');
     if (params?.status) queryParams.append('status', params.status);
     if (params?.search) queryParams.append('search', params.search);
     if (params?.page) queryParams.append('page', params.page.toString());
@@ -414,9 +416,14 @@ class ApiService {
   }
 
   // Integrations
-  async getIntegrations(installationId: string) {
+  async getIntegrations(installationId?: string, userScoped: boolean = false) {
+    const queryParams = new URLSearchParams();
+    if (installationId) queryParams.append('installationId', installationId);
+    if (userScoped) queryParams.append('userScoped', 'true');
+
+    const queryString = queryParams.toString();
     return this.request<{ integrations: any[] }>(
-      `/integrations?installationId=${installationId}`
+      `/integrations${queryString ? `?${queryString}` : ''}`
     );
   }
 
@@ -447,9 +454,13 @@ class ApiService {
   }
 
   // Bol.com Integration
-  async syncBolOrders(installationId: string) {
+  async syncBolOrders(installationId: string, integrationId?: number) {
+    const queryParams = new URLSearchParams();
+    queryParams.append('installationId', installationId);
+    if (integrationId) queryParams.append('integrationId', String(integrationId));
+
     return this.request<{ success: boolean; imported: number; updated: number; total: number }>(
-      `/bol/sync-orders?installationId=${installationId}`
+      `/bol/sync-orders?${queryParams.toString()}`
     );
   }
 

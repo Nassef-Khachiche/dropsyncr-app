@@ -2,6 +2,7 @@ import prisma from '../config/database.js';
 
 const parseJsonSafely = (value, fallback = {}) => {
   if (!value) return fallback;
+  if (typeof value === 'object') return value;
   try {
     return JSON.parse(value);
   } catch {
@@ -14,29 +15,62 @@ const parseJsonSafely = (value, fallback = {}) => {
  */
 export const getIntegrations = async (req, res) => {
   try {
-    const { installationId } = req.query;
+    const { installationId, userScoped } = req.query;
+    const isAllStoresMode = !installationId || installationId === 'all';
+    const forceUserScope = userScoped === 'true';
 
-    if (!installationId) {
-      return res.status(400).json({ error: 'Installation ID is required' });
-    }
+    let where = {};
 
-    // Check if user has access to this installation
-    if (!req.user.isGlobalAdmin) {
-      const hasAccess = await prisma.userInstallation.findFirst({
-        where: {
-          userId: req.user.id,
-          installationId: parseInt(installationId),
-        },
-      });
+    if (isAllStoresMode) {
+      if (req.user.isGlobalAdmin && !forceUserScope) {
+        where = {};
+      } else {
+        const userInstallations = await prisma.userInstallation.findMany({
+          where: { userId: req.user.id },
+          select: { installationId: true },
+        });
 
-      if (!hasAccess) {
-        return res.status(403).json({ error: 'Access denied to this installation' });
+        const installationIds = userInstallations.map((ui) => ui.installationId);
+        where = {
+          installationId: {
+            in: installationIds,
+          },
+        };
       }
+    } else {
+      const parsedInstallationId = parseInt(installationId, 10);
+      if (Number.isNaN(parsedInstallationId)) {
+        return res.status(400).json({ error: 'Invalid installation ID' });
+      }
+
+      // Check if user has access to this installation
+      if (!req.user.isGlobalAdmin) {
+        const hasAccess = await prisma.userInstallation.findFirst({
+          where: {
+            userId: req.user.id,
+            installationId: parsedInstallationId,
+          },
+        });
+
+        if (!hasAccess) {
+          return res.status(403).json({ error: 'Access denied to this installation' });
+        }
+      }
+
+      where = {
+        installationId: parsedInstallationId,
+      };
     }
 
     const integrations = await prisma.integration.findMany({
-      where: {
-        installationId: parseInt(installationId),
+      where,
+      include: {
+        installation: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -54,6 +88,7 @@ export const getIntegrations = async (req, res) => {
           hasSecret: !!credentials.clientSecret,
         },
         settings,
+        installation: integration.installation,
       };
     });
 
@@ -179,8 +214,15 @@ export const updateIntegration = async (req, res) => {
       : existingSettings;
 
     if (integration.platform === 'bol.com') {
-      if (!mergedCredentials.clientId || !mergedCredentials.clientSecret) {
-        return res.status(400).json({ error: 'Client ID and Client Secret are required for Bol.com' });
+      const hasCredentialChanges = !!credentials && (
+        Object.prototype.hasOwnProperty.call(credentials, 'clientId') ||
+        Object.prototype.hasOwnProperty.call(credentials, 'clientSecret')
+      );
+
+      if (hasCredentialChanges) {
+        if (!mergedCredentials.clientId || !mergedCredentials.clientSecret) {
+          return res.status(400).json({ error: 'Client ID and Client Secret are required for Bol.com' });
+        }
       }
     }
 

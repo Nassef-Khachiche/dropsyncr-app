@@ -19,9 +19,9 @@ async function runBolSyncCycle() {
         active: true,
       },
       select: {
+        id: true,
         installationId: true,
       },
-      distinct: ['installationId'],
     });
 
     if (activeIntegrations.length === 0) {
@@ -29,15 +29,17 @@ async function runBolSyncCycle() {
       return;
     }
 
-    console.log(`[BOL CRON] Starting sync cycle for ${activeIntegrations.length} installation(s)`);
+    console.log(`[BOL CRON] Starting sync cycle for ${activeIntegrations.length} integration(s)`);
 
     for (const integration of activeIntegrations) {
       try {
         const result = await syncBolOrdersForInstallation({
           installationId: integration.installationId,
+          integrationId: integration.id,
         });
 
         console.log('[BOL CRON] Sync completed', {
+          integrationId: integration.id,
           installationId: integration.installationId,
           imported: result.imported,
           updated: result.updated,
@@ -45,6 +47,7 @@ async function runBolSyncCycle() {
         });
       } catch (installationError) {
         console.error('[BOL CRON] Sync failed for installation', {
+          integrationId: integration.id,
           installationId: integration.installationId,
           error: installationError.message,
         });

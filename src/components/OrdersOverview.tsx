@@ -175,11 +175,15 @@ const mockOrders = [
 ];
 
 export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
+  const isAllStoresSelected = activeProfile === 'all';
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterStore, setFilterStore] = useState('all');
+  const [integrationStoreOptions, setIntegrationStoreOptions] = useState<Array<{ id: string; name: string }>>([]);
+  const [allowedIntegrationStoreNames, setAllowedIntegrationStoreNames] = useState<string[]>([]);
+  const [allowedIntegrationInstallationIds, setAllowedIntegrationInstallationIds] = useState<number[]>([]);
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   const [showLabelDialog, setShowLabelDialog] = useState(false);
   const [labelOrder, setLabelOrder] = useState<any | null>(null);
@@ -196,7 +200,11 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
   }, [activeProfile, filterStatus, searchQuery]);
 
   useEffect(() => {
-    if (activeProfile) {
+    setFilterStore('all');
+  }, [activeProfile]);
+
+  useEffect(() => {
+    if (activeProfile && activeProfile !== 'all') {
       loadCarrierContracts();
     } else {
       setCarrierContracts([]);
@@ -206,12 +214,48 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
   const loadOrders = async () => {
     try {
       setLoading(true);
-      const data = await api.getOrders({
-        installationId: activeProfile,
-        status: filterStatus !== 'all' ? filterStatus : undefined,
-        search: searchQuery || undefined,
-        limit: 100,
-      });
+      const [data, integrationsData] = await Promise.all([
+        api.getOrders({
+          installationId: isAllStoresSelected ? undefined : activeProfile,
+          userScoped: isAllStoresSelected,
+          status: filterStatus !== 'all' ? filterStatus : undefined,
+          search: searchQuery || undefined,
+          limit: 100,
+        }),
+        isAllStoresSelected ? api.getIntegrations(undefined, true) : Promise.resolve(null),
+      ]);
+
+      if (integrationsData) {
+        const integrationStoreNames = Array.from(
+          new Set(
+            integrationsData.integrations
+              .map((integration: any) => integration.credentials?.shopName)
+              .filter((shopName: string | undefined): shopName is string => Boolean(shopName))
+          )
+        );
+
+        const integrationInstallations = Array.from(
+          new Map(
+            integrationsData.integrations
+              .filter((integration: any) => integration.installation?.id)
+              .map((integration: any) => [
+                integration.installation.id,
+                integration.installation.name || `Store ${integration.installation.id}`,
+              ])
+          ).entries()
+        );
+
+        setAllowedIntegrationStoreNames(integrationStoreNames);
+        setAllowedIntegrationInstallationIds(integrationInstallations.map(([id]) => Number(id)));
+        setIntegrationStoreOptions(
+          integrationStoreNames.map((shopName) => ({ id: shopName, name: shopName }))
+        );
+      } else {
+        setAllowedIntegrationStoreNames([]);
+        setAllowedIntegrationInstallationIds([]);
+        setIntegrationStoreOptions([]);
+      }
+
       setOrders(data.orders || []);
     } catch (error) {
       console.error('Failed to load orders:', error);
@@ -290,6 +334,9 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
             customerName: labelOrder.customerName,
             address: labelOrder.address,
             country: labelOrder.country,
+            street: labelOrder.street || labelOrder.addressLine1 || labelOrder.shippingStreet || undefined,
+            zipCode: labelOrder.zipCode || labelOrder.postalCode || labelOrder.shippingZipCode || undefined,
+            city: labelOrder.city || labelOrder.town || labelOrder.shippingCity || undefined,
           },
         ],
       });
@@ -300,18 +347,53 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
       }
     } catch (error) {
       console.error('Failed to generate label:', error);
+      let errorDescription = error instanceof Error ? error.message : 'Probeer het opnieuw';
+
+      if (errorDescription.includes('ERR_DELICOM_TOKEN_INCORRECT')) {
+        errorDescription = 'DPD verificatietoken is onjuist. Ga naar Vervoerders > DPD contract > Instellingen en vul een nieuw Auth Token in vanuit de DPD Login Service.';
+      }
+
       toast.error('Kon label niet genereren', {
-        description: error instanceof Error ? error.message : 'Probeer het opnieuw',
+        description: errorDescription,
       });
     } finally {
       setGeneratingLabel(false);
     }
   };
 
-  const filteredOrders = orders.filter(order => {
-    const matchesStore = filterStore === 'all' || order.storeName === filterStore;
-    return matchesStore;
-  });
+  const filteredOrders = orders
+    .filter(order => {
+      const orderInstallationId = order.installation?.id ?? order.installationId;
+      const orderStoreName = String(order.storeName || '');
+
+      const matchesIntegrationScope = !isAllStoresSelected
+        ? true
+        : (
+            allowedIntegrationStoreNames.includes(orderStoreName) ||
+            allowedIntegrationInstallationIds.includes(orderInstallationId)
+          );
+
+      const matchesStore = isAllStoresSelected
+        ? (filterStore === 'all' || orderStoreName === filterStore)
+        : (filterStore === 'all' || order.storeName === filterStore);
+
+      return matchesIntegrationScope && matchesStore;
+    })
+    .sort((a, b) => {
+      const aDate = a.orderDate ? new Date(a.orderDate).getTime() : 0;
+      const bDate = b.orderDate ? new Date(b.orderDate).getTime() : 0;
+      return bDate - aDate;
+    });
+
+  const storeFilterOptions = isAllStoresSelected
+    ? integrationStoreOptions
+    : Array.from(
+        new Set(
+          orders
+            .map(order => order.storeName)
+            .filter((storeName): storeName is string => Boolean(storeName))
+        )
+      ).map((storeName) => ({ id: storeName, name: storeName }));
 
   const toggleOrderDetails = (orderNumber: string) => {
     setExpandedOrder(expandedOrder === orderNumber ? null : orderNumber);
@@ -450,8 +532,11 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
               </SelectTrigger>
               <SelectContent className="border-slate-200 shadow-lg">
                 <SelectItem value="all">Alle stores</SelectItem>
-                <SelectItem value="Shopcentral">Shopcentral</SelectItem>
-                <SelectItem value="Inovra">Inovra</SelectItem>
+                {storeFilterOptions.map((storeOption) => (
+                  <SelectItem key={storeOption.id} value={storeOption.id}>
+                    {storeOption.name}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <Select value={filterStatus} onValueChange={setFilterStatus}>
@@ -659,15 +744,17 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                               <div className="w-80 p-5 bg-white rounded-xl border border-slate-200 shadow-sm space-y-4">
                                 {order.orderItems.map((item: any, idx: number) => (
                                   <div key={idx} className="space-y-3">
-                                    {item.productImage && (
-                                      <div className="aspect-square w-full bg-slate-100 rounded-lg overflow-hidden">
+                                    <div className="aspect-square w-full bg-slate-100 rounded-lg overflow-hidden flex items-center justify-center">
+                                      {(item.productImage || order.productImage) ? (
                                         <img 
-                                          src={item.productImage}
-                                          alt={item.productName}
+                                          src={item.productImage || order.productImage}
+                                          alt={item.productName || order.productName || 'Product afbeelding'}
                                           className="w-full h-full object-cover"
                                         />
-                                      </div>
-                                    )}
+                                      ) : (
+                                        <ImageIcon className="w-10 h-10 text-slate-400" />
+                                      )}
+                                    </div>
                                     
                                     <div className="space-y-3">
                                       <p className="text-sm text-slate-900 line-clamp-2">{item.productName}</p>

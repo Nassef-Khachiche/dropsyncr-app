@@ -1,26 +1,19 @@
 import { 
   Package, 
   ShoppingCart, 
-  RotateCcw, 
   Plug, 
   Truck,
-  Warehouse,
-  TrendingUp,
-  Sparkles,
-  ListChecks,
-  BarChart3,
   ChevronDown,
   ChevronRight,
   QrCode,
   FileText,
   Settings,
-  MessageSquare,
   Shield
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { cn } from './ui/utils';
 import { useAuth } from '../contexts/AuthContext';
-import logo from 'figma:asset/b2d66254c08ae9c8c93a9cfe0d50ea2c9c5cd522.png';
+import logo from '../assets/dropsyncr-logo.png';
 
 interface AppSidebarProps {
   activeView: string;
@@ -54,11 +47,6 @@ const menuItems: { section: string; items: MenuItem[] }[] = [
         icon: FileText,
       },
       {
-        id: 'returns',
-        label: 'Retouren',
-        icon: RotateCcw,
-      },
-      {
         id: 'integrations',
         label: 'Integraties',
         icon: Plug,
@@ -71,67 +59,12 @@ const menuItems: { section: string; items: MenuItem[] }[] = [
     ],
   },
   {
-    section: 'WAREHOUSE MANAGEMENT',
-    items: [
-      {
-        id: 'inventory',
-        label: 'Voorraad managen',
-        icon: Warehouse,
-      },
-      {
-        id: 'inventory-analysis',
-        label: 'Voorraadanalyse',
-        icon: TrendingUp,
-      },
-    ],
-  },
-  {
-    section: 'CONTENT ASSISTENT',
-    items: [
-      {
-        id: 'ai-listing',
-        label: 'AI Listing Builder',
-        icon: Sparkles,
-      },
-      {
-        id: 'assortment',
-        label: 'Assortiment Checker',
-        icon: ListChecks,
-      },
-    ],
-  },
-  {
     section: 'SYSTEEM',
     items: [
       {
         id: 'settings',
         label: 'Instellingen',
         icon: Settings,
-      },
-    ],
-  },
-  {
-    section: 'ANALYTICS',
-    items: [
-      {
-        id: 'dashboard',
-        label: 'Dashboard',
-        icon: BarChart3,
-      },
-      {
-        id: 'fulfillment-analytics',
-        label: 'Fulfilment Analytics',
-        icon: TrendingUp,
-      },
-    ],
-  },
-  {
-    section: 'SUPPORT',
-    items: [
-      {
-        id: 'tickets',
-        label: 'Support Tickets',
-        icon: MessageSquare,
       },
     ],
   },
@@ -150,8 +83,7 @@ const menuItems: { section: string; items: MenuItem[] }[] = [
 export function AppSidebar({ activeView, onViewChange }: AppSidebarProps) {
   const { user } = useAuth();
   const [expandedSections, setExpandedSections] = useState<string[]>([
-    'ORDER MANAGEMENT',
-    'ANALYTICS'
+    'ORDER MANAGEMENT'
   ]);
 
   // Update expanded sections when user loads and is global admin
@@ -277,20 +209,6 @@ export function AppSidebar({ activeView, onViewChange }: AppSidebarProps) {
         })}
       </nav>
 
-      {/* Footer */}
-      <div className="p-4 border-t border-slate-200">
-        <div className="p-4 bg-gradient-to-br from-indigo-50 to-purple-50 rounded-lg border border-indigo-100">
-          <div className="flex items-start gap-3">
-            <div className="p-2 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-lg shadow-sm">
-              <Sparkles className="w-4 h-4 text-white" />
-            </div>
-            <div>
-              <p className="text-sm text-slate-900">Upgrade naar Pro</p>
-              <p className="text-xs text-slate-600 mt-0.5">Unlock alle features</p>
-            </div>
-          </div>
-        </div>
-      </div>
     </aside>
   );
 }
