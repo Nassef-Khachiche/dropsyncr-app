@@ -146,6 +146,47 @@ const firstNonEmptyString = (...values) => {
   return null;
 };
 
+const toValidDate = (value) => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const resolveBolDeliveryDate = (orderPayload = {}, orderItems = []) => {
+  const orderLevelCandidates = [
+    orderPayload.deliveryPromise,
+    orderPayload.latestDeliveryDate,
+    orderPayload.deliveryDate,
+    orderPayload.promisedDeliveryDate,
+    orderPayload.promisedDeliveryDateTime,
+    orderPayload.deliveryDateTime,
+  ];
+
+  for (const candidate of orderLevelCandidates) {
+    const validDate = toValidDate(candidate);
+    if (validDate) return validDate;
+  }
+
+  const itemDates = (Array.isArray(orderItems) ? orderItems : [])
+    .flatMap((item) => [
+      item?.deliveryPromise,
+      item?.latestDeliveryDate,
+      item?.deliveryDate,
+      item?.promisedDeliveryDate,
+      item?.promisedDeliveryDateTime,
+      item?.deliveryDateTime,
+    ])
+    .map((candidate) => toValidDate(candidate))
+    .filter(Boolean);
+
+  if (itemDates.length === 0) return null;
+
+  return itemDates.reduce((latest, current) => {
+    if (!latest) return current;
+    return current.getTime() > latest.getTime() ? current : latest;
+  }, null);
+};
+
 const findStringValueByKey = (input, keyRegex) => {
   if (!input) return null;
 
@@ -381,6 +422,7 @@ export const syncBolOrders = async (req, res) => {
       const detailedOrderItems = bolOrderItemsDetails?.orderItems || [];
       const orderItems = mergeBolOrderItems(baseOrderItems, detailedOrderItems);
       const shipmentDetails = orderPayload.shipmentDetails || orderPayload.billingDetails || {};
+      const deliveryDate = resolveBolDeliveryDate(orderPayload, orderItems);
 
       // Check if order already exists (for import/update counters)
       const existingOrder = await prisma.order.findFirst({
@@ -449,7 +491,7 @@ export const syncBolOrders = async (req, res) => {
         storeName: existingOrder?.storeName || integrationShopName,
         platform: 'bol.com',
         orderDate: new Date(orderPayload.orderPlacedDateTime),
-        deliveryDate: orderPayload.deliveryPromise ? new Date(orderPayload.deliveryPromise) : null,
+        deliveryDate,
         orderStatus: mapBolStatusToInternal(orderItems?.[0]?.fulfilmentStatus || bolOrder.orderItems?.[0]?.fulfilmentStatus),
         shippingStatus: orderItems?.[0]?.fulfilmentStatus || bolOrder.orderItems?.[0]?.fulfilmentStatus || null,
         orderValue: parseFloat(orderItems?.reduce((sum, item) => {

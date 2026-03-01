@@ -114,6 +114,8 @@ const availableCarriers: CarrierOption[] = [
       { name: 'contractName', label: 'Contractnaam', type: 'text', placeholder: 'Bijv. WeGrow EU Contract' },
       { name: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Voer je WeGrow API key in' },
       { name: 'serviceCode', label: 'Service Code', type: 'text', placeholder: 'Bijv. wegrow_home_premium' },
+      { name: 'baseUrl', label: 'Base URL', type: 'text', placeholder: 'Bijv. https://api-sandbox.wegrow.eu', required: false },
+      { name: 'apiVersion', label: 'API Version', type: 'text', placeholder: 'Bijv. v1', required: false },
     ],
     hasCheckbox: { name: 'sandbox', label: 'Sandbox' }
   },
@@ -198,7 +200,15 @@ export function Carriers({ activeProfile }: CarriersProps) {
 
   const handleCarrierChange = (carrierId: string) => {
     setSelectedCarrier(carrierId);
-    setFormData({});
+    if (carrierId === 'wegrow') {
+      setFormData({
+        baseUrl: 'https://api-sandbox.wegrow.eu',
+        apiVersion: 'v1',
+        sandbox: true,
+      });
+    } else {
+      setFormData({});
+    }
     setShowPasswords({});
   };
 
@@ -315,6 +325,26 @@ export function Carriers({ activeProfile }: CarriersProps) {
     }
   };
 
+  const handleTestConnection = async (contract: Contract) => {
+    try {
+      const result = await api.testCarrier(contract.id) as any;
+      if (result?.success) {
+        toast.success(`${contract.contractName} test geslaagd`, {
+          description: result?.details || result?.message || 'Verbinding succesvol',
+        });
+      } else {
+        toast.error(`${contract.contractName} test mislukt`, {
+          description: result?.details || result?.message || 'Controleer de credentials',
+        });
+      }
+    } catch (error: any) {
+      console.error('Failed to test carrier connection:', error);
+      toast.error('Verbindingstest mislukt', {
+        description: error?.message || 'Probeer het opnieuw',
+      });
+    }
+  };
+
   const maskCredentialValue = (key: string, value: any) => {
     if (value === null || value === undefined) return '';
     const lowerKey = key.toLowerCase();
@@ -413,6 +443,15 @@ export function Carriers({ activeProfile }: CarriersProps) {
                       >
                         <Settings className="w-4 h-4" />
                         Instellingen
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:border-emerald-300"
+                        onClick={() => handleTestConnection(contract)}
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        Test
                       </Button>
                       <Button 
                         variant="outline" 

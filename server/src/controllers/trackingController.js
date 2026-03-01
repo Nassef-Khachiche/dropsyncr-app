@@ -1,6 +1,72 @@
 import prisma from '../config/database.js';
 import fetch from 'node-fetch';
 
+const isTruthyValue = (value) => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    return ['1', 'true', 'yes', 'on', 'sandbox'].includes(normalized);
+  }
+  return false;
+};
+
+const normalizeWeGrowCredentials = (rawCredentials = {}) => {
+  const credentials = { ...(rawCredentials || {}) };
+  const trimMaybe = (value) => (value === undefined || value === null ? value : String(value).trim());
+
+  if (credentials.apiKey === undefined) credentials.apiKey = credentials.xKey ?? credentials.key ?? credentials.api_key;
+  if (credentials.baseUrl === undefined) credentials.baseUrl = credentials.base_url;
+  if (credentials.apiVersion === undefined) credentials.apiVersion = credentials.xVersion ?? credentials.version ?? credentials.x_version;
+
+  if (credentials.apiKey !== undefined) credentials.apiKey = trimMaybe(credentials.apiKey);
+  if (credentials.baseUrl !== undefined) credentials.baseUrl = trimMaybe(credentials.baseUrl);
+  if (credentials.apiVersion !== undefined) credentials.apiVersion = trimMaybe(credentials.apiVersion);
+  if (credentials.environment !== undefined) credentials.environment = trimMaybe(credentials.environment);
+
+  const hasSandbox = Object.prototype.hasOwnProperty.call(credentials, 'sandbox');
+  if (hasSandbox) {
+    credentials.sandbox = isTruthyValue(credentials.sandbox);
+  }
+
+  if (!hasSandbox && typeof credentials.environment === 'string') {
+    credentials.sandbox = credentials.environment.trim().toLowerCase() === 'sandbox';
+  }
+
+  return credentials;
+};
+
+const getWeGrowAuthConfig = (rawCredentials = {}) => {
+  const normalize = (value) => (value === undefined || value === null ? '' : String(value).trim());
+  const credentials = rawCredentials || {};
+
+  const apiKey = normalize(
+    credentials.apiKey ||
+    credentials.xKey ||
+    credentials.key ||
+    process.env.WEGROW_API_KEY
+  );
+  const sanitizedApiKey = apiKey.replace(/^bearer\s+/i, '').trim();
+
+  let bearerToken = normalize(
+    credentials.bearerToken ||
+    credentials.authToken ||
+    credentials.token ||
+    process.env.WEGROW_BEARER_TOKEN
+  );
+
+  if (!bearerToken && /^bearer\s+/i.test(apiKey)) {
+    bearerToken = sanitizedApiKey;
+  }
+
+  const headers = {
+    ...(sanitizedApiKey && { 'x-key': sanitizedApiKey, 'x-api-key': sanitizedApiKey }),
+    ...(bearerToken && { Authorization: `Bearer ${bearerToken}` }),
+  };
+
+  return { apiKey: sanitizedApiKey, bearerToken, headers };
+};
+
 export const getTrackings = async (req, res) => {
   try {
     const { status, search } = req.query;
@@ -174,8 +240,8 @@ export const refreshWeGrowTracking = async (req, res) => {
       }
     }
 
-    const credentials = JSON.parse(carrier.credentials || '{}');
-    const apiKey = credentials.apiKey || process.env.WEGROW_API_KEY;
+    const credentials = normalizeWeGrowCredentials(JSON.parse(carrier.credentials || '{}'));
+    const { apiKey, headers: weGrowAuthHeaders } = getWeGrowAuthConfig(credentials);
     const apiVersion = credentials.apiVersion || 'v1';
 
     if (!apiKey) {
@@ -184,13 +250,13 @@ export const refreshWeGrowTracking = async (req, res) => {
 
     const sandboxDefault = process.env.WEGROW_SANDBOX_URL || 'https://api-sandbox.wegrow.eu';
     const productionDefault = process.env.WEGROW_PRODUCTION_URL || 'https://api.wegrow.eu';
-    const useSandbox = credentials.sandbox === true || credentials.environment === 'sandbox';
+    const useSandbox = isTruthyValue(credentials.sandbox) || String(credentials.environment || '').toLowerCase() === 'sandbox';
     const baseUrl = (credentials.baseUrl || process.env.WEGROW_BASE_URL || (useSandbox ? sandboxDefault : productionDefault)).replace(/\/+$/, '');
 
     const response = await fetch(`${baseUrl}/shipments/${encodeURIComponent(String(shipmentId))}/track`, {
       method: 'GET',
       headers: {
-        'x-key': apiKey,
+        ...weGrowAuthHeaders,
         'x-version': apiVersion,
       },
     });

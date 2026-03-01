@@ -1,11 +1,13 @@
 import { useState, useEffect, Fragment } from 'react';
 import { api } from '../services/api';
 import { Loader2 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
+import { Checkbox } from './ui/checkbox';
+import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 import * as XLSX from 'xlsx';
 import { 
   Table, 
@@ -28,6 +30,7 @@ import {
   RefreshCw,
   ChevronDown,
   ChevronRight,
+  Trash2,
   MapPin,
   Calendar,
   ShoppingCart,
@@ -48,6 +51,10 @@ import {
   DialogTitle,
 } from './ui/dialog';
 
+const dhlLogo = new URL('../assets/dhl-logo.png', import.meta.url).href;
+const dpdLogo = new URL('../assets/dpd-logo.png', import.meta.url).href;
+const wegrowLogo = new URL('../assets/wegrow-logo.jpg', import.meta.url).href;
+
 interface OrdersOverviewProps {
   activeProfile: string;
 }
@@ -59,122 +66,13 @@ interface CarrierContract {
   active: boolean;
 }
 
-// Extended mock orders data
-const mockOrders = [
-  {
-    orderNumber: 'A0009HICA9',
-    customerName: 'Karin Gebruge',
-    country: 'BE',
-    storeName: 'Shopcentral',
-    itemCount: 1,
-    deliveryDate: '2024-10-16',
-    supplierTracking: 'TBA123456789012',
-    status: 'onderweg-ffm',
-    // Detail fields
-    address: 'Ouden Dendermondesteenweg 278, 9300 AALST, BE',
-    orderDate: '2024-10-14',
-    platform: 'bol.com',
-    orderStatus: 'openstaand',
-    orderValue: 49.99,
-    shippingStatus: 'Met Landmrankglobal',
-    productImage: 'https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?w=200',
-    productName: 'Opgewaardeerde tablethouder voor bed - Opvouwbare standaard met 360 graden rotatie',
-    ean: '8785347099208',
-    sku: 'B00K6K08Q',
-    weight: '12.9 kg',
-    supplier: 'Amazon'
-  },
-  {
-    orderNumber: 'A0009HAK3',
-    customerName: 'Sophie van Dam',
-    country: 'NL',
-    storeName: 'Inovra',
-    itemCount: 2,
-    deliveryDate: '2024-10-16',
-    supplierTracking: 'LP987654321NL',
-    status: 'binnengekomen-ffm',
-    address: 'Mosselscheerloop 14, 1234 AB Amsterdam, NL',
-    orderDate: '2024-10-14',
-    platform: 'bol.com',
-    orderStatus: 'openstaand',
-    orderValue: 38.98,
-    shippingStatus: 'PostNL Standaard 0-23kg',
-    productImage: 'https://images.unsplash.com/photo-1585336261022-680e8a0b4e31?w=200',
-    productName: 'Speelgoed Garage voor Kinderen met Autolift - Speelautoset - Cartoon Dier Design',
-    ean: '8723838184435',
-    sku: 'B07K3NK891',
-    weight: '2.3 kg',
-    supplier: 'AliExpress'
-  },
-  {
-    orderNumber: 'A0009HLM5',
-    customerName: 'Thomas Janssen',
-    country: 'NL',
-    storeName: 'Shopcentral',
-    itemCount: 1,
-    deliveryDate: '2024-10-17',
-    supplierTracking: 'CJ789012345NL',
-    status: 'label-aangemaakt',
-    address: 'Kerkstraat 89, 5611 GH Eindhoven, NL',
-    orderDate: '2024-10-14',
-    platform: 'bol.com',
-    orderStatus: 'openstaand',
-    orderValue: 29.99,
-    shippingStatus: 'Wacht op tracking',
-    productImage: 'https://images.unsplash.com/photo-1572635196237-14b3f281503f?w=200',
-    productName: 'Draadloze Bluetooth Speaker - Waterdicht - 360 graden surround sound',
-    ean: '8719988766543',
-    sku: 'B08L5M9K2',
-    weight: '0.8 kg',
-    supplier: 'CJ Dropshipping'
-  },
-  {
-    orderNumber: 'A0009HXK9',
-    customerName: 'Emma Peeters',
-    country: 'BE',
-    storeName: 'Inovra',
-    itemCount: 3,
-    deliveryDate: '2024-10-15',
-    supplierTracking: 'TBA234567890123',
-    status: 'verstuurd',
-    address: 'Grote Markt 23, 2000 Antwerpen, BE',
-    orderDate: '2024-10-13',
-    platform: 'bol.com',
-    orderStatus: 'verzonden',
-    orderValue: 84.97,
-    shippingStatus: '3pack Bussuite',
-    productImage: 'https://images.unsplash.com/photo-1611312449408-fcece27cdbb7?w=200',
-    productName: 'LED Strip Lights - 10M RGB Kleurveranderende Verlichting met Afstandsbediening',
-    ean: '8719988761234',
-    sku: 'B09C4NK123',
-    weight: '1.2 kg',
-    supplier: 'Amazon'
-  },
-  {
-    orderNumber: 'A0009HZP2',
-    customerName: 'Lucas Vermeer',
-    country: 'NL',
-    storeName: 'Shopcentral',
-    itemCount: 1,
-    deliveryDate: '2024-10-12',
-    supplierTracking: 'TBA345678901234',
-    status: 'afgeleverd',
-    address: 'Marktstraat 56, 3011 NL Rotterdam, NL',
-    orderDate: '2024-10-11',
-    platform: 'bol.com',
-    orderStatus: 'afgeleverd',
-    orderValue: 19.99,
-    shippingStatus: 'PostNL Standaard 0-23kg',
-    productImage: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=200',
-    productName: 'Premium Koptelefoon met Noise Cancelling - Draadloos',
-    ean: '8719988767890',
-    sku: 'B08M3PK456',
-    weight: '0.5 kg',
-    supplier: 'Amazon'
-  },
-];
-
 export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
+  const carrierLogoMap: Record<string, string> = {
+    dhl: dhlLogo,
+    dpd: dpdLogo,
+    wegrow: wegrowLogo,
+  };
+
   const isAllStoresSelected = activeProfile === 'all';
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -192,6 +90,14 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
   const [selectedContractId, setSelectedContractId] = useState<string>('');
   const [generatingLabel, setGeneratingLabel] = useState(false);
   const [labelPreviewUrl, setLabelPreviewUrl] = useState<string>('');
+  const [generatedLabelMeta, setGeneratedLabelMeta] = useState<{
+    shipmentId?: string | null;
+    trackingCode?: string | null;
+    trackingUrl?: string | null;
+  } | null>(null);
+  const [selectedOrderIds, setSelectedOrderIds] = useState<number[]>([]);
+  const [deletingOrderIds, setDeletingOrderIds] = useState<number[]>([]);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   useEffect(() => {
     if (activeProfile) {
@@ -316,6 +222,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
     setLabelOrder(order);
     setSelectedContractId('');
     setLabelPreviewUrl('');
+    setGeneratedLabelMeta(null);
     setShowLabelDialog(true);
   };
 
@@ -345,6 +252,11 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
       if (label?.labelUrl) {
         setLabelPreviewUrl(label.labelUrl);
       }
+      setGeneratedLabelMeta({
+        shipmentId: label?.shipmentId || null,
+        trackingCode: label?.trackingCode || null,
+        trackingUrl: label?.trackingUrl || null,
+      });
     } catch (error) {
       console.error('Failed to generate label:', error);
       let errorDescription = error instanceof Error ? error.message : 'Probeer het opnieuw';
@@ -397,6 +309,133 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
 
   const toggleOrderDetails = (orderNumber: string) => {
     setExpandedOrder(expandedOrder === orderNumber ? null : orderNumber);
+  };
+
+  const filteredOrderIds = filteredOrders
+    .map((order) => order.id)
+    .filter((id: unknown): id is number => typeof id === 'number');
+  const selectedFilteredCount = filteredOrderIds.filter((id) => selectedOrderIds.includes(id)).length;
+  const allFilteredSelected = filteredOrderIds.length > 0 && selectedFilteredCount === filteredOrderIds.length;
+
+  useEffect(() => {
+    const allowedIds = new Set(filteredOrderIds);
+    setSelectedOrderIds((prevSelected) => {
+      const nextSelected = prevSelected.filter((id) => allowedIds.has(id));
+      return nextSelected.length === prevSelected.length ? prevSelected : nextSelected;
+    });
+  }, [filteredOrders]);
+
+  const toggleSelectAllFiltered = (checked: boolean) => {
+    if (!checked) {
+      setSelectedOrderIds([]);
+      return;
+    }
+    setSelectedOrderIds(filteredOrderIds);
+  };
+
+  const toggleSelectOrder = (orderId: number, checked: boolean) => {
+    setSelectedOrderIds((prevSelected) => {
+      if (checked) {
+        if (prevSelected.includes(orderId)) return prevSelected;
+        return [...prevSelected, orderId];
+      }
+      return prevSelected.filter((id) => id !== orderId);
+    });
+  };
+
+  const handleDeleteOrder = async (order: any) => {
+    if (!order?.id) {
+      toast.error('Deze order kan niet worden verwijderd');
+      return;
+    }
+
+    const confirmed = window.confirm(`Weet je zeker dat je order ${order.orderNumber} wilt verwijderen?`);
+    if (!confirmed) return;
+
+    try {
+      setDeletingOrderIds((prev) => [...prev, order.id]);
+      await api.deleteOrder(order.id);
+
+      setOrders((prevOrders) => prevOrders.filter((entry) => entry.id !== order.id));
+      setSelectedOrderIds((prevSelected) => prevSelected.filter((id) => id !== order.id));
+
+      if (expandedOrder === order.orderNumber) {
+        setExpandedOrder(null);
+      }
+
+      toast.success('Order verwijderd');
+    } catch (error) {
+      console.error('Failed to delete order:', error);
+      toast.error('Kon order niet verwijderen', {
+        description: error instanceof Error ? error.message : 'Probeer het opnieuw',
+      });
+    } finally {
+      setDeletingOrderIds((prev) => prev.filter((id) => id !== order.id));
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    const selectedOrders = filteredOrders.filter((order) =>
+      typeof order.id === 'number' && selectedOrderIds.includes(order.id)
+    );
+
+    if (selectedOrders.length === 0) {
+      toast.error('Selecteer minimaal 1 order');
+      return;
+    }
+
+    const confirmed = window.confirm(`Weet je zeker dat je ${selectedOrders.length} geselecteerde orders wilt verwijderen?`);
+    if (!confirmed) return;
+
+    try {
+      setBulkDeleting(true);
+
+      const results = await Promise.allSettled(
+        selectedOrders.map((order) => api.deleteOrder(order.id))
+      );
+
+      const successfulIds: number[] = [];
+      let failedCount = 0;
+
+      results.forEach((result, index) => {
+        const orderId = selectedOrders[index]?.id;
+        if (result.status === 'fulfilled') {
+          successfulIds.push(orderId);
+        } else {
+          failedCount++;
+        }
+      });
+
+      if (successfulIds.length > 0) {
+        const removedIdSet = new Set(successfulIds);
+        setOrders((prevOrders) => prevOrders.filter((order) => !removedIdSet.has(order.id)));
+        setSelectedOrderIds((prevSelected) => prevSelected.filter((id) => !removedIdSet.has(id)));
+
+        if (expandedOrder) {
+          const expandedStillExists = orders.some(
+            (order) => order.orderNumber === expandedOrder && !removedIdSet.has(order.id)
+          );
+          if (!expandedStillExists) {
+            setExpandedOrder(null);
+          }
+        }
+      }
+
+      if (successfulIds.length > 0) {
+        toast.success(`${successfulIds.length} order${successfulIds.length === 1 ? '' : 's'} verwijderd`);
+      }
+
+      if (failedCount > 0) {
+        toast.error(`${failedCount} order${failedCount === 1 ? '' : 's'} konden niet worden verwijderd`);
+      }
+    } catch (error) {
+      console.error('Failed to delete selected orders:', error);
+      toast.error('Kon geselecteerde orders niet verwijderen', {
+        description: error instanceof Error ? error.message : 'Probeer het opnieuw',
+      });
+    } finally {
+      setBulkDeleting(false);
+    }
   };
 
   const exportToExcel = () => {
@@ -501,6 +540,16 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 border-red-200 text-red-600 hover:bg-red-50"
+                onClick={handleDeleteSelected}
+                disabled={selectedFilteredCount === 0 || bulkDeleting}
+              >
+                {bulkDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                Verwijder geselecteerd {selectedFilteredCount > 0 ? `(${selectedFilteredCount})` : ''}
+              </Button>
               <Button 
                 variant="outline" 
                 size="sm" 
@@ -556,6 +605,13 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
             <Table>
               <TableHeader>
                 <TableRow className="bg-slate-50/50">
+                  <TableHead className="w-12">
+                    <Checkbox
+                      checked={allFilteredSelected}
+                      onCheckedChange={(checked: boolean | 'indeterminate') => toggleSelectAllFiltered(checked === true)}
+                      aria-label="Selecteer alle orders"
+                    />
+                  </TableHead>
                   <TableHead className="w-12"></TableHead>
                   <TableHead>Ordernummer</TableHead>
                   <TableHead>Klantnaam</TableHead>
@@ -564,18 +620,19 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                   <TableHead>Uiterste leverdatum</TableHead>
                   <TableHead>Trackingnummer leverancier</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Acties</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8">
+                    <TableCell colSpan={10} className="text-center py-8">
                       <Loader2 className="h-6 w-6 animate-spin text-indigo-600 mx-auto" />
                     </TableCell>
                   </TableRow>
                 ) : filteredOrders.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-slate-500">
+                    <TableCell colSpan={10} className="text-center py-8 text-slate-500">
                       Geen orders gevonden
                     </TableCell>
                   </TableRow>
@@ -586,6 +643,17 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                       className="hover:bg-slate-50/50 cursor-pointer"
                       onClick={() => toggleOrderDetails(order.orderNumber)}
                     >
+                      <TableCell onClick={(event) => event.stopPropagation()}>
+                        <Checkbox
+                          checked={typeof order.id === 'number' && selectedOrderIds.includes(order.id)}
+                          onCheckedChange={(checked: boolean | 'indeterminate') => {
+                            if (typeof order.id === 'number') {
+                              toggleSelectOrder(order.id, checked === true);
+                            }
+                          }}
+                          aria-label={`Selecteer order ${order.orderNumber}`}
+                        />
+                      </TableCell>
                       <TableCell>
                         {expandedOrder === order.orderNumber ? (
                           <ChevronDown className="w-4 h-4 text-slate-400" />
@@ -629,12 +697,25 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                       <TableCell>
                         {getOrderStatusBadge(order.status || 'onderweg-ffm')}
                       </TableCell>
+                      <TableCell className="text-right" onClick={(event) => event.stopPropagation()}>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="border-red-200 text-red-600 hover:bg-red-50"
+                          disabled={bulkDeleting || (typeof order.id === 'number' && deletingOrderIds.includes(order.id))}
+                          onClick={() => handleDeleteOrder(order)}
+                        >
+                          {typeof order.id === 'number' && deletingOrderIds.includes(order.id)
+                            ? <Loader2 className="w-4 h-4 animate-spin" />
+                            : <Trash2 className="w-4 h-4" />}
+                        </Button>
+                      </TableCell>
                     </TableRow>
                     
                     {/* Expanded Details Row */}
                     {expandedOrder === order.orderNumber && (
                       <TableRow className="bg-gradient-to-r from-slate-50/80 to-indigo-50/30">
-                        <TableCell colSpan={8} className="p-6">
+                        <TableCell colSpan={10} className="p-6">
                           <div className="flex gap-6">
                             {/* Left Column - Basic Info */}
                             <div className="flex-1 space-y-6">
@@ -819,7 +900,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
       </Card>
 
       <Dialog open={showLabelDialog} onOpenChange={setShowLabelDialog}>
-        <DialogContent className="sm:max-w-5xl h-[90vh] flex flex-col">
+        <DialogContent className="sm:max-w-5xl min-h-[800px] h-[96vh] max-h-[96vh] flex flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>Label genereren</DialogTitle>
             <DialogDescription>
@@ -830,21 +911,51 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
           <div className="space-y-4 flex-1 overflow-auto">
             <div className="space-y-2">
               <label className="text-sm text-slate-700">Contract</label>
-              <Select value={selectedContractId} onValueChange={setSelectedContractId}>
-                <SelectTrigger className="border-slate-200 shadow-sm">
-                  <SelectValue placeholder={loadingCarriers ? 'Contracten laden...' : 'Kies een contract'} />
-                </SelectTrigger>
-                <SelectContent className="border-slate-200 shadow-lg">
-                  {carrierContracts.length === 0 && !loadingCarriers && (
-                    <div className="px-3 py-2 text-sm text-slate-500">Geen actieve contracten</div>
-                  )}
-                  {carrierContracts.map((contract) => (
-                    <SelectItem key={contract.id} value={String(contract.id)}>
-                      {contract.contractName} ({contract.carrierType.toUpperCase()})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {loadingCarriers ? (
+                <div className="text-sm text-slate-500">Contracten laden...</div>
+              ) : carrierContracts.length === 0 ? (
+                <div className="text-sm text-slate-500">Geen actieve contracten</div>
+              ) : (
+                <RadioGroup
+                  value={selectedContractId}
+                  onValueChange={setSelectedContractId}
+                  className="grid grid-cols-1 md:grid-cols-2 gap-3"
+                >
+                  {carrierContracts.map((contract) => {
+                    const logo = carrierLogoMap[contract.carrierType] || null;
+                    const isSelected = selectedContractId === String(contract.id);
+
+                    return (
+                      <label
+                        key={contract.id}
+                        htmlFor={`contract-${contract.id}`}
+                        className={`flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
+                          isSelected
+                            ? 'border-indigo-300 bg-indigo-50 ring-1 ring-indigo-200'
+                            : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/70'
+                        }`}
+                      >
+                        <RadioGroupItem
+                          id={`contract-${contract.id}`}
+                          value={String(contract.id)}
+                          className="mt-0.5"
+                        />
+                        {logo && (
+                          <div className="w-8 h-8 rounded-md bg-white border border-slate-200 p-1 flex items-center justify-center">
+                            <img src={logo} alt={contract.carrierType} className="w-full h-full object-contain" />
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <div className="text-sm text-slate-900 truncate">{contract.contractName}</div>
+                          <div className={`text-xs uppercase ${isSelected ? 'text-indigo-700' : 'text-slate-500'}`}>
+                            {contract.carrierType}
+                          </div>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </RadioGroup>
+              )}
             </div>
 
             {labelPreviewUrl && (
@@ -867,6 +978,32 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                     className="w-full h-full min-h-[680px]"
                   />
                 </div>
+
+                {generatedLabelMeta && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 border border-slate-200 rounded-lg p-3 bg-slate-50/60">
+                    <div>
+                      <div className="text-xs text-slate-500">Shipment ID</div>
+                      <div className="text-sm text-slate-900 font-mono break-all">{generatedLabelMeta.shipmentId || '-'}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-slate-500">Carrier tracking</div>
+                      <div className="text-sm text-slate-900 font-mono break-all">{generatedLabelMeta.trackingCode || '-'}</div>
+                    </div>
+                    {generatedLabelMeta.trackingUrl && (
+                      <div className="md:col-span-2">
+                        <div className="text-xs text-slate-500">Tracking URL</div>
+                        <a
+                          href={generatedLabelMeta.trackingUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-sm text-indigo-600 hover:text-indigo-700 break-all"
+                        >
+                          {generatedLabelMeta.trackingUrl}
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>

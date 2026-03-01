@@ -29,11 +29,82 @@ const normalizeDpdCredentials = (rawCredentials = {}) => {
   return credentials;
 };
 
+const isTruthyValue = (value) => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    return ['1', 'true', 'yes', 'on', 'sandbox'].includes(normalized);
+  }
+  return false;
+};
+
+const normalizeWeGrowCredentials = (rawCredentials = {}) => {
+  const credentials = { ...(rawCredentials || {}) };
+  const trimMaybe = (value) => (value === undefined || value === null ? value : String(value).trim());
+
+  if (credentials.apiKey === undefined) credentials.apiKey = credentials.xKey ?? credentials.key ?? credentials.api_key;
+  if (credentials.baseUrl === undefined) credentials.baseUrl = credentials.base_url;
+  if (credentials.apiVersion === undefined) credentials.apiVersion = credentials.xVersion ?? credentials.version ?? credentials.x_version;
+  if (credentials.serviceCode === undefined) credentials.serviceCode = credentials.service_code;
+
+  if (credentials.apiKey !== undefined) credentials.apiKey = trimMaybe(credentials.apiKey);
+  if (credentials.baseUrl !== undefined) credentials.baseUrl = trimMaybe(credentials.baseUrl);
+  if (credentials.apiVersion !== undefined) credentials.apiVersion = trimMaybe(credentials.apiVersion);
+  if (credentials.serviceCode !== undefined) credentials.serviceCode = trimMaybe(credentials.serviceCode);
+  if (credentials.environment !== undefined) credentials.environment = trimMaybe(credentials.environment);
+
+  const hasSandbox = Object.prototype.hasOwnProperty.call(credentials, 'sandbox');
+  if (hasSandbox) {
+    credentials.sandbox = isTruthyValue(credentials.sandbox);
+  }
+
+  if (!hasSandbox && typeof credentials.environment === 'string') {
+    credentials.sandbox = credentials.environment.trim().toLowerCase() === 'sandbox';
+  }
+
+  return credentials;
+};
+
 const normalizeCarrierCredentials = (carrierType, rawCredentials = {}) => {
   if (carrierType === 'dpd') {
     return normalizeDpdCredentials(rawCredentials);
   }
+  if (carrierType === 'wegrow') {
+    return normalizeWeGrowCredentials(rawCredentials);
+  }
   return rawCredentials || {};
+};
+
+const getWeGrowAuthConfig = (rawCredentials = {}) => {
+  const normalize = (value) => (value === undefined || value === null ? '' : String(value).trim());
+  const credentials = rawCredentials || {};
+
+  const apiKey = normalize(
+    credentials.apiKey ||
+    credentials.xKey ||
+    credentials.key ||
+    process.env.WEGROW_API_KEY
+  );
+  const sanitizedApiKey = apiKey.replace(/^bearer\s+/i, '').trim();
+
+  let bearerToken = normalize(
+    credentials.bearerToken ||
+    credentials.authToken ||
+    credentials.token ||
+    process.env.WEGROW_BEARER_TOKEN
+  );
+
+  if (!bearerToken && /^bearer\s+/i.test(apiKey)) {
+    bearerToken = sanitizedApiKey;
+  }
+
+  const headers = {
+    ...(sanitizedApiKey && { 'x-key': sanitizedApiKey, 'x-api-key': sanitizedApiKey }),
+    ...(bearerToken && { Authorization: `Bearer ${bearerToken}` }),
+  };
+
+  return { apiKey: sanitizedApiKey, bearerToken, headers };
 };
 
 const persistNormalizedCredentialsIfChanged = async (carrierId, previousCredentials, normalizedCredentials) => {
@@ -242,10 +313,76 @@ export const testCarrierConnection = async (req, res) => {
     }
 
     if (carrier.carrierType === 'wegrow') {
-      const hasRequired = !!credentials.apiKey && !!credentials.serviceCode;
+      const wegrowCredentials = normalizeWeGrowCredentials(credentials);
+      const { apiKey, bearerToken, headers: weGrowAuthHeaders } = getWeGrowAuthConfig(wegrowCredentials);
+      const hasAuthCredentials = !!apiKey || !!bearerToken;
+
+      if (!hasAuthCredentials) {
+        return res.json({
+          success: false,
+          message: 'WeGrow credentials zijn incompleet (API key of bearer token ontbreekt)',
+        });
+      }
+
+      const apiVersion = wegrowCredentials.apiVersion || 'v1';
+      const sandboxDefault = process.env.WEGROW_SANDBOX_URL || 'https://api-sandbox.wegrow.eu';
+      const productionDefault = process.env.WEGROW_PRODUCTION_URL || 'https://api.wegrow.eu';
+      const useSandbox = isTruthyValue(wegrowCredentials.sandbox) || String(wegrowCredentials.environment || '').toLowerCase() === 'sandbox';
+      const baseUrl = (wegrowCredentials.baseUrl || process.env.WEGROW_BASE_URL || (useSandbox ? sandboxDefault : productionDefault)).replace(/\/+$/, '');
+
+      const probeEndpoints = [
+        `${baseUrl}/shipments?limit=1`,
+        `${baseUrl}/shipments`,
+      ];
+
+      for (const endpoint of probeEndpoints) {
+        const response = await fetch(endpoint, {
+          method: 'GET',
+          headers: {
+            Accept: 'application/json',
+            ...weGrowAuthHeaders,
+            'x-version': apiVersion,
+          },
+        });
+
+        const rawBody = await response.text();
+        let parsedBody = null;
+        try {
+          parsedBody = rawBody ? JSON.parse(rawBody) : null;
+        } catch {
+          parsedBody = null;
+        }
+
+        const detail = parsedBody?.detail || parsedBody?.error || rawBody || null;
+
+        if (response.status === 401 || response.status === 403) {
+          return res.json({
+            success: false,
+            message: 'WeGrow authenticatie mislukt',
+            details: detail || 'Unauthorized',
+          });
+        }
+
+        if (response.ok) {
+          return res.json({
+            success: true,
+            message: 'WeGrow authenticatie succesvol',
+          });
+        }
+
+        if (response.status >= 400 && response.status < 500) {
+          return res.json({
+            success: true,
+            message: `WeGrow authenticatie succesvol (HTTP ${response.status})`,
+            details: detail,
+          });
+        }
+      }
+
       return res.json({
-        success: hasRequired,
-        message: hasRequired ? 'WeGrow verbinding succesvol getest' : 'WeGrow credentials zijn incompleet',
+        success: false,
+        message: 'WeGrow verbindingstest mislukt',
+        details: 'Geen geldig antwoord van WeGrow ontvangen',
       });
     }
 
@@ -411,15 +548,7 @@ export const generateCarrierLabels = async (req, res) => {
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&apos;');
 
-    const isTruthy = (value) => {
-      if (typeof value === 'boolean') return value;
-      if (typeof value === 'number') return value !== 0;
-      if (typeof value === 'string') {
-        const normalized = value.trim().toLowerCase();
-        return ['1', 'true', 'yes', 'on', 'sandbox'].includes(normalized);
-      }
-      return false;
-    };
+    const isTruthy = (value) => isTruthyValue(value);
 
     const DPD_SANDBOX_DEFAULT_ENDPOINTS = [
       'https://wsshippertest.dpd.nl/PublicApi/services/ShipmentService/V3_5/',
@@ -896,8 +1025,8 @@ export const generateCarrierLabels = async (req, res) => {
   }
 
     if (carrier.carrierType === 'wegrow') {
-      const credentials = JSON.parse(carrier.credentials || '{}');
-      const apiKey = credentials.apiKey || process.env.WEGROW_API_KEY;
+      const credentials = normalizeWeGrowCredentials(parseCredentialsSafely(carrier.credentials));
+      const { apiKey, headers: weGrowAuthHeaders } = getWeGrowAuthConfig(credentials);
       const serviceCode = credentials.serviceCode || shippingMethod;
 
       if (!apiKey) {
@@ -992,7 +1121,7 @@ export const generateCarrierLabels = async (req, res) => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'x-key': apiKey,
+            ...weGrowAuthHeaders,
             'x-version': apiVersion,
           },
           body: JSON.stringify(payload),
