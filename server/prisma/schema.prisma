@@ -67,6 +67,7 @@ model Order {
   deliveryDate     DateTime?
   orderStatus      String
   shippingStatus   String?
+  shippingMethod   String?
   orderValue       Float
   itemCount        Int          @default(1)
   supplierTracking String?

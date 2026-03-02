@@ -152,7 +152,47 @@ const toValidDate = (value) => {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
-const resolveBolDeliveryDate = (orderPayload = {}, orderItems = []) => {
+const collectDeliveryDatesFromSource = (input, keyRegex = /(delivery|deliver|promis|expected|eta|arrival)/i) => {
+  const collected = [];
+  const visited = new Set();
+
+  const visit = (node, parentKey = '') => {
+    if (!node) return;
+
+    if (typeof node === 'string' || typeof node === 'number') {
+      if (parentKey && keyRegex.test(parentKey)) {
+        const date = toValidDate(node);
+        if (date) collected.push(date);
+      }
+      return;
+    }
+
+    if (typeof node !== 'object') return;
+    if (visited.has(node)) return;
+    visited.add(node);
+
+    if (Array.isArray(node)) {
+      node.forEach((entry) => visit(entry, parentKey));
+      return;
+    }
+
+    for (const [key, value] of Object.entries(node)) {
+      if (typeof value === 'string' || typeof value === 'number') {
+        if (keyRegex.test(key)) {
+          const date = toValidDate(value);
+          if (date) collected.push(date);
+        }
+      } else {
+        visit(value, key);
+      }
+    }
+  };
+
+  visit(input);
+  return collected;
+};
+
+const resolveBolDeliveryDate = (orderPayload = {}, orderItems = [], shipmentPayload = null) => {
   const orderLevelCandidates = [
     orderPayload.deliveryPromise,
     orderPayload.latestDeliveryDate,
@@ -179,9 +219,20 @@ const resolveBolDeliveryDate = (orderPayload = {}, orderItems = []) => {
     .map((candidate) => toValidDate(candidate))
     .filter(Boolean);
 
-  if (itemDates.length === 0) return null;
+  const nestedOrderDates = collectDeliveryDatesFromSource(orderPayload);
+  const nestedItemsDates = collectDeliveryDatesFromSource(orderItems);
+  const nestedShipmentDates = collectDeliveryDatesFromSource(shipmentPayload);
 
-  return itemDates.reduce((latest, current) => {
+  const allDates = [
+    ...itemDates,
+    ...nestedOrderDates,
+    ...nestedItemsDates,
+    ...nestedShipmentDates,
+  ];
+
+  if (allDates.length === 0) return null;
+
+  return allDates.reduce((latest, current) => {
     if (!latest) return current;
     return current.getTime() > latest.getTime() ? current : latest;
   }, null);
@@ -422,7 +473,7 @@ export const syncBolOrders = async (req, res) => {
       const detailedOrderItems = bolOrderItemsDetails?.orderItems || [];
       const orderItems = mergeBolOrderItems(baseOrderItems, detailedOrderItems);
       const shipmentDetails = orderPayload.shipmentDetails || orderPayload.billingDetails || {};
-      const deliveryDate = resolveBolDeliveryDate(orderPayload, orderItems);
+      const deliveryDate = resolveBolDeliveryDate(orderPayload, orderItems, bolShipmentDetails);
 
       // Check if order already exists (for import/update counters)
       const existingOrder = await prisma.order.findFirst({

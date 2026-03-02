@@ -430,6 +430,151 @@ export const generateCarrierLabels = async (req, res) => {
       return res.status(400).json({ error: 'Carrier type not supported for labels' });
     }
 
+    const selectedShippingMethod = String(shippingMethod || carrier.id || '').trim() || null;
+
+    const persistOrderShippingMethodAndLabels = async (generatedLabels = []) => {
+      const packageList = Array.isArray(packages) ? packages : [];
+      if (packageList.length === 0) return;
+
+      const orderNumbersFromPackages = Array.from(
+        new Set(
+          packageList
+            .map((pkg) => {
+              const explicitOrderNumber = String(pkg?.orderNumber || '').trim();
+              if (explicitOrderNumber) return explicitOrderNumber;
+
+              const packageId = pkg?.id;
+              if (typeof packageId === 'string') {
+                const normalizedPackageId = packageId.trim();
+                if (normalizedPackageId) return normalizedPackageId;
+              }
+
+              return null;
+            })
+            .filter(Boolean)
+        )
+      );
+
+      const ordersByOrderNumber = new Map();
+      if (orderNumbersFromPackages.length > 0) {
+        const matchingOrders = await prisma.order.findMany({
+          where: {
+            installationId: carrier.installationId,
+            orderNumber: { in: orderNumbersFromPackages },
+          },
+          select: {
+            id: true,
+            orderNumber: true,
+          },
+        });
+
+        matchingOrders.forEach((order) => {
+          ordersByOrderNumber.set(order.orderNumber, order.id);
+        });
+      }
+
+      const resolvedPackages = [];
+      for (let index = 0; index < packageList.length; index += 1) {
+        const pkg = packageList[index] || {};
+        const parsedOrderId = Number(pkg.orderId);
+
+        let orderId = Number.isInteger(parsedOrderId) && parsedOrderId > 0
+          ? parsedOrderId
+          : null;
+
+        if (!orderId) {
+          const orderNumberKey = String(pkg.orderNumber || pkg.id || '').trim();
+          if (orderNumberKey && ordersByOrderNumber.has(orderNumberKey)) {
+            orderId = ordersByOrderNumber.get(orderNumberKey);
+          }
+        }
+
+        if (!orderId) continue;
+
+        resolvedPackages.push({
+          orderId,
+          generatedLabel: generatedLabels[index] || null,
+        });
+      }
+
+      if (resolvedPackages.length === 0) return;
+
+      const shippingMethodColumnRows = await prisma.$queryRaw`
+        SELECT COLUMN_NAME
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'Order'
+          AND COLUMN_NAME = 'shippingMethod'
+        LIMIT 1
+      `;
+      const hasShippingMethodColumn = Array.isArray(shippingMethodColumnRows) && shippingMethodColumnRows.length > 0;
+
+      const operations = [
+        ...resolvedPackages.map(({ orderId, generatedLabel }) => {
+          const trackingCodeValue = String(generatedLabel?.trackingCode || '').trim();
+
+          if (hasShippingMethodColumn) {
+            return prisma.$executeRaw`
+              UPDATE \`Order\`
+              SET
+                shippingMethod = ${selectedShippingMethod},
+                supplierTracking = CASE
+                  WHEN ${trackingCodeValue} = '' THEN supplierTracking
+                  ELSE ${generatedLabel?.trackingCode || null}
+                END,
+                updatedAt = NOW()
+              WHERE id = ${orderId} AND installationId = ${carrier.installationId}
+            `;
+          }
+
+          return prisma.$executeRaw`
+            UPDATE \`Order\`
+            SET
+              supplierTracking = CASE
+                WHEN ${trackingCodeValue} = '' THEN supplierTracking
+                ELSE ${generatedLabel?.trackingCode || null}
+              END,
+              updatedAt = NOW()
+            WHERE id = ${orderId} AND installationId = ${carrier.installationId}
+          `;
+        }),
+      ];
+
+      const getPersistedLabelUrl = (labelUrl) => {
+        const normalized = String(labelUrl || '').trim();
+        if (!normalized) return null;
+
+        if (normalized.startsWith('data:')) {
+          return null;
+        }
+
+        return normalized.length <= 191 ? normalized : null;
+      };
+
+      resolvedPackages.forEach(({ orderId, generatedLabel }) => {
+        const persistedLabelUrl = getPersistedLabelUrl(generatedLabel?.labelUrl);
+
+        operations.push(
+          prisma.label.upsert({
+            where: { orderId },
+            update: {
+              carrierId: carrier.id,
+              labelUrl: persistedLabelUrl,
+              status: 'generated',
+            },
+            create: {
+              orderId,
+              carrierId: carrier.id,
+              labelUrl: persistedLabelUrl,
+              status: 'generated',
+            },
+          })
+        );
+      });
+
+      await prisma.$transaction(operations);
+    };
+
     const parseAddress = (address = '') => {
       const parts = String(address).split(',').map(p => p.trim()).filter(Boolean);
       let street = parts.length > 1 ? parts.slice(0, -1).join(', ') : parts[0] || '';
@@ -1015,11 +1160,13 @@ export const generateCarrierLabels = async (req, res) => {
       labels.push({
         packageId: pkg.id || i,
         carrierType: 'dpd',
-        shippingMethod: shippingMethod || null,
+        shippingMethod: selectedShippingMethod,
         trackingCode: trackingNumber || `DPD-${Date.now()}-${i}`,
         labelUrl: `data:application/pdf;base64,${labelBase64}`,
       });
     }
+
+    await persistOrderShippingMethodAndLabels(labels);
 
     return res.json({ success: true, labels });
   }
@@ -1151,13 +1298,15 @@ export const generateCarrierLabels = async (req, res) => {
         labels.push({
           packageId: pkg.id || index,
           carrierType: carrier.carrierType,
-          shippingMethod: shippingMethod || serviceCode,
+          shippingMethod: selectedShippingMethod || serviceCode,
           trackingCode: firstLabel.carrier_tracking_id || `${carrier.carrierType.toUpperCase()}-${Date.now()}-${index}`,
           labelUrl: `data:${mimeType};base64,${firstLabel.base64_label}`,
           trackingUrl: firstLabel.carrier_tracking_url || null,
           shipmentId: responseData?.id || null,
         });
       }
+
+      await persistOrderShippingMethodAndLabels(labels);
 
       return res.json({ success: true, labels });
     }
@@ -1168,16 +1317,33 @@ export const generateCarrierLabels = async (req, res) => {
       return {
         packageId: pkg.id || index,
         carrierType: carrier.carrierType,
-        shippingMethod: shippingMethod || null,
+        shippingMethod: selectedShippingMethod,
         trackingCode,
         labelUrl: null,
       };
     });
 
+    await persistOrderShippingMethodAndLabels(labels);
+
     res.json({ success: true, labels });
   } catch (error) {
     console.error('Generate carrier labels error:', error);
-    res.status(500).json({ error: 'Failed to generate labels' });
+
+    const errorMessage = String(error?.message || 'Failed to generate labels');
+    const isMissingShippingMethodColumn =
+      errorMessage.includes('Unknown column') && errorMessage.includes('shippingMethod');
+
+    if (isMissingShippingMethodColumn) {
+      return res.status(500).json({
+        error: 'Failed to persist shipping method on order',
+        details: 'Kolom shippingMethod ontbreekt in de Order tabel. Voer de migratie uit en probeer opnieuw.',
+      });
+    }
+
+    res.status(500).json({
+      error: 'Failed to generate labels',
+      details: errorMessage,
+    });
   }
 };
 

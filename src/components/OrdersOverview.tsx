@@ -98,6 +98,8 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
   const [selectedOrderIds, setSelectedOrderIds] = useState<number[]>([]);
   const [deletingOrderIds, setDeletingOrderIds] = useState<number[]>([]);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [shippingMethodDrafts, setShippingMethodDrafts] = useState<Record<number, string>>({});
+  const [savingShippingMethodOrderId, setSavingShippingMethodOrderId] = useState<number | null>(null);
 
   useEffect(() => {
     if (activeProfile) {
@@ -220,23 +222,96 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
 
   const handleOpenLabelDialog = (order: any) => {
     setLabelOrder(order);
-    setSelectedContractId('');
+    const normalizedOrderShippingMethod = String(order.shippingMethod || '').trim();
+    const matchingContract = carrierContracts.find((contract) => (
+      String(contract.id) === normalizedOrderShippingMethod || contract.contractName === normalizedOrderShippingMethod
+    ));
+    setSelectedContractId(matchingContract ? String(matchingContract.id) : '');
     setLabelPreviewUrl('');
     setGeneratedLabelMeta(null);
     setShowLabelDialog(true);
+  };
+
+  const getOrderShippingContractId = (order: any) => {
+    if (typeof order.id !== 'number') return '';
+
+    const draftValue = shippingMethodDrafts[order.id];
+    if (draftValue !== undefined) return draftValue;
+
+    const normalizedOrderShippingMethod = String(order.shippingMethod || '').trim();
+    const matchingContract = carrierContracts.find((contract) => (
+      String(contract.id) === normalizedOrderShippingMethod || contract.contractName === normalizedOrderShippingMethod
+    ));
+    return matchingContract ? String(matchingContract.id) : '';
+  };
+
+  const handleShippingMethodDraftChange = (orderId: number, contractId: string) => {
+    setShippingMethodDrafts((prevDrafts) => ({
+      ...prevDrafts,
+      [orderId]: contractId,
+    }));
+  };
+
+  const handleSaveShippingMethod = async (order: any) => {
+    if (typeof order.id !== 'number') {
+      toast.error('Deze order kan niet worden bijgewerkt');
+      return;
+    }
+
+    if (normalizeOrderStatus(order) === 'verzonden') {
+      toast.error('Verzendmethode kan niet worden aangepast voor verzonden orders');
+      return;
+    }
+
+    const selectedOrderContractId = getOrderShippingContractId(order);
+    const selectedContract = carrierContracts.find((contract) => String(contract.id) === selectedOrderContractId);
+
+    if (!selectedContract) {
+      toast.error('Selecteer een verzendmethode');
+      return;
+    }
+
+    try {
+      setSavingShippingMethodOrderId(order.id);
+
+      const updatedOrder = await api.updateOrder(order.id, {
+        shippingMethod: selectedOrderContractId,
+      });
+
+      setOrders((prevOrders) => prevOrders.map((entry) => (
+        entry.id === order.id
+          ? {
+              ...entry,
+              shippingMethod: updatedOrder.shippingMethod || selectedOrderContractId,
+            }
+          : entry
+      )));
+
+      toast.success('Verzendmethode bijgewerkt');
+    } catch (error) {
+      console.error('Failed to update shipping method:', error);
+      toast.error('Kon verzendmethode niet bijwerken', {
+        description: error instanceof Error ? error.message : 'Probeer het opnieuw',
+      });
+    } finally {
+      setSavingShippingMethodOrderId(null);
+    }
   };
 
   const handleGenerateLabel = async () => {
     if (!labelOrder) return;
     if (!selectedContractId) return;
 
+    const selectedShippingMethod = selectedContractId || null;
+
     try {
       setGeneratingLabel(true);
       const result = await api.generateCarrierLabels(Number(selectedContractId), {
-        shippingMethod: null,
+        shippingMethod: selectedShippingMethod,
         packages: [
           {
             id: labelOrder.orderNumber || labelOrder.id,
+            orderId: labelOrder.id,
             orderNumber: labelOrder.orderNumber,
             customerName: labelOrder.customerName,
             address: labelOrder.address,
@@ -257,6 +332,29 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
         trackingCode: label?.trackingCode || null,
         trackingUrl: label?.trackingUrl || null,
       });
+
+      if (typeof labelOrder.id === 'number' && selectedShippingMethod) {
+        setOrders((prevOrders) => prevOrders.map((entry) => (
+          entry.id === labelOrder.id
+            ? {
+                ...entry,
+                shippingMethod: selectedShippingMethod,
+              }
+            : entry
+        )));
+        setLabelOrder((prevLabelOrder: any) => (
+          prevLabelOrder
+            ? {
+                ...prevLabelOrder,
+                shippingMethod: selectedShippingMethod,
+              }
+            : prevLabelOrder
+        ));
+        setShippingMethodDrafts((prevDrafts) => ({
+          ...prevDrafts,
+          [labelOrder.id]: selectedContractId,
+        }));
+      }
     } catch (error) {
       console.error('Failed to generate label:', error);
       let errorDescription = error instanceof Error ? error.message : 'Probeer het opnieuw';
@@ -816,6 +914,72 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                                     <span>Zendingstatus</span>
                                   </div>
                                   <p className="text-sm text-slate-900">{order.shippingStatus}</p>
+                                </div>
+
+                                {/* Verzendmethode */}
+                                <div className="space-y-2 col-span-2">
+                                  <div className="flex items-center gap-2 text-sm text-slate-500">
+                                    <Truck className="w-4 h-4" />
+                                    <span>Verzendmethode</span>
+                                  </div>
+
+                                  <p className="text-xs text-slate-500">Opgeslagen: {order.shippingMethod || '-'}</p>
+
+                                  {normalizeOrderStatus(order) === 'verzonden' ? (
+                                    <p className="text-sm text-slate-900">{order.shippingMethod || 'Niet ingesteld'}</p>
+                                  ) : (
+                                    <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                                      <Select
+                                        value={getOrderShippingContractId(order)}
+                                        onValueChange={(value: string) => {
+                                          if (typeof order.id === 'number') {
+                                            handleShippingMethodDraftChange(order.id, value);
+                                          }
+                                        }}
+                                        disabled={
+                                          loadingCarriers ||
+                                          carrierContracts.length === 0 ||
+                                          isAllStoresSelected ||
+                                          savingShippingMethodOrderId === order.id
+                                        }
+                                      >
+                                        <SelectTrigger className="w-full md:w-80 border-slate-200 shadow-sm">
+                                          <SelectValue placeholder="Selecteer verzendmethode" />
+                                        </SelectTrigger>
+                                        <SelectContent className="border-slate-200 shadow-lg">
+                                          {carrierContracts.map((contract) => (
+                                            <SelectItem key={contract.id} value={String(contract.id)}>
+                                              {contract.contractName}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="border-slate-200"
+                                        disabled={
+                                          loadingCarriers ||
+                                          carrierContracts.length === 0 ||
+                                          isAllStoresSelected ||
+                                          savingShippingMethodOrderId === order.id ||
+                                          !getOrderShippingContractId(order)
+                                        }
+                                        onClick={() => handleSaveShippingMethod(order)}
+                                      >
+                                        {savingShippingMethodOrderId === order.id ? (
+                                          <Loader2 className="w-4 h-4 animate-spin" />
+                                        ) : (
+                                          'Opslaan'
+                                        )}
+                                      </Button>
+                                    </div>
+                                  )}
+
+                                  {isAllStoresSelected && normalizeOrderStatus(order) !== 'verzonden' && (
+                                    <p className="text-xs text-slate-500">Kies eerst een specifieke store om de verzendmethode aan te passen.</p>
+                                  )}
                                 </div>
                               </div>
                             </div>

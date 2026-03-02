@@ -1,5 +1,18 @@
 import prisma from '../config/database.js';
 
+const normalizeOrderShippingState = (order) => {
+  const normalizedOrderStatus = String(order?.orderStatus || '').trim().toLowerCase();
+  const normalizedStatus = String(order?.status || '').trim().toLowerCase();
+
+  const shippedStates = ['verzonden', 'verstuurd', 'shipped', 'delivered', 'afgeleverd'];
+
+  if (shippedStates.includes(normalizedOrderStatus) || shippedStates.includes(normalizedStatus)) {
+    return 'verzonden';
+  }
+
+  return 'openstaand';
+};
+
 export const getOrders = async (req, res) => {
   try {
     const { installationId, userScoped, status, search, page = 1, limit = 50 } = req.query;
@@ -271,31 +284,100 @@ export const createOrder = async (req, res) => {
 export const updateOrder = async (req, res) => {
   try {
     const { id } = req.params;
-    const updateData = req.body;
+    const orderId = parseInt(id, 10);
+    const updateData = { ...(req.body || {}) };
+
+    if (Number.isNaN(orderId)) {
+      return res.status(400).json({ error: 'Invalid order ID' });
+    }
+
+    const existingOrder = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        userId: true,
+        installationId: true,
+        orderStatus: true,
+        status: true,
+      },
+    });
+
+    if (!existingOrder) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    if (!req.user.isGlobalAdmin && existingOrder.userId !== req.user.id) {
+      return res.status(403).json({ error: 'Access denied to this order' });
+    }
+
+    let shippingMethodToPersist = null;
+    const hasShippingMethodUpdate = Object.prototype.hasOwnProperty.call(updateData, 'shippingMethod');
+
+    if (hasShippingMethodUpdate) {
+      const shippingState = normalizeOrderShippingState(existingOrder);
+      if (shippingState === 'verzonden') {
+        return res.status(400).json({ error: 'Shipping method cannot be changed after verzending' });
+      }
+
+      const normalizedShippingMethod = String(updateData.shippingMethod || '').trim();
+      shippingMethodToPersist = normalizedShippingMethod || null;
+      delete updateData.shippingMethod;
+    }
 
     // Convert date strings to Date objects if present
     if (updateData.orderDate) updateData.orderDate = new Date(updateData.orderDate);
     if (updateData.deliveryDate) updateData.deliveryDate = new Date(updateData.deliveryDate);
     if (updateData.orderValue) updateData.orderValue = parseFloat(updateData.orderValue);
 
-    const order = await prisma.order.update({
-      where: {
-        id: parseInt(id),
-        userId: req.user.id,
-      },
-      data: updateData,
-      include: {
-        orderItems: true,
-        tracking: true,
-        label: true,
-      },
-    });
+    if (hasShippingMethodUpdate) {
+      await prisma.$executeRaw`
+        UPDATE \`Order\`
+        SET shippingMethod = ${shippingMethodToPersist}, updatedAt = NOW()
+        WHERE id = ${orderId} AND installationId = ${existingOrder.installationId}
+      `;
+    }
 
-    res.json(order);
+    let order;
+    if (Object.keys(updateData).length > 0) {
+      order = await prisma.order.update({
+        where: {
+          id: orderId,
+        },
+        data: updateData,
+        include: {
+          orderItems: true,
+          tracking: true,
+          label: true,
+        },
+      });
+    } else {
+      order = await prisma.order.findUnique({
+        where: {
+          id: orderId,
+        },
+        include: {
+          orderItems: true,
+          tracking: true,
+          label: true,
+        },
+      });
+    }
+
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    res.json(hasShippingMethodUpdate ? { ...order, shippingMethod: shippingMethodToPersist } : order);
   } catch (error) {
     console.error('Update order error:', error);
     if (error.code === 'P2025') {
       return res.status(404).json({ error: 'Order not found' });
+    }
+    if (error.code === 'P2010' || String(error?.message || '').includes('Unknown column')) {
+      return res.status(500).json({
+        error: 'Shipping method column is missing in database',
+        details: 'Voer de database migratie uit om kolom shippingMethod toe te voegen aan Order.',
+      });
     }
     res.status(500).json({ error: 'Internal server error' });
   }
