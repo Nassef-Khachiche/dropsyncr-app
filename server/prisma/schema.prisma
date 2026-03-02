@@ -34,9 +34,28 @@ model Installation {
   analytics    Analytics[]
   carriers     Carrier[]
   integrations Integration[]
+  automationRules AutomationRule[]
   orders       Order[]
   products     Product[]
   users        UserInstallation[]
+}
+
+model AutomationRule {
+  id             Int          @id @default(autoincrement())
+  installationId Int
+  name           String
+  countryCode    String
+  carrierType    String
+  priority       Int          @default(100)
+  active         Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  installation   Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+
+  @@index([installationId])
+  @@index([countryCode])
+  @@index([priority])
+  @@unique([installationId, countryCode, priority])
 }
 
 model UserInstallation {

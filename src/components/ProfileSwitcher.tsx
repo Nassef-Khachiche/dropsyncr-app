@@ -10,6 +10,7 @@ import {
 } from './ui/dropdown-menu';
 import { Button } from './ui/button';
 import { useAuth } from '../contexts/AuthContext';
+import { useLanguage } from '../contexts/LanguageContext';
 import { api } from '../services/api';
 
 interface ProfileSwitcherProps {
@@ -19,6 +20,7 @@ interface ProfileSwitcherProps {
 
 export function ProfileSwitcher({ activeProfile, onProfileChange }: ProfileSwitcherProps) {
   const { user, token, logout } = useAuth();
+  const { t } = useLanguage();
   const [installations, setInstallations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -97,7 +99,7 @@ export function ProfileSwitcher({ activeProfile, onProfileChange }: ProfileSwitc
     return (
       <Button variant="outline" className="gap-2 border-slate-200 shadow-sm" disabled>
         <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
-        <span>Laden...</span>
+        <span>{t('loading')}</span>
       </Button>
     );
   }
@@ -107,14 +109,14 @@ export function ProfileSwitcher({ activeProfile, onProfileChange }: ProfileSwitc
       <DropdownMenuTrigger asChild>
         <Button variant="outline" className="gap-2 border-slate-200 shadow-sm hover:bg-slate-50">
           <Building2 className="w-4 h-4 text-indigo-600" />
-          <span>{currentInstallation?.name || 'Geen installatie'}</span>
+          <span>{currentInstallation?.name || t('noInstallation')}</span>
           <ChevronDown className="w-4 h-4 text-slate-400" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64 border-slate-200 shadow-lg">
-        <DropdownMenuLabel className="text-slate-500">Eigen Stores</DropdownMenuLabel>
+        <DropdownMenuLabel className="text-slate-500">{t('ownStores')}</DropdownMenuLabel>
         {ownStores.length === 0 ? (
-          <div className="px-2 py-1.5 text-sm text-slate-400">Geen eigen stores</div>
+          <div className="px-2 py-1.5 text-sm text-slate-400">{t('noOwnStores')}</div>
         ) : (
           ownStores.map(installation => (
             <DropdownMenuItem
@@ -133,7 +135,7 @@ export function ProfileSwitcher({ activeProfile, onProfileChange }: ProfileSwitc
         {fulfilmentStores.length > 0 && (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuLabel className="text-slate-500">Fulfilment Klanten</DropdownMenuLabel>
+            <DropdownMenuLabel className="text-slate-500">{t('fulfilmentCustomers')}</DropdownMenuLabel>
             {fulfilmentStores.map(installation => (
               <DropdownMenuItem
                 key={installation.id}
@@ -155,7 +157,7 @@ export function ProfileSwitcher({ activeProfile, onProfileChange }: ProfileSwitc
         
         <DropdownMenuItem onClick={logout} className="text-red-600 focus:text-red-600 focus:bg-red-50">
           <LogOut className="w-4 h-4 mr-2" />
-          <span>Logout</span>
+          <span>{t('logout')}</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

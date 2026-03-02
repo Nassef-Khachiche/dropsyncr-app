@@ -916,71 +916,6 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                                   <p className="text-sm text-slate-900">{order.shippingStatus}</p>
                                 </div>
 
-                                {/* Verzendmethode */}
-                                <div className="space-y-2 col-span-2">
-                                  <div className="flex items-center gap-2 text-sm text-slate-500">
-                                    <Truck className="w-4 h-4" />
-                                    <span>Verzendmethode</span>
-                                  </div>
-
-                                  <p className="text-xs text-slate-500">Opgeslagen: {order.shippingMethod || '-'}</p>
-
-                                  {normalizeOrderStatus(order) === 'verzonden' ? (
-                                    <p className="text-sm text-slate-900">{order.shippingMethod || 'Niet ingesteld'}</p>
-                                  ) : (
-                                    <div className="flex flex-col gap-2 md:flex-row md:items-center">
-                                      <Select
-                                        value={getOrderShippingContractId(order)}
-                                        onValueChange={(value: string) => {
-                                          if (typeof order.id === 'number') {
-                                            handleShippingMethodDraftChange(order.id, value);
-                                          }
-                                        }}
-                                        disabled={
-                                          loadingCarriers ||
-                                          carrierContracts.length === 0 ||
-                                          isAllStoresSelected ||
-                                          savingShippingMethodOrderId === order.id
-                                        }
-                                      >
-                                        <SelectTrigger className="w-full md:w-80 border-slate-200 shadow-sm">
-                                          <SelectValue placeholder="Selecteer verzendmethode" />
-                                        </SelectTrigger>
-                                        <SelectContent className="border-slate-200 shadow-lg">
-                                          {carrierContracts.map((contract) => (
-                                            <SelectItem key={contract.id} value={String(contract.id)}>
-                                              {contract.contractName}
-                                            </SelectItem>
-                                          ))}
-                                        </SelectContent>
-                                      </Select>
-
-                                      <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className="border-slate-200"
-                                        disabled={
-                                          loadingCarriers ||
-                                          carrierContracts.length === 0 ||
-                                          isAllStoresSelected ||
-                                          savingShippingMethodOrderId === order.id ||
-                                          !getOrderShippingContractId(order)
-                                        }
-                                        onClick={() => handleSaveShippingMethod(order)}
-                                      >
-                                        {savingShippingMethodOrderId === order.id ? (
-                                          <Loader2 className="w-4 h-4 animate-spin" />
-                                        ) : (
-                                          'Opslaan'
-                                        )}
-                                      </Button>
-                                    </div>
-                                  )}
-
-                                  {isAllStoresSelected && normalizeOrderStatus(order) !== 'verzonden' && (
-                                    <p className="text-xs text-slate-500">Kies eerst een specifieke store om de verzendmethode aan te passen.</p>
-                                  )}
-                                </div>
                               </div>
                             </div>
 
@@ -1012,9 +947,14 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                                           </div>
                                         )}
                                         {item.sku && (
-                                          <div className="flex justify-between text-sm">
+                                          <div className="flex justify-between items-center gap-3 text-sm">
                                             <span className="text-slate-500">SKU</span>
-                                            <span className="text-slate-900 font-mono">{item.sku}</span>
+                                            <span
+                                              className="text-slate-900 font-mono max-w-[170px] truncate text-right"
+                                              title={item.sku}
+                                            >
+                                              {item.sku}
+                                            </span>
                                           </div>
                                         )}
                                         <div className="flex justify-between text-sm">

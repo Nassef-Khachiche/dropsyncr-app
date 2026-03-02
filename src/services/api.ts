@@ -290,6 +290,54 @@ class ApiService {
     });
   }
 
+  // Automation Rules
+  async getAutomationRules(params?: { installationId?: string; userScoped?: boolean }) {
+    const queryParams = new URLSearchParams();
+    if (params?.installationId) queryParams.append('installationId', params.installationId);
+    if (params?.userScoped) queryParams.append('userScoped', 'true');
+    const queryString = queryParams.toString();
+
+    return this.request<{ rules: any[] }>(
+      `/automation-rules${queryString ? `?${queryString}` : ''}`
+    );
+  }
+
+  async createAutomationRule(data: {
+    installationId: number;
+    name: string;
+    countryCode: string;
+    carrierType: string;
+    priority: number;
+    active?: boolean;
+  }) {
+    return this.request<{ rule: any }>('/automation-rules', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateAutomationRule(
+    id: number,
+    data: Partial<{
+      name: string;
+      countryCode: string;
+      carrierType: string;
+      priority: number;
+      active: boolean;
+    }>
+  ) {
+    return this.request<{ rule: any }>(`/automation-rules/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteAutomationRule(id: number) {
+    return this.request<{ success: boolean; message: string }>(`/automation-rules/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
   // Tickets
   async getTickets(params?: {
     status?: string;

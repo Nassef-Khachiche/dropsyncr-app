@@ -7,13 +7,18 @@ import { Integrations } from './components/Integrations';
 import { Carriers } from './components/Carriers';
 import { Settings } from './components/Settings';
 import { ProfileSwitcher } from './components/ProfileSwitcher';
+import { LanguageSwitcher } from './components/LanguageSwitcher';
+import { GlobalTextTranslator } from './components/GlobalTextTranslator';
 import { Login } from './components/Login';
 import { Administrative } from './components/Administrative';
+import { AutomatiseringsRegels } from './components/AutomatiseringsRegels';
 import { useAuth } from './contexts/AuthContext';
+import { useLanguage } from './contexts/LanguageContext';
 import { Loader2 } from 'lucide-react';
 
 export default function App() {
   const { isAuthenticated, loading, logout } = useAuth();
+  const { t } = useLanguage();
   const [activeProfile, setActiveProfile] = useState<string | null>(null);
   const [activeView, setActiveView] = useState('orders');
 
@@ -43,6 +48,8 @@ export default function App() {
         return <Settings activeProfile={activeProfile} />;
       case 'administrative':
         return <Administrative activeProfile={activeProfile} />;
+      case 'automation-rules':
+        return <AutomatiseringsRegels activeProfile={activeProfile} />;
       default:
         return <OrdersOverview activeProfile={activeProfile} />;
     }
@@ -54,7 +61,7 @@ export default function App() {
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 via-white to-indigo-50/30">
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin text-indigo-600 mx-auto mb-4" />
-          <p className="text-slate-600">Loading...</p>
+          <p className="text-slate-600">{t('loading')}</p>
         </div>
       </div>
     );
@@ -68,6 +75,7 @@ export default function App() {
   // Show main app if authenticated
   return (
     <div className="flex min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/30">
+      <GlobalTextTranslator />
       {/* Sidebar */}
       <AppSidebar activeView={activeView} onViewChange={setActiveView} />
       
@@ -76,10 +84,13 @@ export default function App() {
         {/* Header */}
         <header className="bg-white/80 backdrop-blur-xl border-b border-slate-200/60 sticky top-0 z-40 shadow-sm">
           <div className="px-8 py-5 flex items-center justify-end">
-            <ProfileSwitcher 
-              activeProfile={activeProfile} 
-              onProfileChange={setActiveProfile} 
-            />
+            <div className="flex items-center gap-3">
+              <LanguageSwitcher />
+              <ProfileSwitcher 
+                activeProfile={activeProfile} 
+                onProfileChange={setActiveProfile} 
+              />
+            </div>
           </div>
         </header>
 

@@ -228,14 +228,13 @@ export function Administrators() {
                     <TableHead>Email</TableHead>
                     <TableHead>Rol</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Installaties</TableHead>
                     <TableHead className="text-right">Acties</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {users.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8">
+                      <TableCell colSpan={5} className="text-center py-8">
                         {error ? (
                           <div className="space-y-2">
                             <p className="text-red-600 font-medium">Error loading users</p>
@@ -274,26 +273,13 @@ export function Administrators() {
                         </TableCell>
                         <TableCell>
                           {user.isGlobalAdmin ? (
-                            <Badge className="bg-gradient-to-r from-purple-500 to-indigo-500 border-0 gap-1">
+                            <Badge variant="outline" className="border-purple-200 text-purple-700 bg-purple-50 gap-1">
                               <Shield className="w-3 h-3" />
                               Global Admin
                             </Badge>
                           ) : (
                             <Badge variant="outline">Gebruiker</Badge>
                           )}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-wrap gap-1">
-                            {user.installations.length > 0 ? (
-                              user.installations.map((inst) => (
-                                <Badge key={inst.id} variant="outline" className="text-xs">
-                                  {inst.name}
-                                </Badge>
-                              ))
-                            ) : (
-                              <span className="text-sm text-slate-400">Geen installaties</span>
-                            )}
-                          </div>
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">

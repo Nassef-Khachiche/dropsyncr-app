@@ -30,7 +30,8 @@ import {
   ShoppingBag,
   Package,
   Loader2,
-  RefreshCw
+  RefreshCw,
+  Trash2
 } from 'lucide-react';
 import { Alert, AlertDescription } from './ui/alert';
 import { toast } from 'sonner';
@@ -423,6 +424,16 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
                       </div>
 
                       <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 w-8 p-0 border-slate-200"
+                          onClick={() => handleOpenSettings(store)}
+                          aria-label="Instellingen"
+                          title="Instellingen"
+                        >
+                          <Settings className="w-3.5 h-3.5" />
+                        </Button>
                         {store.platform === 'bol.com' && (
                           <Button 
                             variant="outline" 
@@ -440,22 +451,15 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
                           </Button>
                         )}
                         <div className="ml-auto flex items-center gap-1">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 px-2 gap-1 border-slate-200"
-                            onClick={() => handleOpenSettings(store)}
-                          >
-                            <Settings className="w-3.5 h-3.5" />
-                            Instellingen
-                          </Button>
                           <Button 
                             variant="outline" 
                             size="sm" 
-                            className="h-8 px-2 gap-1 border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300"
+                            className="h-8 w-8 p-0 border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300"
                             onClick={() => handleDisconnect(store.id)}
+                            aria-label="Ontkoppelen"
+                            title="Ontkoppelen"
                           >
-                            Ontkoppelen
+                            <Trash2 className="w-3.5 h-3.5" />
                           </Button>
                         </div>
                       </div>

@@ -399,7 +399,7 @@ export function Carriers({ activeProfile }: CarriersProps) {
                   <CardContent className="p-6">
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-center gap-3">
-                        <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${contract.carrierColor} p-2 flex items-center justify-center shadow-lg`}>
+                        <div className="w-12 h-12 rounded-xl bg-slate-100 border border-slate-200 p-2 flex items-center justify-center shadow-sm">
                           <img src={contract.carrierLogo} alt={contract.carrier} className="w-full h-full object-contain" />
                         </div>
                         <div>
@@ -443,15 +443,6 @@ export function Carriers({ activeProfile }: CarriersProps) {
                       >
                         <Settings className="w-4 h-4" />
                         Instellingen
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="gap-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:border-emerald-300"
-                        onClick={() => handleTestConnection(contract)}
-                      >
-                        <CheckCircle2 className="w-4 h-4" />
-                        Test
                       </Button>
                       <Button 
                         variant="outline" 
@@ -540,7 +531,7 @@ export function Carriers({ activeProfile }: CarriersProps) {
                   {availableCarriers.map((carrier) => (
                     <SelectItem key={carrier.id} value={carrier.id}>
                       <div className="flex items-center gap-2">
-                        <div className={`w-6 h-6 rounded bg-gradient-to-br ${carrier.bgColor} flex items-center justify-center`}>
+                        <div className="w-6 h-6 rounded bg-slate-100 border border-slate-200 flex items-center justify-center">
                           <img src={carrier.logo} alt={carrier.name} className="w-4 h-4 object-contain" />
                         </div>
                         <span>{carrier.name}</span>

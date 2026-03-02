@@ -13,6 +13,28 @@ const normalizeOrderShippingState = (order) => {
   return 'openstaand';
 };
 
+const resolveCarrierFromAutomationRules = async (installationId, country) => {
+  const normalizedCountryCode = String(country || '').trim().toUpperCase();
+  if (!normalizedCountryCode) return null;
+
+  const matchingRule = await prisma.automationRule.findFirst({
+    where: {
+      installationId,
+      countryCode: normalizedCountryCode,
+      active: true,
+    },
+    orderBy: [
+      { priority: 'asc' },
+      { createdAt: 'asc' },
+    ],
+    select: {
+      carrierType: true,
+    },
+  });
+
+  return matchingRule?.carrierType || null;
+};
+
 export const getOrders = async (req, res) => {
   try {
     const { installationId, userScoped, status, search, page = 1, limit = 50 } = req.query;
@@ -219,12 +241,17 @@ export const createOrder = async (req, res) => {
       status,
     } = req.body;
 
+    const parsedInstallationId = parseInt(installationId, 10);
+    if (Number.isNaN(parsedInstallationId)) {
+      return res.status(400).json({ error: 'Invalid installation ID' });
+    }
+
     // Verify user has access to this installation (unless global admin)
     if (!req.user.isGlobalAdmin) {
       const hasAccess = await prisma.userInstallation.findFirst({
         where: {
           userId: req.user.id,
-          installationId: parseInt(installationId),
+          installationId: parsedInstallationId,
         },
       });
       if (!hasAccess) {
@@ -232,10 +259,12 @@ export const createOrder = async (req, res) => {
       }
     }
 
+    const autoAssignedCarrier = await resolveCarrierFromAutomationRules(parsedInstallationId, country);
+
     const order = await prisma.order.create({
       data: {
         orderNumber,
-        installationId: parseInt(installationId),
+        installationId: parsedInstallationId,
         userId: req.user.id,
         customerName,
         customerEmail,
@@ -250,6 +279,7 @@ export const createOrder = async (req, res) => {
         supplierTracking,
         status: status || 'onderweg-ffm',
         orderStatus: 'openstaand',
+        shippingMethod: autoAssignedCarrier,
         orderItems: {
           create: items?.map((item) => ({
             productId: item.productId || null,
