@@ -131,9 +131,9 @@ export function AppSidebar({ activeView, onViewChange }: AppSidebarProps) {
           <div className="w-12 h-12 rounded-full overflow-hidden shadow-lg flex-shrink-0">
             <img src={logo} alt="Dropsyncr" className="w-full h-full object-cover" />
           </div>
-          <div>
-            <h2 className="text-lg bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">dropsyncr</h2>
-          </div>
+        <h2 className="text-lg bg-gradient-to-r fw-bolder from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+          <b>DROPSYNCR</b>
+        </h2>
         </div>
       </div>
 

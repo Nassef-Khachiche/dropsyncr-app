@@ -146,6 +146,55 @@ const firstNonEmptyString = (...values) => {
   return null;
 };
 
+const isLikelyImageUrl = (value) => {
+  if (!value || typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  if (!/^https?:\/\//i.test(trimmed)) return false;
+
+  return (
+    /\.(png|jpe?g|webp|gif|bmp|svg)(\?|$)/i.test(trimmed) ||
+    /(image|images|thumbnail|photo|picture|media)/i.test(trimmed)
+  );
+};
+
+const collectImageUrlsFromObject = (input) => {
+  const urls = [];
+  const visited = new Set();
+
+  const visit = (node, parentKey = '') => {
+    if (!node) return;
+
+    if (typeof node === 'string') {
+      if (isLikelyImageUrl(node) || /(image|thumbnail|photo|picture)/i.test(parentKey)) {
+        urls.push(node.trim());
+      }
+      return;
+    }
+
+    if (typeof node !== 'object') return;
+    if (visited.has(node)) return;
+    visited.add(node);
+
+    if (Array.isArray(node)) {
+      node.forEach((entry) => visit(entry, parentKey));
+      return;
+    }
+
+    for (const [key, value] of Object.entries(node)) {
+      if (typeof value === 'string') {
+        if (isLikelyImageUrl(value) || /(image|thumbnail|photo|picture|url|href|link)/i.test(key)) {
+          urls.push(value.trim());
+        }
+      } else {
+        visit(value, key);
+      }
+    }
+  };
+
+  visit(input);
+  return urls.filter(Boolean);
+};
+
 const toValidDate = (value) => {
   if (!value) return null;
   const parsed = new Date(value);
@@ -363,6 +412,42 @@ const tryBolApiRequest = async (credentials, endpoints = []) => {
   return null;
 };
 
+const resolveImageFromBolEnrichment = (enrichmentData = {}) => {
+  const directCandidates = [
+    ...(Array.isArray(enrichmentData?.images) ? enrichmentData.images : []),
+    ...(Array.isArray(enrichmentData?.product?.images) ? enrichmentData.product.images : []),
+    ...(Array.isArray(enrichmentData?.media?.images) ? enrichmentData.media.images : []),
+    ...(Array.isArray(enrichmentData?.assets?.images) ? enrichmentData.assets.images : []),
+    enrichmentData?.mainImage,
+    enrichmentData?.image,
+    enrichmentData?.thumbnail,
+  ].filter(Boolean);
+
+  for (const candidate of directCandidates) {
+    if (typeof candidate === 'string' && isLikelyImageUrl(candidate)) {
+      return candidate;
+    }
+
+    if (candidate && typeof candidate === 'object') {
+      const explicitUrl = firstNonEmptyString(
+        candidate.url,
+        candidate.href,
+        candidate.link,
+        candidate.uri,
+        candidate.secureUrl,
+        candidate.location
+      );
+
+      if (explicitUrl && isLikelyImageUrl(explicitUrl)) {
+        return explicitUrl;
+      }
+    }
+  }
+
+  const discoveredUrls = collectImageUrlsFromObject(enrichmentData);
+  return discoveredUrls.find((url) => isLikelyImageUrl(url)) || discoveredUrls[0] || null;
+};
+
 // --- ENRICH PRODUCT VIA CONTENT API ONLY ---
 const enrichBolProductData = async ({ credentials, ean }) => {
   const eanValue = firstNonEmptyString(ean);
@@ -373,18 +458,28 @@ const enrichBolProductData = async ({ credentials, ean }) => {
   }
 
   try {
-    const endpoint = `/content/products/${encodeURIComponent(eanValue)}`;
+    const productPath = `/content/products/${encodeURIComponent(eanValue)}`;
+    const enrichmentResponse = await tryBolApiRequest(credentials, [
+      `${productPath}`,
+      `${productPath}?country-code=NL`,
+    ]);
 
-    const data = await bolApiRequest(credentials, endpoint);
+    if (!enrichmentResponse) {
+      throw new Error(`No response from Bol content endpoints for EAN ${eanValue}`);
+    }
+
+    const { endpoint, data } = enrichmentResponse;
+    const resolvedImage = resolveImageFromBolEnrichment(data);
 
     console.log('[BOL ENRICHMENT SUCCESS]', {
       ean: eanValue,
       hasImages: Array.isArray(data?.images),
       imageCount: data?.images?.length || 0,
+      resolvedImage: !!resolvedImage,
       brand: data?.brand,
     });
 
-    return { endpoint, data };
+    return { endpoint, data, resolvedImage };
   } catch (error) {
     console.warn('[BOL ENRICHMENT FAILED]', {
       ean: eanValue,
@@ -646,21 +741,21 @@ export const syncBolOrders = async (req, res) => {
             if (enrichmentResponse) {
               const enrichmentData = enrichmentResponse.data;
               const enrichmentEndpoint = enrichmentResponse.endpoint;
-            if (!resolvedProductImage && Array.isArray(enrichmentData?.images)) {
-              const mainImage =
-                enrichmentData.images.find(img => img.type === 'MAIN') ||
-                enrichmentData.images[0];
 
-              resolvedProductImage = firstNonEmptyString(
-                mainImage?.url,
-                mainImage?.href
-              );
+              if (!resolvedProductImage) {
+                resolvedProductImage = firstNonEmptyString(
+                  enrichmentResponse.resolvedImage,
+                  resolveImageFromBolEnrichment(enrichmentData)
+                );
 
-              console.log('[BOL IMAGE RESOLVED]', {
-                ean,
-                resolvedProductImage,
-              });
-            }
+                if (resolvedProductImage) {
+                  console.log('[BOL IMAGE RESOLVED]', {
+                    ean,
+                    endpoint: enrichmentEndpoint,
+                    resolvedProductImage,
+                  });
+                }
+              }
             }
           }
 
