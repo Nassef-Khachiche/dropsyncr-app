@@ -355,6 +355,26 @@ export function Carriers({ activeProfile }: CarriersProps) {
     return `${stringValue.slice(0, 2)}••••${stringValue.slice(-2)}`;
   };
 
+  const getCredentialPreviewEntries = (contract: Contract): [string, any][] => {
+    const credentials = contract.credentials || {};
+
+    if (contract.carrier === 'dpd') {
+      const delisId = credentials.delisId || credentials.username;
+      const previewEntries: [string, any][] = [];
+
+      if (delisId) previewEntries.push(['delisId', delisId]);
+      if (credentials.depotNumber) previewEntries.push(['depotNumber', credentials.depotNumber]);
+
+      if (previewEntries.length > 0) {
+        return previewEntries.slice(0, 2);
+      }
+    }
+
+    return Object.entries(credentials)
+      .filter(([, value]) => value !== null && value !== undefined && String(value).trim() !== '')
+      .slice(0, 2) as [string, any][];
+  };
+
   const selectedCarrierData = availableCarriers.find(c => c.id === selectedCarrier);
 
   return (
@@ -410,7 +430,7 @@ export function Carriers({ activeProfile }: CarriersProps) {
                     </div>
 
                     <div className="space-y-2 mb-4">
-                      {Object.entries(contract.credentials).slice(0, 2).map(([key, value]) => (
+                      {getCredentialPreviewEntries(contract).map(([key, value]) => (
                         <div key={key} className="flex items-center justify-between text-sm">
                           <span className="text-slate-600 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}:</span>
                           <span className="font-mono text-slate-900 text-xs">{maskCredentialValue(key, value)}</span>
