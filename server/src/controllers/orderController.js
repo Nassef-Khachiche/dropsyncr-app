@@ -386,11 +386,31 @@ export const updateOrder = async (req, res) => {
 export const deleteOrder = async (req, res) => {
   try {
     const { id } = req.params;
+    const orderId = parseInt(id, 10);
+
+    if (Number.isNaN(orderId)) {
+      return res.status(400).json({ error: 'Invalid order ID' });
+    }
+
+    const existingOrder = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        userId: true,
+      },
+    });
+
+    if (!existingOrder) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    if (!req.user.isGlobalAdmin && existingOrder.userId !== req.user.id) {
+      return res.status(403).json({ error: 'Access denied to this order' });
+    }
 
     await prisma.order.delete({
       where: {
-        id: parseInt(id),
-        userId: req.user.id,
+        id: orderId,
       },
     });
 
