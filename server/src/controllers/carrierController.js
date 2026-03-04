@@ -452,7 +452,23 @@ export const generateCarrierLabels = async (req, res) => {
 
     const selectedShippingMethod = String(shippingMethod || carrier.id || '').trim() || null;
 
-    const buildPublicLabelUrl = (fileName) => `${req.protocol}://${req.get('host')}/labels/${fileName}`;
+    const forwardedProto = String(req.get('x-forwarded-proto') || '')
+      .split(',')[0]
+      .trim()
+      .toLowerCase();
+    const forwardedHost = String(req.get('x-forwarded-host') || '')
+      .split(',')[0]
+      .trim();
+    const requestHost = forwardedHost || String(req.get('host') || '').trim();
+    const protocol =
+      req.secure ||
+      forwardedProto === 'https' ||
+      process.env.FORCE_LABEL_HTTPS === 'true' ||
+      process.env.NODE_ENV === 'production'
+        ? 'https'
+        : req.protocol;
+
+    const buildPublicLabelUrl = (fileName) => `${protocol}://${requestHost}/labels/${fileName}`;
 
     const resolveStoredLabelUrl = async (labelUrl, orderId) => {
       const normalized = String(labelUrl || '').trim();
@@ -477,10 +493,22 @@ export const generateCarrierLabels = async (req, res) => {
       }
 
       if (normalized.startsWith('/labels/')) {
-        return `${req.protocol}://${req.get('host')}${normalized}`;
+        return `${protocol}://${requestHost}${normalized}`;
       }
 
       if (normalized.startsWith('http://') || normalized.startsWith('https://')) {
+        try {
+          const parsedUrl = new URL(normalized);
+          const sameHost = parsedUrl.host.toLowerCase() === requestHost.toLowerCase();
+
+          if (sameHost && protocol === 'https' && parsedUrl.protocol === 'http:') {
+            parsedUrl.protocol = 'https:';
+            return parsedUrl.toString();
+          }
+        } catch {
+          return normalized.length <= 191 ? normalized : null;
+        }
+
         return normalized.length <= 191 ? normalized : null;
       }
 

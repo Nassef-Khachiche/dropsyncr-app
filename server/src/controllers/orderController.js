@@ -18,6 +18,47 @@ const normalizeOrderShippingState = (order) => {
   return 'openstaand';
 };
 
+const normalizeLabelUrlForResponse = (labelUrl, req) => {
+  const normalized = String(labelUrl || '').trim();
+  if (!normalized) return normalized;
+
+  const forwardedProto = String(req.get('x-forwarded-proto') || '')
+    .split(',')[0]
+    .trim()
+    .toLowerCase();
+  const forwardedHost = String(req.get('x-forwarded-host') || '')
+    .split(',')[0]
+    .trim();
+  const requestHost = forwardedHost || String(req.get('host') || '').trim();
+  const protocol =
+    req.secure ||
+    forwardedProto === 'https' ||
+    process.env.FORCE_LABEL_HTTPS === 'true' ||
+    process.env.NODE_ENV === 'production'
+      ? 'https'
+      : req.protocol;
+
+  if (normalized.startsWith('/labels/')) {
+    return `${protocol}://${requestHost}${normalized}`;
+  }
+
+  if (normalized.startsWith('http://') || normalized.startsWith('https://')) {
+    try {
+      const parsedUrl = new URL(normalized);
+      const sameHost = parsedUrl.host.toLowerCase() === requestHost.toLowerCase();
+
+      if (sameHost && protocol === 'https' && parsedUrl.protocol === 'http:') {
+        parsedUrl.protocol = 'https:';
+        return parsedUrl.toString();
+      }
+    } catch {
+      return normalized;
+    }
+  }
+
+  return normalized;
+};
+
 export const getOrders = async (req, res) => {
   try {
     const { installationId, userScoped, status, search, page = 1, limit = 50 } = req.query;
@@ -154,8 +195,18 @@ export const getOrders = async (req, res) => {
       prisma.order.count({ where: finalWhere }),
     ]);
 
+    const normalizedOrders = orders.map((order) => ({
+      ...order,
+      label: order.label
+        ? {
+            ...order.label,
+            labelUrl: normalizeLabelUrlForResponse(order.label.labelUrl, req),
+          }
+        : order.label,
+    }));
+
     res.json({
-      orders,
+      orders: normalizedOrders,
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
@@ -198,7 +249,17 @@ export const getOrder = async (req, res) => {
       return res.status(404).json({ error: 'Order not found' });
     }
 
-    res.json(order);
+    const normalizedOrder = {
+      ...order,
+      label: order.label
+        ? {
+            ...order.label,
+            labelUrl: normalizeLabelUrlForResponse(order.label.labelUrl, req),
+          }
+        : order.label,
+    };
+
+    res.json(normalizedOrder);
   } catch (error) {
     console.error('Get order error:', error);
     res.status(500).json({ error: 'Internal server error' });
