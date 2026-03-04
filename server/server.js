@@ -81,7 +81,21 @@ app.use('/api/automation-rules', automationRuleRoutes);
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Error:', err);
-  res.status(500).json({ error: 'Internal server error' });
+  const statusCode = Number.isInteger(err?.statusCode)
+    ? err.statusCode
+    : Number.isInteger(err?.status)
+      ? err.status
+      : 500;
+
+  const fallbackMessage = statusCode >= 500 ? 'Internal server error' : 'Request failed';
+  const errorMessage = typeof err?.message === 'string' && err.message.trim()
+    ? err.message.trim()
+    : fallbackMessage;
+
+  res.status(statusCode).json({
+    error: errorMessage,
+    ...(process.env.NODE_ENV !== 'production' ? { details: err?.stack || null } : {}),
+  });
 });
 
 // Start server
