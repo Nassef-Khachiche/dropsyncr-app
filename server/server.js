@@ -27,20 +27,29 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+const normalizeOrigin = (value) => String(value || '').trim().replace(/\/$/, '');
+
 const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
   'http://0.0.0.0:3000',
-];
+  'https://dropsyncr.com',
+  'https://www.dropsyncr.com',
+  process.env.FRONTEND_URL,
+]
+  .map(normalizeOrigin)
+  .filter(Boolean);
 
 // Middleware
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
+    const normalizedOrigin = normalizeOrigin(origin);
+    if (!normalizedOrigin || allowedOrigins.includes(normalizedOrigin)) {
       callback(null, true);
       return;
     }
-    callback(new Error(`CORS blocked for origin: ${origin}`));
+
+    callback(null, false);
   },
   credentials: true
 }));
