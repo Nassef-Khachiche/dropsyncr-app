@@ -1,5 +1,12 @@
 import prisma from '../config/database.js';
 import fetch from 'node-fetch';
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const LABEL_STORAGE_DIR = path.resolve(__dirname, '../../storage/labels');
 
 const parseCredentialsSafely = (value) => {
   if (!value) return {};
@@ -42,13 +49,23 @@ const isTruthyValue = (value) => {
 const normalizeWeGrowCredentials = (rawCredentials = {}) => {
   const credentials = { ...(rawCredentials || {}) };
   const trimMaybe = (value) => (value === undefined || value === null ? value : String(value).trim());
+  const sanitizeSecret = (value) => {
+    if (value === undefined || value === null) return value;
+    return String(value)
+      .trim()
+      .replace(/^['"]+|['"]+$/g, '')
+      .replace(/[\r\n\t]/g, '')
+      .trim();
+  };
 
   if (credentials.apiKey === undefined) credentials.apiKey = credentials.xKey ?? credentials.key ?? credentials.api_key;
+  if (credentials.bearerToken === undefined) credentials.bearerToken = credentials.authToken ?? credentials.token;
   if (credentials.baseUrl === undefined) credentials.baseUrl = credentials.base_url;
   if (credentials.apiVersion === undefined) credentials.apiVersion = credentials.xVersion ?? credentials.version ?? credentials.x_version;
   if (credentials.serviceCode === undefined) credentials.serviceCode = credentials.service_code;
 
-  if (credentials.apiKey !== undefined) credentials.apiKey = trimMaybe(credentials.apiKey);
+  if (credentials.apiKey !== undefined) credentials.apiKey = sanitizeSecret(credentials.apiKey);
+  if (credentials.bearerToken !== undefined) credentials.bearerToken = sanitizeSecret(credentials.bearerToken);
   if (credentials.baseUrl !== undefined) credentials.baseUrl = trimMaybe(credentials.baseUrl);
   if (credentials.apiVersion !== undefined) credentials.apiVersion = trimMaybe(credentials.apiVersion);
   if (credentials.serviceCode !== undefined) credentials.serviceCode = trimMaybe(credentials.serviceCode);
@@ -78,9 +95,10 @@ const normalizeCarrierCredentials = (carrierType, rawCredentials = {}) => {
 
 const getWeGrowAuthConfig = (rawCredentials = {}) => {
   const normalize = (value) => (value === undefined || value === null ? '' : String(value).trim());
+  const sanitizeSecret = (value) => normalize(value).replace(/^['"]+|['"]+$/g, '').replace(/[\r\n\t]/g, '').trim();
   const credentials = rawCredentials || {};
 
-  const apiKey = normalize(
+  const apiKey = sanitizeSecret(
     credentials.apiKey ||
     credentials.xKey ||
     credentials.key ||
@@ -88,12 +106,14 @@ const getWeGrowAuthConfig = (rawCredentials = {}) => {
   );
   const sanitizedApiKey = apiKey.replace(/^bearer\s+/i, '').trim();
 
-  let bearerToken = normalize(
+  let bearerToken = sanitizeSecret(
     credentials.bearerToken ||
     credentials.authToken ||
     credentials.token ||
     process.env.WEGROW_BEARER_TOKEN
   );
+
+  bearerToken = bearerToken.replace(/^bearer\s+/i, '').trim();
 
   if (!bearerToken && /^bearer\s+/i.test(apiKey)) {
     bearerToken = sanitizedApiKey;
@@ -399,7 +419,7 @@ export const testCarrierConnection = async (req, res) => {
 export const generateCarrierLabels = async (req, res) => {
   try {
     const { id } = req.params;
-    const { packages = [], shippingMethod } = req.body;
+    const { packages = [], shippingMethod, wegrowCarrier } = req.body;
 
     const carrier = await prisma.carrier.findUnique({
       where: { id: parseInt(id) },
@@ -431,6 +451,41 @@ export const generateCarrierLabels = async (req, res) => {
     }
 
     const selectedShippingMethod = String(shippingMethod || carrier.id || '').trim() || null;
+
+    const buildPublicLabelUrl = (fileName) => `${req.protocol}://${req.get('host')}/labels/${fileName}`;
+
+    const resolveStoredLabelUrl = async (labelUrl, orderId) => {
+      const normalized = String(labelUrl || '').trim();
+      if (!normalized) return null;
+
+      if (normalized.startsWith('data:')) {
+        const dataUrlMatch = normalized.match(/^data:([^;]+);base64,(.+)$/i);
+        if (!dataUrlMatch) return null;
+
+        const mimeType = String(dataUrlMatch[1] || 'application/octet-stream').toLowerCase();
+        const base64Payload = dataUrlMatch[2] || '';
+        const extension = mimeType.includes('pdf') ? 'pdf' : mimeType.includes('png') ? 'png' : 'bin';
+
+        await fs.mkdir(LABEL_STORAGE_DIR, { recursive: true });
+
+        const safeOrderId = Number.isInteger(Number(orderId)) ? Number(orderId) : 'unknown';
+        const fileName = `label-${safeOrderId}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${extension}`;
+        const filePath = path.join(LABEL_STORAGE_DIR, fileName);
+
+        await fs.writeFile(filePath, Buffer.from(base64Payload, 'base64'));
+        return buildPublicLabelUrl(fileName);
+      }
+
+      if (normalized.startsWith('/labels/')) {
+        return `${req.protocol}://${req.get('host')}${normalized}`;
+      }
+
+      if (normalized.startsWith('http://') || normalized.startsWith('https://')) {
+        return normalized.length <= 191 ? normalized : null;
+      }
+
+      return normalized.length <= 191 ? normalized : null;
+    };
 
     const persistOrderShippingMethodAndLabels = async (generatedLabels = []) => {
       const packageList = Array.isArray(packages) ? packages : [];
@@ -511,17 +566,11 @@ export const generateCarrierLabels = async (req, res) => {
 
       const operations = [
         ...resolvedPackages.map(({ orderId, generatedLabel }) => {
-          const trackingCodeValue = String(generatedLabel?.trackingCode || '').trim();
-
           if (hasShippingMethodColumn) {
             return prisma.$executeRaw`
               UPDATE \`Order\`
               SET
                 shippingMethod = ${selectedShippingMethod},
-                supplierTracking = CASE
-                  WHEN ${trackingCodeValue} = '' THEN supplierTracking
-                  ELSE ${generatedLabel?.trackingCode || null}
-                END,
                 updatedAt = NOW()
               WHERE id = ${orderId} AND installationId = ${carrier.installationId}
             `;
@@ -530,29 +579,27 @@ export const generateCarrierLabels = async (req, res) => {
           return prisma.$executeRaw`
             UPDATE \`Order\`
             SET
-              supplierTracking = CASE
-                WHEN ${trackingCodeValue} = '' THEN supplierTracking
-                ELSE ${generatedLabel?.trackingCode || null}
-              END,
               updatedAt = NOW()
             WHERE id = ${orderId} AND installationId = ${carrier.installationId}
           `;
         }),
       ];
 
-      const getPersistedLabelUrl = (labelUrl) => {
-        const normalized = String(labelUrl || '').trim();
-        if (!normalized) return null;
+      const persistedLabelUrlsByOrderId = new Map();
 
-        if (normalized.startsWith('data:')) {
-          return null;
-        }
-
-        return normalized.length <= 191 ? normalized : null;
-      };
+      await Promise.all(
+        resolvedPackages.map(async ({ orderId, generatedLabel }) => {
+          const persistedLabelUrl = await resolveStoredLabelUrl(generatedLabel?.labelUrl, orderId);
+          persistedLabelUrlsByOrderId.set(orderId, persistedLabelUrl);
+        })
+      );
 
       resolvedPackages.forEach(({ orderId, generatedLabel }) => {
-        const persistedLabelUrl = getPersistedLabelUrl(generatedLabel?.labelUrl);
+        const persistedLabelUrl = persistedLabelUrlsByOrderId.get(orderId) || null;
+
+        if (persistedLabelUrl && generatedLabel) {
+          generatedLabel.labelUrl = persistedLabelUrl;
+        }
 
         operations.push(
           prisma.label.upsert({
@@ -934,12 +981,22 @@ export const generateCarrierLabels = async (req, res) => {
       const productionDefault = process.env.WEGROW_PRODUCTION_URL || 'https://api.wegrow.eu';
       const useSandbox = credentials.sandbox === true || credentials.environment === 'sandbox';
 
+      const normalizeBaseUrl = (value) => {
+        const raw = String(value || '').trim();
+        if (!raw) return raw;
+
+        const withoutTrailing = raw.replace(/\/+$/, '');
+        return withoutTrailing
+          .replace(/\/shipments\/labels$/i, '')
+          .replace(/\/shipments$/i, '');
+      };
+
       if (credentials.baseUrl) {
-        return credentials.baseUrl;
+        return normalizeBaseUrl(credentials.baseUrl);
       }
 
       if (process.env.WEGROW_BASE_URL) {
-        return process.env.WEGROW_BASE_URL;
+        return normalizeBaseUrl(process.env.WEGROW_BASE_URL);
       }
 
       return useSandbox ? sandboxDefault : productionDefault;
@@ -1173,19 +1230,40 @@ export const generateCarrierLabels = async (req, res) => {
 
     if (carrier.carrierType === 'wegrow') {
       const credentials = normalizeWeGrowCredentials(parseCredentialsSafely(carrier.credentials));
-      const { apiKey, headers: weGrowAuthHeaders } = getWeGrowAuthConfig(credentials);
-      const serviceCode = credentials.serviceCode || shippingMethod;
+      const { apiKey } = getWeGrowAuthConfig(credentials);
+      const selectedWeGrowCarrier = String(wegrowCarrier || '').trim().toLowerCase();
+      const serviceCodeByCarrier = {
+        dhl: credentials.dhlServiceCode,
+        postnl: credentials.postnlServiceCode,
+        bpost: credentials.bpostServiceCode,
+      };
+      const selectedCarrierServiceCode = selectedWeGrowCarrier
+        ? serviceCodeByCarrier[selectedWeGrowCarrier]
+        : null;
+      const serviceCode = selectedCarrierServiceCode || credentials.serviceCode;
 
       if (!apiKey) {
-        return res.status(400).json({ error: 'WeGrow API key ontbreekt' });
+        return res.status(400).json({
+          error: 'WeGrow x-key ontbreekt',
+          details: 'Voor label generatie is WeGrow API Key (x-key) verplicht.',
+        });
+      }
+
+      if (selectedWeGrowCarrier && !['dhl', 'postnl', 'bpost'].includes(selectedWeGrowCarrier)) {
+        return res.status(400).json({ error: 'Ongeldige WeGrow vervoerder. Kies DHL, PostNL of Bpost.' });
       }
 
       if (!serviceCode) {
-        return res.status(400).json({ error: 'WeGrow service code ontbreekt' });
+        return res.status(400).json({
+          error: 'WeGrow service code ontbreekt',
+          details: selectedWeGrowCarrier
+            ? `Geen service code gevonden voor WeGrow vervoerder ${selectedWeGrowCarrier.toUpperCase()}`
+            : 'Stel een algemene WeGrow service code in of kies een WeGrow vervoerder met service code mapping.',
+        });
       }
 
       const baseUrl = getWeGrowBaseUrl(credentials).replace(/\/+$/, '');
-      const apiVersion = credentials.apiVersion || 'v1';
+      const apiVersion = String(credentials.apiVersion || 'v1').trim().toLowerCase() || 'v1';
 
       const senderName = credentials.senderName || 'Dropsyncr Warehouse';
       const senderStreet = credentials.senderStreet || 'Warehouse Street 1';
@@ -1268,7 +1346,7 @@ export const generateCarrierLabels = async (req, res) => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            ...weGrowAuthHeaders,
+            'x-key': apiKey,
             'x-version': apiVersion,
           },
           body: JSON.stringify(payload),
@@ -1276,9 +1354,57 @@ export const generateCarrierLabels = async (req, res) => {
 
         const responseData = await response.json().catch(() => ({}));
         if (!response.ok) {
+          const responseStatus = Number(response?.status || 0);
+          const likelyAuthIssue = responseStatus === 401 || responseStatus === 403;
+
+          let diagnosticDetails = null;
+          if (likelyAuthIssue) {
+            try {
+              const diagnosticResponse = await fetch(`${baseUrl}/locations?iso_country=NL&city=Amsterdam&postal_code=1012%20PH&max_results=1`, {
+                method: 'GET',
+                headers: {
+                  'x-key': apiKey,
+                  'x-version': apiVersion,
+                },
+              });
+
+              const diagnosticBodyText = await diagnosticResponse.text();
+              let diagnosticBody = null;
+              try {
+                diagnosticBody = diagnosticBodyText ? JSON.parse(diagnosticBodyText) : null;
+              } catch {
+                diagnosticBody = diagnosticBodyText || null;
+              }
+
+              diagnosticDetails = {
+                endpoint: '/locations',
+                statusCode: diagnosticResponse.status,
+                body: typeof diagnosticBody === 'string' ? diagnosticBody.slice(0, 300) : diagnosticBody,
+              };
+            } catch (diagnosticError) {
+              diagnosticDetails = {
+                endpoint: '/locations',
+                statusCode: null,
+                body: String(diagnosticError?.message || 'Diagnostic request failed'),
+              };
+            }
+          }
+
+          const diagnosticSummary = diagnosticDetails
+            ? ` | diagnostic ${diagnosticDetails.endpoint} status=${diagnosticDetails.statusCode ?? 'n/a'}`
+            : '';
+
           return res.status(502).json({
             error: 'Failed to generate WeGrow label',
-            details: responseData?.detail || responseData?.error || 'Unknown WeGrow error',
+            details: `${responseData?.detail || responseData?.error || (likelyAuthIssue
+              ? 'Unauthorized - controleer WeGrow API key (x-key), live endpoint, API version (v1) en service code permissies'
+              : 'Unknown WeGrow error')}${diagnosticSummary}`,
+            statusCode: responseStatus || null,
+            baseUrl,
+            serviceCode,
+            selectedWeGrowCarrier: selectedWeGrowCarrier || null,
+            usedHeaders: ['x-key', 'x-version'],
+            diagnostic: diagnosticDetails,
           });
         }
 
@@ -1298,7 +1424,7 @@ export const generateCarrierLabels = async (req, res) => {
         labels.push({
           packageId: pkg.id || index,
           carrierType: carrier.carrierType,
-          shippingMethod: selectedShippingMethod || serviceCode,
+          shippingMethod: selectedShippingMethod || selectedWeGrowCarrier || serviceCode,
           trackingCode: firstLabel.carrier_tracking_id || `${carrier.carrierType.toUpperCase()}-${Date.now()}-${index}`,
           labelUrl: `data:${mimeType};base64,${firstLabel.base64_label}`,
           trackingUrl: firstLabel.carrier_tracking_url || null,

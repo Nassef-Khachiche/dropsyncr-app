@@ -1,5 +1,10 @@
 import prisma from '../config/database.js';
 import fetch from 'node-fetch';
+import {
+  resolveShippingAutomationForOrder,
+  inferBolShippingMethodFromOrderData,
+  inferIsMailboxFromOrderData,
+} from '../utils/shippingAutomation.js';
 
 /**
  * Bol.com API Integration Controller
@@ -448,6 +453,28 @@ const resolveImageFromBolEnrichment = (enrichmentData = {}) => {
   return discoveredUrls.find((url) => isLikelyImageUrl(url)) || discoveredUrls[0] || null;
 };
 
+const fetchBolProductAssetsByUsage = async ({ credentials, ean, usage }) => {
+  const eanValue = firstNonEmptyString(ean);
+  const usageValue = firstNonEmptyString(usage);
+
+  if (!eanValue || !usageValue) {
+    return null;
+  }
+
+  try {
+    const endpoint = `/products/${encodeURIComponent(eanValue)}/assets?usage=${encodeURIComponent(usageValue)}`;
+    const data = await bolApiRequest(credentials, endpoint);
+    return { endpoint, usage: usageValue, data };
+  } catch (error) {
+    console.warn('[BOL ENRICHMENT] Product asset request failed', {
+      ean: eanValue,
+      usage: usageValue,
+      message: error.message,
+    });
+    return null;
+  }
+};
+
 // --- ENRICH PRODUCT VIA CONTENT API ONLY ---
 const enrichBolProductData = async ({ credentials, ean }) => {
   const eanValue = firstNonEmptyString(ean);
@@ -458,10 +485,14 @@ const enrichBolProductData = async ({ credentials, ean }) => {
   }
 
   try {
-    const productPath = `/content/products/${encodeURIComponent(eanValue)}`;
+    const catalogPath = `/content/catalog-products/${encodeURIComponent(eanValue)}`;
+    const fallbackProductPath = `/content/products/${encodeURIComponent(eanValue)}`;
+
     const enrichmentResponse = await tryBolApiRequest(credentials, [
-      `${productPath}`,
-      `${productPath}?country-code=NL`,
+      `${catalogPath}`,
+      `${catalogPath}?country-code=NL`,
+      `${fallbackProductPath}`,
+      `${fallbackProductPath}?country-code=NL`,
     ]);
 
     if (!enrichmentResponse) {
@@ -469,17 +500,35 @@ const enrichBolProductData = async ({ credentials, ean }) => {
     }
 
     const { endpoint, data } = enrichmentResponse;
-    const resolvedImage = resolveImageFromBolEnrichment(data);
+
+    const [primaryAssets, additionalAssets, imageAssets] = await Promise.all([
+      fetchBolProductAssetsByUsage({ credentials, ean: eanValue, usage: 'PRIMARY' }),
+      fetchBolProductAssetsByUsage({ credentials, ean: eanValue, usage: 'ADDITIONAL' }),
+      fetchBolProductAssetsByUsage({ credentials, ean: eanValue, usage: 'IMAGE' }),
+    ]);
+
+    const assetResponses = [primaryAssets, additionalAssets, imageAssets].filter(Boolean);
+    const mergedEnrichmentData = {
+      ...data,
+      product: {
+        ...(data?.product || {}),
+      },
+      assetsByUsage: assetResponses,
+      assets: assetResponses.map((assetResponse) => assetResponse.data).filter(Boolean),
+    };
+
+    const resolvedImage = resolveImageFromBolEnrichment(mergedEnrichmentData);
 
     console.log('[BOL ENRICHMENT SUCCESS]', {
       ean: eanValue,
       hasImages: Array.isArray(data?.images),
       imageCount: data?.images?.length || 0,
+      assetResponseCount: assetResponses.length,
       resolvedImage: !!resolvedImage,
       brand: data?.brand,
     });
 
-    return { endpoint, data, resolvedImage };
+    return { endpoint, data: mergedEnrichmentData, resolvedImage };
   } catch (error) {
     console.warn('[BOL ENRICHMENT FAILED]', {
       ean: eanValue,
@@ -569,6 +618,18 @@ export const syncBolOrders = async (req, res) => {
       const orderItems = mergeBolOrderItems(baseOrderItems, detailedOrderItems);
       const shipmentDetails = orderPayload.shipmentDetails || orderPayload.billingDetails || {};
       const deliveryDate = resolveBolDeliveryDate(orderPayload, orderItems, bolShipmentDetails);
+      const resolvedBolShippingMethod = inferBolShippingMethodFromOrderData({
+        orderPayload,
+        bolOrder,
+        orderItems,
+        shippingMethod: orderPayload?.shippingMethod,
+        bolShippingMethod: orderPayload?.bolShippingMethod,
+      });
+      const mailboxOrder = inferIsMailboxFromOrderData({
+        orderPayload,
+        orderItems,
+        shippingDescription: shipmentDetails?.deliveryMethod,
+      });
 
       // Check if order already exists (for import/update counters)
       const existingOrder = await prisma.order.findFirst({
@@ -620,6 +681,14 @@ export const syncBolOrders = async (req, res) => {
       const firstName = shipmentDetails?.firstName || '';
       const surname = shipmentDetails?.surname || '';
       const customerName = `${firstName} ${surname}`.trim() || 'Unknown';
+      const shippingAutomationResult = await resolveShippingAutomationForOrder({
+        prisma,
+        installationId: parseInt(installationId, 10),
+        storeName: existingOrder?.storeName || integrationShopName,
+        country: shipmentDetails?.countryCode || 'NL',
+        bolShippingMethod: resolvedBolShippingMethod,
+        isBrievenbus: mailboxOrder,
+      });
 
       const orderData = {
         orderNumber: bolOrder.orderId,
@@ -646,6 +715,7 @@ export const syncBolOrders = async (req, res) => {
         }, 0) || 0),
         itemCount: orderItems?.length || 1,
         status: mapBolStatusToInternal(orderItems?.[0]?.fulfilmentStatus || bolOrder.orderItems?.[0]?.fulfilmentStatus),
+        shippingMethod: shippingAutomationResult.shippingAssignment,
       };
 
       console.log('[BOL SYNC] Mapped order data:', {

@@ -27,7 +27,10 @@ import {
 import { 
   Search, 
   Download, 
+  Eye,
+  MoreHorizontal,
   RefreshCw,
+  ChevronLeft,
   ChevronDown,
   ChevronRight,
   Trash2,
@@ -50,10 +53,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from './ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from './ui/dropdown-menu';
 
 const dhlLogo = new URL('../assets/dhl-logo.png', import.meta.url).href;
 const dpdLogo = new URL('../assets/dpd-logo.png', import.meta.url).href;
 const wegrowLogo = new URL('../assets/wegrow-logo.jpg', import.meta.url).href;
+const postnlLogo = new URL('../assets/postnl-logo.png', import.meta.url).href;
+const bpostLogo = new URL('../assets/bpost-logo.png', import.meta.url).href;
 
 interface OrdersOverviewProps {
   activeProfile: string;
@@ -66,7 +77,30 @@ interface CarrierContract {
   active: boolean;
 }
 
+const wegrowCarrierOptions = [
+  { id: 'dhl', name: 'DHL', logo: dhlLogo },
+  { id: 'postnl', name: 'PostNL', logo: postnlLogo },
+  { id: 'bpost', name: 'Bpost', logo: bpostLogo },
+];
+
+const manualShippingOverrides = [
+  {
+    value: 'WG PostNL - NEDERLAND | PostNL Standaard 0-23kg',
+    label: 'WG PostNL - NEDERLAND | PostNL Standaard 0-23kg',
+  },
+  {
+    value: 'WGW NL | DHL For You',
+    label: 'WGW NL | DHL For You',
+  },
+];
+
+const isManualShippingOverride = (value: string) => (
+  manualShippingOverrides.some((option) => option.value === value)
+);
+
 export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
+  const ORDERS_PER_PAGE = 50;
+
   const carrierLogoMap: Record<string, string> = {
     dhl: dhlLogo,
     dpd: dpdLogo,
@@ -88,6 +122,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
   const [carrierContracts, setCarrierContracts] = useState<CarrierContract[]>([]);
   const [loadingCarriers, setLoadingCarriers] = useState(false);
   const [selectedContractId, setSelectedContractId] = useState<string>('');
+  const [selectedWeGrowCarrier, setSelectedWeGrowCarrier] = useState<string>('');
   const [generatingLabel, setGeneratingLabel] = useState(false);
   const [labelPreviewUrl, setLabelPreviewUrl] = useState<string>('');
   const [generatedLabelMeta, setGeneratedLabelMeta] = useState<{
@@ -100,11 +135,18 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [shippingMethodDrafts, setShippingMethodDrafts] = useState<Record<number, string>>({});
   const [savingShippingMethodOrderId, setSavingShippingMethodOrderId] = useState<number | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalOrders, setTotalOrders] = useState(0);
 
   useEffect(() => {
     if (activeProfile) {
       loadOrders();
     }
+  }, [activeProfile, filterStatus, searchQuery, currentPage]);
+
+  useEffect(() => {
+    setCurrentPage(1);
   }, [activeProfile, filterStatus, searchQuery]);
 
   useEffect(() => {
@@ -128,7 +170,8 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
           userScoped: isAllStoresSelected,
           status: filterStatus !== 'all' ? filterStatus : undefined,
           search: searchQuery || undefined,
-          limit: 100,
+          page: currentPage,
+          limit: ORDERS_PER_PAGE,
         }),
         isAllStoresSelected ? api.getIntegrations(undefined, true) : Promise.resolve(null),
       ]);
@@ -165,6 +208,8 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
       }
 
       setOrders(data.orders || []);
+      setTotalOrders(Number(data.pagination?.total) || 0);
+      setTotalPages(Math.max(1, Number(data.pagination?.pages) || 1));
     } catch (error) {
       console.error('Failed to load orders:', error);
     } finally {
@@ -223,12 +268,31 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
   const handleOpenLabelDialog = (order: any) => {
     setLabelOrder(order);
     const normalizedOrderShippingMethod = String(order.shippingMethod || '').trim();
-    const matchingContract = carrierContracts.find((contract) => (
+    let matchingContract = carrierContracts.find((contract) => (
       String(contract.id) === normalizedOrderShippingMethod || contract.contractName === normalizedOrderShippingMethod
     ));
+
+    const normalizedMethodLower = normalizedOrderShippingMethod.toLowerCase();
+    if (!matchingContract && normalizedMethodLower.startsWith('wegrow-')) {
+      matchingContract = carrierContracts.find((contract) => contract.carrierType === 'wegrow');
+    }
+
+    const initialWegrowCarrier = normalizedMethodLower.startsWith('wegrow-')
+      ? normalizedMethodLower.replace('wegrow-', '').trim()
+      : '';
+
     setSelectedContractId(matchingContract ? String(matchingContract.id) : '');
-    setLabelPreviewUrl('');
-    setGeneratedLabelMeta(null);
+    setSelectedWeGrowCarrier(
+      wegrowCarrierOptions.some((option) => option.id === initialWegrowCarrier)
+        ? initialWegrowCarrier
+        : ''
+    );
+    setLabelPreviewUrl(order?.label?.labelUrl || '');
+    setGeneratedLabelMeta({
+      shipmentId: order?.label?.id ? String(order.label.id) : null,
+      trackingCode: order?.supplierTracking || order?.tracking?.trackingCode || null,
+      trackingUrl: order?.tracking?.trackingUrl || null,
+    });
     setShowLabelDialog(true);
   };
 
@@ -239,10 +303,16 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
     if (draftValue !== undefined) return draftValue;
 
     const normalizedOrderShippingMethod = String(order.shippingMethod || '').trim();
+    if (!normalizedOrderShippingMethod) return '';
+
+    if (isManualShippingOverride(normalizedOrderShippingMethod)) {
+      return normalizedOrderShippingMethod;
+    }
+
     const matchingContract = carrierContracts.find((contract) => (
       String(contract.id) === normalizedOrderShippingMethod || contract.contractName === normalizedOrderShippingMethod
     ));
-    return matchingContract ? String(matchingContract.id) : '';
+    return matchingContract ? String(matchingContract.id) : normalizedOrderShippingMethod;
   };
 
   const handleShippingMethodDraftChange = (orderId: number, contractId: string) => {
@@ -252,7 +322,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
     }));
   };
 
-  const handleSaveShippingMethod = async (order: any) => {
+  const handleSaveShippingMethod = async (order: any, explicitSelection?: string) => {
     if (typeof order.id !== 'number') {
       toast.error('Deze order kan niet worden bijgewerkt');
       return;
@@ -263,10 +333,11 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
       return;
     }
 
-    const selectedOrderContractId = getOrderShippingContractId(order);
+    const selectedOrderContractId = explicitSelection || getOrderShippingContractId(order);
     const selectedContract = carrierContracts.find((contract) => String(contract.id) === selectedOrderContractId);
+    const selectedManualOverride = manualShippingOverrides.find((option) => option.value === selectedOrderContractId);
 
-    if (!selectedContract) {
+    if (!selectedContract && !selectedManualOverride) {
       toast.error('Selecteer een verzendmethode');
       return;
     }
@@ -302,12 +373,26 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
     if (!labelOrder) return;
     if (!selectedContractId) return;
 
-    const selectedShippingMethod = selectedContractId || null;
+    const selectedContract = carrierContracts.find((contract) => String(contract.id) === selectedContractId);
+    if (!selectedContract) {
+      toast.error('Selecteer een geldig contract');
+      return;
+    }
+
+    if (selectedContract.carrierType === 'wegrow' && !selectedWeGrowCarrier) {
+      toast.error('Selecteer WeGrow vervoerder: DHL, PostNL of Bpost');
+      return;
+    }
+
+    const selectedShippingMethod = selectedContract.carrierType === 'wegrow'
+      ? `wegrow-${selectedWeGrowCarrier}`
+      : selectedContractId;
 
     try {
       setGeneratingLabel(true);
       const result = await api.generateCarrierLabels(Number(selectedContractId), {
         shippingMethod: selectedShippingMethod,
+        ...(selectedContract.carrierType === 'wegrow' ? { wegrowCarrier: selectedWeGrowCarrier } : {}),
         packages: [
           {
             id: labelOrder.orderNumber || labelOrder.id,
@@ -339,6 +424,11 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
             ? {
                 ...entry,
                 shippingMethod: selectedShippingMethod,
+                label: {
+                  ...(entry.label || {}),
+                  labelUrl: label?.labelUrl || entry.label?.labelUrl || null,
+                  status: 'generated',
+                },
               }
             : entry
         )));
@@ -347,6 +437,11 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
             ? {
                 ...prevLabelOrder,
                 shippingMethod: selectedShippingMethod,
+                label: {
+                  ...(prevLabelOrder.label || {}),
+                  labelUrl: label?.labelUrl || prevLabelOrder.label?.labelUrl || null,
+                  status: 'generated',
+                },
               }
             : prevLabelOrder
         ));
@@ -625,6 +720,27 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
     }
   };
 
+  const resolveShippingSelectionLabel = (selectionValue: string) => {
+    if (!selectionValue) return 'Niet ingesteld';
+
+    const matchingContract = carrierContracts.find((contract) => String(contract.id) === selectionValue);
+    if (matchingContract) {
+      return `${matchingContract.contractName} (${matchingContract.carrierType.toUpperCase()})`;
+    }
+
+    const manualOption = manualShippingOverrides.find((option) => option.value === selectionValue);
+    if (manualOption) {
+      return manualOption.label;
+    }
+
+    return selectionValue;
+  };
+
+  const selectedContract = carrierContracts.find((contract) => String(contract.id) === selectedContractId);
+  const isWeGrowContractSelected = selectedContract?.carrierType === 'wegrow';
+  const startOrderIndex = totalOrders === 0 ? 0 : ((currentPage - 1) * ORDERS_PER_PAGE) + 1;
+  const endOrderIndex = Math.min(currentPage * ORDERS_PER_PAGE, totalOrders);
+
   return (
     <div className="space-y-6">
       <div>
@@ -657,6 +773,16 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
               >
                 <Download className="w-4 h-4" />
                 Exporteren
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 border-slate-200 shadow-sm"
+                onClick={loadOrders}
+                disabled={loading}
+              >
+                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                Vernieuwen
               </Button>
             </div>
           </div>
@@ -718,7 +844,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                   <TableHead>Uiterste leverdatum</TableHead>
                   <TableHead>Trackingnummer leverancier</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Acties</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -796,17 +922,41 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                         {getOrderStatusBadge(order.status || 'onderweg-ffm')}
                       </TableCell>
                       <TableCell className="text-right" onClick={(event) => event.stopPropagation()}>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="border-red-200 text-red-600 hover:bg-red-50"
-                          disabled={bulkDeleting || (typeof order.id === 'number' && deletingOrderIds.includes(order.id))}
-                          onClick={() => handleDeleteOrder(order)}
-                        >
-                          {typeof order.id === 'number' && deletingOrderIds.includes(order.id)
-                            ? <Loader2 className="w-4 h-4 animate-spin" />
-                            : <Trash2 className="w-4 h-4" />}
-                        </Button>
+                        <div className="flex items-center justify-end">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="border border-slate-200 shadow-sm hover:bg-slate-100 hover:shadow cursor-pointer"
+                                aria-label="Meer acties"
+                                title="Meer acties"
+                              >
+                                <MoreHorizontal className="w-4 h-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="border-slate-200 shadow-lg">
+                              <DropdownMenuItem
+                                className="cursor-pointer"
+                                onSelect={() => handleOpenLabelDialog(order)}
+                              >
+                                <Package className="w-4 h-4" />
+                                Label genereren
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="cursor-pointer"
+                                variant="destructive"
+                                disabled={bulkDeleting || (typeof order.id === 'number' && deletingOrderIds.includes(order.id))}
+                                onSelect={() => handleDeleteOrder(order)}
+                              >
+                                {typeof order.id === 'number' && deletingOrderIds.includes(order.id)
+                                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                                  : <Trash2 className="w-4 h-4" />}
+                                Verwijderen
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
                       </TableCell>
                     </TableRow>
                     
@@ -824,17 +974,6 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                                     {order.storeName}
                                   </Badge>
                                   <span className="text-slate-600">{order.orderNumber}</span>
-                                </div>
-                                <div className="flex gap-2">
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="border-slate-200"
-                                    onClick={() => handleOpenLabelDialog(order)}
-                                  >
-                                    <Package className="w-4 h-4 mr-2" />
-                                    Label genereren
-                                  </Button>
                                 </div>
                               </div>
 
@@ -916,6 +1055,72 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                                   <p className="text-sm text-slate-900">{order.shippingStatus}</p>
                                 </div>
 
+                                {/* Handmatige verzendmethode */}
+                                <div className="space-y-2 col-span-2">
+                                  <div className="flex items-center gap-2 text-sm text-slate-500">
+                                    <Package className="w-4 h-4" />
+                                    <span>Verzendmethode (handmatig)</span>
+                                  </div>
+                                  <p className="text-sm text-slate-700">
+                                    Huidig: {String(order.shippingMethod || 'Niet ingesteld')}
+                                  </p>
+                                  <Select
+                                    value={getOrderShippingContractId(order)}
+                                    onValueChange={async (value: string) => {
+                                      if (typeof order.id !== 'number') return;
+                                      handleShippingMethodDraftChange(order.id, value);
+                                      await handleSaveShippingMethod(order, value);
+                                    }}
+                                    disabled={
+                                      normalizeOrderStatus(order) === 'verzonden'
+                                      || savingShippingMethodOrderId === order.id
+                                    }
+                                  >
+                                    <SelectTrigger className="w-full border-slate-200 shadow-sm">
+                                      <SelectValue placeholder="Selecteer verzendmethode">
+                                        {resolveShippingSelectionLabel(getOrderShippingContractId(order))}
+                                      </SelectValue>
+                                    </SelectTrigger>
+                                    <SelectContent className="border-slate-200 shadow-lg">
+                                      {carrierContracts.map((contract) => (
+                                        <SelectItem key={`contract-${contract.id}`} value={String(contract.id)}>
+                                          {contract.contractName} ({contract.carrierType.toUpperCase()})
+                                        </SelectItem>
+                                      ))}
+
+                                      {manualShippingOverrides.map((option) => (
+                                        <SelectItem key={`manual-${option.value}`} value={option.value}>
+                                          {option.label}
+                                        </SelectItem>
+                                      ))}
+
+                                      {(() => {
+                                        const currentSelection = getOrderShippingContractId(order);
+                                        if (!currentSelection) return null;
+
+                                        const hasContractOption = carrierContracts.some(
+                                          (contract) => String(contract.id) === currentSelection
+                                        );
+                                        const hasManualOption = isManualShippingOverride(currentSelection);
+
+                                        if (hasContractOption || hasManualOption) return null;
+
+                                        return (
+                                          <SelectItem value={currentSelection}>
+                                            {currentSelection}
+                                          </SelectItem>
+                                        );
+                                      })()}
+                                    </SelectContent>
+                                  </Select>
+                                  {savingShippingMethodOrderId === order.id && (
+                                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                                      <Loader2 className="w-3 h-3 animate-spin" />
+                                      Opslaan...
+                                    </div>
+                                  )}
+                                </div>
+
                               </div>
                             </div>
 
@@ -990,7 +1195,12 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
 
           {/* Summary */}
           <div className="mt-6 flex items-center justify-between p-4 bg-gradient-to-r from-slate-50 to-indigo-50/30 rounded-xl border border-slate-200">
-            <span className="text-sm text-slate-700">{filteredOrders.length} orders gevonden</span>
+            <div className="text-sm text-slate-700">
+              {totalOrders} orders gevonden
+              {totalOrders > 0 && (
+                <span className="text-slate-500"> • {startOrderIndex}-{endOrderIndex}</span>
+              )}
+            </div>
             <div className="flex gap-6 text-sm">
               <span className="text-slate-600">
                 <span className="text-orange-600">●</span> Openstaand: {filteredOrders.filter((o) => normalizeOrderStatus(o) === 'openstaand').length}
@@ -1000,10 +1210,44 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
               </span>
             </div>
           </div>
+
+          <div className="mt-4 flex items-center justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-slate-200"
+              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+              disabled={loading || currentPage <= 1}
+            >
+              <ChevronLeft className="w-4 h-4 mr-1" />
+              Vorige
+            </Button>
+            <span className="text-sm text-slate-600 px-2">
+              Pagina {currentPage} van {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-slate-200"
+              onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+              disabled={loading || currentPage >= totalPages}
+            >
+              Volgende
+              <ChevronRight className="w-4 h-4 ml-1" />
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
-      <Dialog open={showLabelDialog} onOpenChange={setShowLabelDialog}>
+      <Dialog
+        open={showLabelDialog}
+        onOpenChange={(open: boolean) => {
+          setShowLabelDialog(open);
+          if (!open) {
+            setSelectedWeGrowCarrier('');
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-5xl min-h-[800px] h-[96vh] max-h-[96vh] flex flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>Label genereren</DialogTitle>
@@ -1022,7 +1266,13 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
               ) : (
                 <RadioGroup
                   value={selectedContractId}
-                  onValueChange={setSelectedContractId}
+                  onValueChange={(value: string) => {
+                    setSelectedContractId(value);
+                    const contract = carrierContracts.find((entry) => String(entry.id) === value);
+                    if (contract?.carrierType !== 'wegrow') {
+                      setSelectedWeGrowCarrier('');
+                    }
+                  }}
                   className="grid grid-cols-1 md:grid-cols-2 gap-3"
                 >
                   {carrierContracts.map((contract) => {
@@ -1062,24 +1312,53 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
               )}
             </div>
 
+            {isWeGrowContractSelected && (
+              <div className="space-y-2">
+                <label className="text-sm text-slate-700">WeGrow vervoerder</label>
+                <Select value={selectedWeGrowCarrier} onValueChange={setSelectedWeGrowCarrier}>
+                  <SelectTrigger className="border-slate-200 shadow-sm">
+                    <SelectValue placeholder="Kies WeGrow DHL, PostNL of Bpost" />
+                  </SelectTrigger>
+                  <SelectContent className="border-slate-200 shadow-lg">
+                    {wegrowCarrierOptions.map((option) => (
+                      <SelectItem key={option.id} value={option.id}>
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded bg-white border border-slate-200 p-1 flex items-center justify-center">
+                            <img src={option.logo} alt={option.name} className="w-full h-full object-contain" />
+                          </div>
+                          <span>{option.name}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             {labelPreviewUrl && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-slate-700">Label preview</span>
-                  <a
-                    href={labelPreviewUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-sm text-indigo-600 hover:text-indigo-700"
-                  >
-                    Open PDF
-                  </a>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" className="border-slate-200 shadow-sm" asChild>
+                      <a href={labelPreviewUrl} target="_blank" rel="noreferrer">
+                        <Eye className="w-4 h-4 mr-1.5" />
+                        Volledige preview
+                      </a>
+                    </Button>
+                    <Button variant="outline" size="sm" className="border-slate-200 shadow-sm" asChild>
+                      <a href={labelPreviewUrl} download>
+                        <Download className="w-4 h-4 mr-1.5" />
+                        Download label
+                      </a>
+                    </Button>
+                  </div>
                 </div>
                 <div className="border border-slate-200 rounded-lg overflow-hidden">
                   <iframe
                     title="Label preview"
                     src={labelPreviewUrl}
-                    className="w-full h-full min-h-[680px]"
+                    className="w-full h-full min-h-[760px]"
                   />
                 </div>
 
@@ -1122,7 +1401,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
             </Button>
             <Button
               onClick={handleGenerateLabel}
-              disabled={!selectedContractId || generatingLabel}
+              disabled={!selectedContractId || (isWeGrowContractSelected && !selectedWeGrowCarrier) || generatingLabel}
               className="gap-2 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600"
             >
               {generatingLabel && <Loader2 className="w-4 h-4 animate-spin" />}

@@ -12,7 +12,9 @@
     "prisma:studio": "prisma studio",
     "prisma:seed": "node prisma/seed.js",
     "create-admin": "node create-admin.js",
-    "create-standard-admins": "node create-standard-admins.js"
+    "create-standard-admins": "node create-standard-admins.js",
+    "repair:supplier-tracking": "node repair-supplier-tracking.js",
+    "repair:supplier-tracking:apply": "node repair-supplier-tracking.js --apply"
   },
   "dependencies": {
     "express": "^4.18.2",

@@ -1,4 +1,9 @@
 import prisma from '../config/database.js';
+import {
+  resolveShippingAutomationForOrder,
+  inferBolShippingMethodFromOrderData,
+  inferIsMailboxFromOrderData,
+} from '../utils/shippingAutomation.js';
 
 const normalizeOrderShippingState = (order) => {
   const normalizedOrderStatus = String(order?.orderStatus || '').trim().toLowerCase();
@@ -11,28 +16,6 @@ const normalizeOrderShippingState = (order) => {
   }
 
   return 'openstaand';
-};
-
-const resolveCarrierFromAutomationRules = async (installationId, country) => {
-  const normalizedCountryCode = String(country || '').trim().toUpperCase();
-  if (!normalizedCountryCode) return null;
-
-  const matchingRule = await prisma.automationRule.findFirst({
-    where: {
-      installationId,
-      countryCode: normalizedCountryCode,
-      active: true,
-    },
-    orderBy: [
-      { priority: 'asc' },
-      { createdAt: 'asc' },
-    ],
-    select: {
-      carrierType: true,
-    },
-  });
-
-  return matchingRule?.carrierType || null;
 };
 
 export const getOrders = async (req, res) => {
@@ -239,6 +222,12 @@ export const createOrder = async (req, res) => {
       items,
       supplierTracking,
       status,
+      shippingMethod,
+      bolShippingMethod,
+      fulfilmentMethod,
+      fulfillmentMethod,
+      isBrievenbus,
+      isMailbox,
     } = req.body;
 
     const parsedInstallationId = parseInt(installationId, 10);
@@ -259,7 +248,28 @@ export const createOrder = async (req, res) => {
       }
     }
 
-    const autoAssignedCarrier = await resolveCarrierFromAutomationRules(parsedInstallationId, country);
+    const resolvedShippingMethod = inferBolShippingMethodFromOrderData({
+      shippingMethod,
+      bolShippingMethod,
+      fulfilmentMethod,
+      fulfillmentMethod,
+      orderItems: items,
+    });
+
+    const mailboxOrder = inferIsMailboxFromOrderData({
+      isBrievenbus,
+      isMailbox,
+      orderItems: items,
+    });
+
+    const shippingAutomationResult = await resolveShippingAutomationForOrder({
+      prisma,
+      installationId: parsedInstallationId,
+      storeName,
+      country,
+      bolShippingMethod: resolvedShippingMethod,
+      isBrievenbus: mailboxOrder,
+    });
 
     const order = await prisma.order.create({
       data: {
@@ -279,7 +289,7 @@ export const createOrder = async (req, res) => {
         supplierTracking,
         status: status || 'onderweg-ffm',
         orderStatus: 'openstaand',
-        shippingMethod: autoAssignedCarrier,
+        shippingMethod: shippingAutomationResult.shippingAssignment,
         orderItems: {
           create: items?.map((item) => ({
             productId: item.productId || null,

@@ -27,6 +27,12 @@ import {
   DialogTitle,
   DialogFooter,
 } from './ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from './ui/dropdown-menu';
 import { 
   QrCode, 
   Printer, 
@@ -37,11 +43,17 @@ import {
   CheckCheck,
   Sparkles,
   Truck,
+  Eye,
+  Download,
+  MoreHorizontal,
   Loader2
 } from 'lucide-react';
 import { Alert, AlertDescription } from './ui/alert';
 import { toast } from 'sonner@2.0.3';
 import { api } from '../services/api';
+import dhlLogo from '../assets/dhl-logo.png';
+import postnlLogo from '../assets/postnl-logo.png';
+import bpostLogo from '../assets/bpost-logo.png';
 
 interface LabelPrintingProps {
   activeProfile: string;
@@ -49,6 +61,7 @@ interface LabelPrintingProps {
 
 interface ScannedPackage {
   id: number;
+  orderId: number;
   trackingCode: string;
   orderNumber: string;
   customerName: string;
@@ -73,57 +86,92 @@ const baseShippingMethods = [
   { id: 'dhl-parcel', name: 'DHL Parcel Connect', carrier: 'DHL', carrierType: 'dhl' },
   { id: 'dhl-express', name: 'DHL Express', carrier: 'DHL', carrierType: 'dhl' },
   { id: 'dpd-classic', name: 'DPD Classic', carrier: 'DPD', carrierType: 'dpd' },
+  { id: 'wegrow', name: 'WeGrow', carrier: 'WeGrow', carrierType: 'wegrow' },
+];
+
+const wegrowCarrierOptions = [
+  { id: 'dhl', name: 'DHL', logo: dhlLogo },
+  { id: 'postnl', name: 'PostNL', logo: postnlLogo },
+  { id: 'bpost', name: 'Bpost', logo: bpostLogo },
 ];
 
 export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
   const [scanInput, setScanInput] = useState('');
-  const [scannedPackages, setScannedPackages] = useState<ScannedPackage[]>([
-    {
-      id: 1,
-      trackingCode: 'TBA123456789012',
-      orderNumber: 'BOL-2024-00145',
-      customerName: 'Jan Bakker',
-      address: 'Hoofdstraat 123, 1234 AB Amsterdam',
-      supplier: 'Amazon',
-      scannedAt: new Date(),
-      labelGenerated: false,
-      country: 'NL',
-      productImage: 'https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?w=200'
-    },
-    {
-      id: 2,
-      trackingCode: 'LP987654321NL',
-      orderNumber: 'BOL-2024-00146',
-      customerName: 'Marie Peeters',
-      address: 'Kerkstraat 45, 2000 Antwerpen',
-      supplier: 'AliExpress',
-      scannedAt: new Date(),
-      labelGenerated: false,
-      country: 'BE',
-      productImage: 'https://images.unsplash.com/photo-1585336261022-680e8a0b4e31?w=200'
-    }
-  ]);
+  const [scannedPackages, setScannedPackages] = useState<ScannedPackage[]>([]);
   const [selectedPackages, setSelectedPackages] = useState<number[]>([]);
   const [showShippingDialog, setShowShippingDialog] = useState(false);
   const [selectedShippingMethod, setSelectedShippingMethod] = useState<string>('');
+  const [selectedWeGrowCarrier, setSelectedWeGrowCarrier] = useState<string>('');
   const [carrierContracts, setCarrierContracts] = useState<CarrierContract[]>([]);
+  const [loadingOrders, setLoadingOrders] = useState(false);
   const [loadingCarriers, setLoadingCarriers] = useState(false);
   const [generatingLabels, setGeneratingLabels] = useState(false);
 
   useEffect(() => {
     if (activeProfile) {
       loadCarrierContracts();
+      loadLabelOrders();
     } else {
       setCarrierContracts([]);
+      setScannedPackages([]);
+      setSelectedPackages([]);
     }
   }, [activeProfile]);
+
+  const mapOrderToPackage = (order: any): ScannedPackage | null => {
+    if (typeof order?.id !== 'number') return null;
+
+    const orderItems = Array.isArray(order.orderItems) ? order.orderItems : [];
+    const firstItem = orderItems[0] || {};
+
+    return {
+      id: order.id,
+      orderId: order.id,
+      trackingCode: String(order.supplierTracking || '').trim(),
+      orderNumber: String(order.orderNumber || `ORDER-${order.id}`),
+      customerName: String(order.customerName || 'Onbekende klant'),
+      address: String(order.address || ''),
+      supplier: String(order.storeName || order.platform || 'Onbekend'),
+      scannedAt: new Date(order.updatedAt || order.createdAt || Date.now()),
+      labelGenerated: Boolean(order.label?.id) || String(order.orderStatus || '').toLowerCase() === 'label-aangemaakt',
+      country: String(order.country || 'NL').toUpperCase(),
+      productImage: String(firstItem.productImage || firstItem.product?.image || 'https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?w=200'),
+      labelUrl: order.label?.labelUrl || undefined,
+      labelCarrier: String(order.shippingMethod || ''),
+    };
+  };
+
+  const loadLabelOrders = async () => {
+    if (!activeProfile) return;
+
+    try {
+      setLoadingOrders(true);
+      const data = await api.getOrders({
+        installationId: activeProfile,
+        status: 'openstaand',
+        limit: 200,
+      });
+
+      const mappedPackages = (data.orders || [])
+        .map(mapOrderToPackage)
+        .filter((pkg: ScannedPackage | null): pkg is ScannedPackage => pkg !== null);
+
+      setScannedPackages(mappedPackages);
+      setSelectedPackages((prevSelected) => prevSelected.filter((pkgId) => mappedPackages.some((pkg) => pkg.id === pkgId)));
+    } catch (error: any) {
+      console.error('Failed to load label orders:', error);
+      toast.error('Kon orders voor labels niet laden');
+    } finally {
+      setLoadingOrders(false);
+    }
+  };
 
   const loadCarrierContracts = async () => {
     try {
       setLoadingCarriers(true);
       const data = await api.getCarriers(activeProfile);
       const filtered = data
-        .filter((carrier: any) => ['dhl', 'dpd'].includes(carrier.carrierType))
+        .filter((carrier: any) => ['dhl', 'dpd', 'wegrow'].includes(carrier.carrierType))
         .map((carrier: any) => ({
           id: carrier.id,
           carrierType: carrier.carrierType,
@@ -156,27 +204,55 @@ export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
       contractName: carrierByType[method.carrierType]?.contractName,
     }));
 
-  const handleScan = (e: React.FormEvent) => {
+  const selectedMethod = availableShippingMethods.find(m => m.id === selectedShippingMethod);
+  const isWeGrowMethod = selectedMethod?.carrierType === 'wegrow';
+  const selectedWeGrowCarrierName = wegrowCarrierOptions.find(option => option.id === selectedWeGrowCarrier)?.name;
+
+  const handleScan = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!scanInput.trim()) return;
+    if (!activeProfile) {
+      toast.error('Selecteer eerst een installatie');
+      return;
+    }
 
-    // Simulate finding the order linked to this tracking code
-    const newPackage: ScannedPackage = {
-      id: Date.now(),
-      trackingCode: scanInput,
-      orderNumber: `BOL-2024-00${Math.floor(Math.random() * 1000)}`,
-      customerName: 'Nieuwe Klant',
-      address: 'Straatnaam 1, 1234 AB Stad',
-      supplier: 'Amazon',
-      scannedAt: new Date(),
-      labelGenerated: false,
-      country: 'NL',
-      productImage: 'https://images.unsplash.com/photo-1572635196237-14b3f281503f?w=200'
-    };
+    try {
+      const searchTerm = scanInput.trim();
+      const data = await api.getOrders({
+        installationId: activeProfile,
+        search: searchTerm,
+        limit: 25,
+      });
 
-    setScannedPackages([...scannedPackages, newPackage]);
-    toast.success('Pakket gescand en klaar voor label!');
-    setScanInput('');
+      const matchingOrder = (data.orders || []).find((order: any) => {
+        const orderNumber = String(order.orderNumber || '').trim().toLowerCase();
+        const supplierTracking = String(order.supplierTracking || '').trim().toLowerCase();
+        const normalizedSearch = searchTerm.toLowerCase();
+        return orderNumber === normalizedSearch || supplierTracking === normalizedSearch;
+      }) || (data.orders || [])[0];
+
+      const mappedPackage = mapOrderToPackage(matchingOrder);
+
+      if (!mappedPackage) {
+        toast.error('Geen order gevonden voor deze scan');
+        return;
+      }
+
+      const alreadyExists = scannedPackages.some((pkg) => pkg.id === mappedPackage.id);
+      if (alreadyExists) {
+        toast.info('Order staat al op de labels pagina');
+      } else {
+        setScannedPackages((prev) => [mappedPackage, ...prev]);
+        toast.success('Order gevonden en toegevoegd aan labels');
+      }
+    } catch (error: any) {
+      console.error('Failed to scan order:', error);
+      toast.error('Kon scan niet verwerken', {
+        description: error.message || 'Probeer het opnieuw',
+      });
+    } finally {
+      setScanInput('');
+    }
   };
 
   const handleSelectAll = () => {
@@ -224,15 +300,26 @@ export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
       return;
     }
 
+    if (selectedMethod.carrierType === 'wegrow' && !selectedWeGrowCarrier) {
+      toast.error('Selecteer een WeGrow vervoerder (DHL, PostNL of Bpost)');
+      return;
+    }
+
     const selectedIds = selectedPackages.length > 0 ? selectedPackages : scannedPackages.map(p => p.id);
     const packagesToPrint = scannedPackages.filter(p => selectedIds.includes(p.id));
 
     try {
       setGeneratingLabels(true);
+      const resolvedShippingMethod = selectedMethod.carrierType === 'wegrow'
+        ? `wegrow-${selectedWeGrowCarrier}`
+        : selectedMethod.id;
+
       const result = await api.generateCarrierLabels(selectedMethod.contractId, {
-        shippingMethod: selectedMethod.id,
+        shippingMethod: resolvedShippingMethod,
+        ...(selectedMethod.carrierType === 'wegrow' ? { wegrowCarrier: selectedWeGrowCarrier } : {}),
         packages: packagesToPrint.map(p => ({
-          id: p.id,
+          id: p.orderNumber,
+          orderId: p.orderId,
           orderNumber: p.orderNumber,
           customerName: p.customerName,
           address: p.address,
@@ -252,16 +339,25 @@ export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
           ...pkg,
           labelGenerated: true,
           labelUrl: label?.labelUrl || pkg.labelUrl,
-          labelCarrier: selectedMethod.carrier,
+          labelCarrier: selectedMethod.carrierType === 'wegrow' && selectedWeGrowCarrierName
+            ? `WeGrow (${selectedWeGrowCarrierName})`
+            : selectedMethod.carrier,
         };
       }));
 
-      toast.success(`${packagesToPrint.length} label(s) gegenereerd via ${selectedMethod.name}`, {
+      const methodLabel = selectedMethod.carrierType === 'wegrow' && selectedWeGrowCarrierName
+        ? `${selectedMethod.name} - ${selectedWeGrowCarrierName}`
+        : selectedMethod.name;
+
+      toast.success(`${packagesToPrint.length} label(s) gegenereerd via ${methodLabel}`, {
         description: 'Labels zijn klaar om te printen'
       });
 
+      await loadLabelOrders();
+
       setShowShippingDialog(false);
       setSelectedShippingMethod('');
+      setSelectedWeGrowCarrier('');
     } catch (error: any) {
       console.error('Failed to generate labels:', error);
       toast.error('Kon labels niet genereren', {
@@ -282,7 +378,7 @@ export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
       return;
     }
     if (availableShippingMethods.length === 0) {
-      toast.error('Geen actieve DPD of DHL contracten beschikbaar');
+      toast.error('Geen actieve DPD, DHL of WeGrow contracten beschikbaar');
       return;
     }
     setShowShippingDialog(true);
@@ -298,7 +394,7 @@ export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
       return;
     }
     if (availableShippingMethods.length === 0) {
-      toast.error('Geen actieve DPD of DHL contracten beschikbaar');
+      toast.error('Geen actieve DPD, DHL of WeGrow contracten beschikbaar');
       return;
     }
     setShowShippingDialog(true);
@@ -389,7 +485,7 @@ export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
           <div className="grid grid-cols-3 gap-4 pt-2">
             <div className="text-center p-4 bg-gradient-to-br from-indigo-50 to-purple-50/50 rounded-xl border border-indigo-200/60">
               <div className="text-3xl bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">{scannedPackages.length}</div>
-              <div className="text-sm text-slate-600 mt-1">Gescand</div>
+              <div className="text-sm text-slate-600 mt-1">Orders</div>
             </div>
             <div className="text-center p-4 bg-gradient-to-br from-emerald-50 to-teal-50/50 rounded-xl border border-emerald-200/60">
               <div className="text-3xl bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">
@@ -429,11 +525,16 @@ export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
           </div>
         </CardHeader>
         <CardContent>
-          {scannedPackages.length === 0 ? (
+          {loadingOrders ? (
+            <div className="text-center py-16 bg-gradient-to-br from-slate-50 to-indigo-50/30 rounded-xl border-2 border-dashed border-slate-200">
+              <Loader2 className="w-16 h-16 mx-auto mb-4 text-slate-300 animate-spin" />
+              <p className="text-slate-600">Orders laden...</p>
+            </div>
+          ) : scannedPackages.length === 0 ? (
             <div className="text-center py-16 bg-gradient-to-br from-slate-50 to-indigo-50/30 rounded-xl border-2 border-dashed border-slate-200">
               <QrCode className="w-16 h-16 mx-auto mb-4 text-slate-300" />
-              <p className="text-slate-600">Nog geen pakketten gescand</p>
-              <p className="text-sm text-slate-500 mt-1">Scan een barcode om te beginnen</p>
+              <p className="text-slate-600">Nog geen orders gevonden</p>
+              <p className="text-sm text-slate-500 mt-1">Scan een barcode of ververs de pagina</p>
             </div>
           ) : (
             <>
@@ -454,7 +555,7 @@ export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
                       <TableHead>Leverancier</TableHead>
                       <TableHead>Gescand</TableHead>
                       <TableHead>Label</TableHead>
-                      <TableHead></TableHead>
+                      <TableHead>Options</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -493,21 +594,67 @@ export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
                         </TableCell>
                         <TableCell>
                           {pkg.labelGenerated && (
-                            <Badge className="bg-gradient-to-r from-emerald-500 to-teal-500 border-0 gap-1">
-                              <CheckCircle2 className="w-3 h-3" />
-                              Klaar
-                            </Badge>
+                            <div className="space-y-1">
+                              <Badge className="bg-gradient-to-r from-emerald-500 to-teal-500 border-0 gap-1">
+                                <CheckCircle2 className="w-3 h-3" />
+                                Klaar
+                              </Badge>
+                            </div>
                           )}
                         </TableCell>
                         <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleRemovePackage(pkg.id)}
-                            className="hover:bg-red-50 hover:text-red-600"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
+                          <div className="flex items-center justify-end">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="border border-slate-200 shadow-sm hover:bg-slate-100 hover:shadow cursor-pointer"
+                                  aria-label="Meer opties"
+                                  title="Meer opties"
+                                >
+                                  <MoreHorizontal className="w-4 h-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="border-slate-200 shadow-lg">
+                                <DropdownMenuItem
+                                  className="cursor-pointer"
+                                  onSelect={() => {
+                                    if (!pkg.labelUrl) return;
+                                    window.open(pkg.labelUrl, '_blank', 'noopener,noreferrer');
+                                  }}
+                                  disabled={!pkg.labelGenerated || !pkg.labelUrl}
+                                >
+                                  <Eye className="w-4 h-4" />
+                                  Preview
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="cursor-pointer"
+                                  onSelect={() => {
+                                    if (!pkg.labelUrl) return;
+                                    const link = document.createElement('a');
+                                    link.href = pkg.labelUrl;
+                                    link.download = '';
+                                    document.body.appendChild(link);
+                                    link.click();
+                                    document.body.removeChild(link);
+                                  }}
+                                  disabled={!pkg.labelGenerated || !pkg.labelUrl}
+                                >
+                                  <Download className="w-4 h-4" />
+                                  Download
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="cursor-pointer"
+                                  variant="destructive"
+                                  onSelect={() => handleRemovePackage(pkg.id)}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                  Verwijderen
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -598,7 +745,15 @@ export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <label className="text-sm text-slate-700">Verzendmethode</label>
-              <Select value={selectedShippingMethod} onValueChange={setSelectedShippingMethod}>
+              <Select
+                value={selectedShippingMethod}
+                onValueChange={(value) => {
+                  setSelectedShippingMethod(value);
+                  if (value !== 'wegrow') {
+                    setSelectedWeGrowCarrier('');
+                  }
+                }}
+              >
                 <SelectTrigger className="border-slate-200 shadow-sm">
                   <SelectValue placeholder="Kies een verzendmethode..." />
                 </SelectTrigger>
@@ -611,7 +766,7 @@ export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
                   )}
                   {!loadingCarriers && availableShippingMethods.length === 0 && (
                     <div className="px-3 py-2 text-sm text-slate-500">
-                      Geen actieve DPD of DHL contracten
+                      Geen actieve DPD, DHL of WeGrow contracten
                     </div>
                   )}
                   {availableShippingMethods.map((method) => (
@@ -628,10 +783,34 @@ export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
               </Select>
             </div>
 
+            {isWeGrowMethod && (
+              <div className="space-y-2">
+                <label className="text-sm text-slate-700">WeGrow vervoerder</label>
+                <Select value={selectedWeGrowCarrier} onValueChange={setSelectedWeGrowCarrier}>
+                  <SelectTrigger className="border-slate-200 shadow-sm">
+                    <SelectValue placeholder="Kies DHL, PostNL of Bpost..." />
+                  </SelectTrigger>
+                  <SelectContent className="border-slate-200 shadow-lg">
+                    {wegrowCarrierOptions.map((option) => (
+                      <SelectItem key={option.id} value={option.id}>
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded bg-white border border-slate-200 p-1 flex items-center justify-center">
+                            <img src={option.logo} alt={option.name} className="w-full h-full object-contain" />
+                          </div>
+                          <span>{option.name}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             {selectedShippingMethod && (
               <div className="p-4 bg-gradient-to-br from-indigo-50 to-purple-50 rounded-lg border border-indigo-200">
                 <p className="text-sm text-indigo-900">
-                  <strong>Geselecteerd:</strong> {availableShippingMethods.find(m => m.id === selectedShippingMethod)?.name}
+                  <strong>Geselecteerd:</strong> {selectedMethod?.name}
+                  {isWeGrowMethod && selectedWeGrowCarrierName ? ` - ${selectedWeGrowCarrierName}` : ''}
                 </p>
                 <p className="text-xs text-indigo-700 mt-1">
                   {selectedPackages.length > 0 ? selectedPackages.length : scannedPackages.length} label(s) worden gegenereerd
@@ -647,6 +826,7 @@ export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
               onClick={() => {
                 setShowShippingDialog(false);
                 setSelectedShippingMethod('');
+                setSelectedWeGrowCarrier('');
               }}
             >
               Annuleren
@@ -654,7 +834,7 @@ export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
             <Button
               type="button"
               onClick={handlePrintLabels}
-              disabled={!selectedShippingMethod || generatingLabels}
+              disabled={!selectedShippingMethod || (isWeGrowMethod && !selectedWeGrowCarrier) || generatingLabels}
               className="gap-2 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600"
             >
               {generatingLabels ? (

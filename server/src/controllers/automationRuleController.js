@@ -72,7 +72,10 @@ export const getAutomationRules = async (req, res) => {
     res.json({ rules });
   } catch (error) {
     console.error('Get automation rules error:', error);
-    res.status(500).json({ error: 'Failed to get automation rules' });
+    res.status(500).json({
+      error: 'Failed to get automation rules',
+      details: error?.message || 'Unknown server error',
+    });
   }
 };
 
@@ -95,6 +98,15 @@ export const createAutomationRule = async (req, res) => {
 
     if (Number.isNaN(parsedPriority)) {
       return res.status(400).json({ error: 'Invalid priority' });
+    }
+
+    const installation = await prisma.installation.findUnique({
+      where: { id: parsedInstallationId },
+      select: { id: true },
+    });
+
+    if (!installation) {
+      return res.status(400).json({ error: 'Invalid installation ID' });
     }
 
     const hasAccess = await ensureInstallationAccess(req.user, parsedInstallationId);
@@ -127,7 +139,16 @@ export const createAutomationRule = async (req, res) => {
     if (error.code === 'P2002') {
       return res.status(409).json({ error: 'A rule with this country and priority already exists for this installation' });
     }
-    res.status(500).json({ error: 'Failed to create automation rule' });
+    if (error.code === 'P2003') {
+      return res.status(400).json({ error: 'Invalid relation data for automation rule' });
+    }
+    if (error.code === 'P2000') {
+      return res.status(400).json({ error: 'One or more fields are too long' });
+    }
+    res.status(500).json({
+      error: 'Failed to create automation rule',
+      details: error?.message || 'Unknown server error',
+    });
   }
 };
 
@@ -186,7 +207,13 @@ export const updateAutomationRule = async (req, res) => {
     if (error.code === 'P2002') {
       return res.status(409).json({ error: 'A rule with this country and priority already exists for this installation' });
     }
-    res.status(500).json({ error: 'Failed to update automation rule' });
+    if (error.code === 'P2000') {
+      return res.status(400).json({ error: 'One or more fields are too long' });
+    }
+    res.status(500).json({
+      error: 'Failed to update automation rule',
+      details: error?.message || 'Unknown server error',
+    });
   }
 };
 
@@ -219,6 +246,9 @@ export const deleteAutomationRule = async (req, res) => {
     res.json({ success: true, message: 'Automation rule deleted successfully' });
   } catch (error) {
     console.error('Delete automation rule error:', error);
-    res.status(500).json({ error: 'Failed to delete automation rule' });
+    res.status(500).json({
+      error: 'Failed to delete automation rule',
+      details: error?.message || 'Unknown server error',
+    });
   }
 };
