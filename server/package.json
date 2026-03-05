@@ -14,7 +14,11 @@
     "create-admin": "node create-admin.js",
     "create-standard-admins": "node create-standard-admins.js",
     "repair:supplier-tracking": "node repair-supplier-tracking.js",
-    "repair:supplier-tracking:apply": "node repair-supplier-tracking.js --apply"
+    "repair:supplier-tracking:apply": "node repair-supplier-tracking.js --apply",
+    "backfill:supplier-tracking": "node backfill-supplier-tracking.js",
+    "backfill:supplier-tracking:apply": "node backfill-supplier-tracking.js --apply",
+    "backfill:supplier-tracking:bol": "node backfill-supplier-tracking.js --bol-api-fallback",
+    "backfill:supplier-tracking:bol:apply": "node backfill-supplier-tracking.js --bol-api-fallback --apply"
   },
   "dependencies": {
     "express": "^4.18.2",

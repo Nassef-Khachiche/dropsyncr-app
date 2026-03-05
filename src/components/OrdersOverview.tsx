@@ -83,6 +83,14 @@ const wegrowCarrierOptions = [
   { id: 'bpost', name: 'Bpost', logo: bpostLogo },
 ];
 
+const shippingMethodDropdownOptions = wegrowCarrierOptions.map((option) => ({
+  value: `wegrow-${option.id}`,
+  label: option.name,
+  logo: option.logo,
+}));
+
+const MANUAL_REVIEW_VALUES = ['handmatig controleren', 'handmatig_controleren'];
+
 const manualShippingOverrides = [
   {
     value: 'WG PostNL - NEDERLAND | PostNL Standaard 0-23kg',
@@ -105,6 +113,8 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
     dhl: dhlLogo,
     dpd: dpdLogo,
     wegrow: wegrowLogo,
+    postnl: postnlLogo,
+    bpost: bpostLogo,
   };
 
   const isAllStoresSelected = activeProfile === 'all';
@@ -154,12 +164,23 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
   }, [activeProfile]);
 
   useEffect(() => {
-    if (activeProfile && activeProfile !== 'all') {
-      loadCarrierContracts();
-    } else {
+    if (!activeProfile) {
       setCarrierContracts([]);
+      return;
     }
-  }, [activeProfile]);
+
+    if (activeProfile === 'all') {
+      if (allowedIntegrationInstallationIds.length === 0) {
+        setCarrierContracts([]);
+        return;
+      }
+
+      loadCarrierContractsForInstallations(allowedIntegrationInstallationIds);
+      return;
+    }
+
+    loadCarrierContracts(activeProfile);
+  }, [activeProfile, allowedIntegrationInstallationIds]);
 
   const loadOrders = async () => {
     try {
@@ -217,10 +238,10 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
     }
   };
 
-  const loadCarrierContracts = async () => {
+  const loadCarrierContracts = async (installationId: string) => {
     try {
       setLoadingCarriers(true);
-      const data = await api.getCarriers(activeProfile);
+      const data = await api.getCarriers(installationId);
       const filtered = (data || [])
         .filter((carrier: any) => carrier.active)
         .map((carrier: any) => ({
@@ -232,6 +253,47 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
       setCarrierContracts(filtered);
     } catch (error) {
       console.error('Failed to load carriers:', error);
+    } finally {
+      setLoadingCarriers(false);
+    }
+  };
+
+  const loadCarrierContractsForInstallations = async (installationIds: number[]) => {
+    try {
+      setLoadingCarriers(true);
+
+      const uniqueInstallationIds = Array.from(new Set(
+        (installationIds || []).filter((id) => Number.isInteger(id) && id > 0)
+      ));
+
+      if (uniqueInstallationIds.length === 0) {
+        setCarrierContracts([]);
+        return;
+      }
+
+      const carrierResponses = await Promise.allSettled(
+        uniqueInstallationIds.map((installationId) => api.getCarriers(String(installationId)))
+      );
+
+      const merged = carrierResponses
+        .filter((result): result is PromiseFulfilledResult<any[]> => result.status === 'fulfilled')
+        .flatMap((result) => result.value || [])
+        .filter((carrier: any) => carrier.active)
+        .map((carrier: any) => ({
+          id: carrier.id,
+          carrierType: carrier.carrierType,
+          contractName: carrier.contractName,
+          active: carrier.active,
+        }));
+
+      const uniqueById = Array.from(
+        new Map(merged.map((carrier) => [carrier.id, carrier])).values()
+      );
+
+      setCarrierContracts(uniqueById);
+    } catch (error) {
+      console.error('Failed to load carriers for all stores:', error);
+      setCarrierContracts([]);
     } finally {
       setLoadingCarriers(false);
     }
@@ -336,8 +398,9 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
     const selectedOrderContractId = explicitSelection || getOrderShippingContractId(order);
     const selectedContract = carrierContracts.find((contract) => String(contract.id) === selectedOrderContractId);
     const selectedManualOverride = manualShippingOverrides.find((option) => option.value === selectedOrderContractId);
+    const selectedDropdownOption = shippingMethodDropdownOptions.find((option) => option.value === selectedOrderContractId);
 
-    if (!selectedContract && !selectedManualOverride) {
+    if (!selectedContract && !selectedManualOverride && !selectedDropdownOption) {
       toast.error('Selecteer een verzendmethode');
       return;
     }
@@ -644,7 +707,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
       'Besteldatum': order.orderDate ? new Date(order.orderDate).toLocaleDateString('nl-NL') : '',
       'Leverdatum': order.deliveryDate ? new Date(order.deliveryDate).toLocaleDateString('nl-NL') : '',
       'Adres': order.address || '',
-      'Trackingnummer': order.supplierTracking || '',
+      'Trackingnummer': order.supplierTracking || order?.tracking?.trackingCode || '',
       'Status': order.status || '',
       'Orderstatus': order.orderStatus || '',
       'Zendingstatus': order.shippingStatus || ''
@@ -691,14 +754,20 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
     return <Badge variant="outline" className="text-orange-600 border-orange-300 bg-orange-50">Openstaand</Badge>;
   };
 
-  const getCountryFlag = (country: string) => {
-    const flags: Record<string, string> = {
-      'NL': '🇳🇱',
-      'BE': '🇧🇪',
-      'DE': '🇩🇪',
-      'FR': '🇫🇷'
+  const normalizeCountryCode = (country: string) => String(country || '').trim().toUpperCase();
+
+  const getCountryFlagUrl = (country: string) => {
+    const normalizedCode = normalizeCountryCode(country);
+    if (!/^[A-Z]{2}$/.test(normalizedCode)) return null;
+    return `https://flagcdn.com/24x18/${normalizedCode.toLowerCase()}.png`;
+  };
+
+  const getCountryDisplay = (country: string) => {
+    const normalizedCode = normalizeCountryCode(country);
+    return {
+      code: normalizedCode || '-',
+      flagUrl: getCountryFlagUrl(country),
     };
-    return flags[country] || '🌍';
   };
 
   const getOrderStatusBadge = (status: string) => {
@@ -720,20 +789,105 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
     }
   };
 
-  const resolveShippingSelectionLabel = (selectionValue: string) => {
-    if (!selectionValue) return 'Niet ingesteld';
+  const resolveShippingSelectionMeta = (selectionValue: string) => {
+    const normalizedSelection = String(selectionValue || '').trim();
+    if (!normalizedSelection) {
+      return {
+        label: 'Niet ingesteld',
+        logo: null as string | null,
+        icon: null as 'search' | null,
+      };
+    }
 
-    const matchingContract = carrierContracts.find((contract) => String(contract.id) === selectionValue);
+    const normalizedLower = normalizedSelection.toLowerCase();
+    if (MANUAL_REVIEW_VALUES.includes(normalizedLower)) {
+      return {
+        label: 'handmatig controleren',
+        logo: null as string | null,
+        icon: 'search' as const,
+      };
+    }
+
+    const matchingContract = carrierContracts.find((contract) => (
+      String(contract.id) === normalizedSelection || contract.contractName === normalizedSelection
+    ));
     if (matchingContract) {
-      return `${matchingContract.contractName} (${matchingContract.carrierType.toUpperCase()})`;
+      return {
+        label: `${matchingContract.contractName} (${matchingContract.carrierType.toUpperCase()})`,
+        logo: carrierLogoMap[matchingContract.carrierType] || null,
+        icon: null as 'search' | null,
+      };
     }
 
-    const manualOption = manualShippingOverrides.find((option) => option.value === selectionValue);
+    if (normalizedLower.startsWith('wegrow-')) {
+      const wegrowCarrier = normalizedLower.replace('wegrow-', '').trim();
+      const wegrowCarrierLabel = wegrowCarrierOptions.find((option) => option.id === wegrowCarrier)?.name || wegrowCarrier.toUpperCase();
+
+      return {
+        label: `WeGrow - ${wegrowCarrierLabel}`,
+        logo: carrierLogoMap[wegrowCarrier] || carrierLogoMap.wegrow || null,
+        icon: null as 'search' | null,
+      };
+    }
+
+    const manualOption = manualShippingOverrides.find((option) => option.value === normalizedSelection);
     if (manualOption) {
-      return manualOption.label;
+      if (normalizedLower.includes('postnl')) {
+        return { label: manualOption.label, logo: carrierLogoMap.postnl || null, icon: null as 'search' | null };
+      }
+      if (normalizedLower.includes('bpost')) {
+        return { label: manualOption.label, logo: carrierLogoMap.bpost || null, icon: null as 'search' | null };
+      }
+      if (normalizedLower.includes('dhl')) {
+        return { label: manualOption.label, logo: carrierLogoMap.dhl || null, icon: null as 'search' | null };
+      }
+      if (normalizedLower.includes('dpd')) {
+        return { label: manualOption.label, logo: carrierLogoMap.dpd || null, icon: null as 'search' | null };
+      }
+      return { label: manualOption.label, logo: carrierLogoMap.wegrow || null, icon: null as 'search' | null };
     }
 
-    return selectionValue;
+    if (normalizedLower.includes('postnl')) {
+      return { label: normalizedSelection, logo: carrierLogoMap.postnl || null, icon: null as 'search' | null };
+    }
+    if (normalizedLower.includes('bpost')) {
+      return { label: normalizedSelection, logo: carrierLogoMap.bpost || null, icon: null as 'search' | null };
+    }
+    if (normalizedLower.includes('dhl')) {
+      return { label: normalizedSelection, logo: carrierLogoMap.dhl || null, icon: null as 'search' | null };
+    }
+    if (normalizedLower.includes('dpd')) {
+      return { label: normalizedSelection, logo: carrierLogoMap.dpd || null, icon: null as 'search' | null };
+    }
+    if (normalizedLower.includes('wegrow')) {
+      return { label: normalizedSelection, logo: carrierLogoMap.wegrow || null, icon: null as 'search' | null };
+    }
+
+    return { label: normalizedSelection, logo: null as string | null, icon: null as 'search' | null };
+  };
+
+  const renderShippingSelectionIcon = (
+    meta: { label: string; logo: string | null; icon: 'search' | null },
+    sizeClass = 'w-5 h-5',
+    withBorder = true,
+  ) => {
+    if (meta.logo) {
+      return (
+        <div className={`${sizeClass} ${withBorder ? 'rounded bg-white border border-slate-200 p-0.5' : ''} flex items-center justify-center`}>
+          <img src={meta.logo} alt={meta.label} className="w-full h-full object-contain" />
+        </div>
+      );
+    }
+
+    if (meta.icon === 'search') {
+      return (
+        <div className={`${sizeClass} ${withBorder ? 'rounded bg-slate-50 border border-slate-200' : ''} flex items-center justify-center`}>
+          <Search className="w-3.5 h-3.5 text-slate-500" />
+        </div>
+      );
+    }
+
+    return null;
   };
 
   const selectedContract = carrierContracts.find((contract) => String(contract.id) === selectedContractId);
@@ -839,10 +993,12 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                   <TableHead className="w-12"></TableHead>
                   <TableHead>Ordernummer</TableHead>
                   <TableHead>Klantnaam</TableHead>
+                  <TableHead>Land</TableHead>
                   <TableHead>Store naam</TableHead>
                   <TableHead className="text-center">Aantal items</TableHead>
                   <TableHead>Uiterste leverdatum</TableHead>
                   <TableHead>Trackingnummer leverancier</TableHead>
+                  <TableHead className="w-28 text-center">Verzend</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -850,13 +1006,13 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-8">
+                    <TableCell colSpan={12} className="text-center py-8">
                       <Loader2 className="h-6 w-6 animate-spin text-indigo-600 mx-auto" />
                     </TableCell>
                   </TableRow>
                 ) : filteredOrders.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-8 text-slate-500">
+                    <TableCell colSpan={12} className="text-center py-8 text-slate-500">
                       Geen orders gevonden
                     </TableCell>
                   </TableRow>
@@ -898,8 +1054,22 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                             </div>
                           )}
                           <span>{order.customerName}</span>
-                          <span className="text-xl">{getCountryFlag(order.country)}</span>
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        {(() => {
+                          const countryDisplay = getCountryDisplay(order.country);
+                          return (
+                            <span className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-700">
+                              {countryDisplay.flagUrl ? (
+                                <img src={countryDisplay.flagUrl} alt={countryDisplay.code} className="h-3 w-4 rounded-[2px]" loading="lazy" />
+                              ) : (
+                                <span>🌍</span>
+                              )}
+                              <span>{countryDisplay.code}</span>
+                            </span>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className="border-indigo-200 text-indigo-700 bg-indigo-50">
@@ -916,7 +1086,24 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                         {order.deliveryDate ? new Date(order.deliveryDate).toLocaleDateString('nl-NL') : '-'}
                       </TableCell>
                       <TableCell>
-                        <span className="font-mono text-sm text-slate-900">{order.supplierTracking || '-'}</span>
+                        <span className="font-mono text-sm text-slate-900">{order.supplierTracking || order?.tracking?.trackingCode || '-'}</span>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {(() => {
+                          const shippingSelection = getOrderShippingContractId(order);
+                          const shippingMeta = resolveShippingSelectionMeta(shippingSelection);
+                          return (
+                            <div className="flex items-center justify-center">
+                              {shippingMeta.logo && (
+                                <div className="w-9 h-9 p-1.5 flex items-center justify-center">
+                                  <img src={shippingMeta.logo} alt={shippingMeta.label} className="w-full h-full object-contain" />
+                                </div>
+                              )}
+                              {!shippingMeta.logo && !shippingMeta.icon && <span className="text-xs text-slate-400">-</span>}
+                              {!shippingMeta.logo && shippingMeta.icon && renderShippingSelectionIcon(shippingMeta, 'w-9 h-9', false)}
+                            </div>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell>
                         {getOrderStatusBadge(order.status || 'onderweg-ffm')}
@@ -963,7 +1150,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                     {/* Expanded Details Row */}
                     {expandedOrder === order.orderNumber && (
                       <TableRow className="bg-gradient-to-r from-slate-50/80 to-indigo-50/30">
-                        <TableCell colSpan={10} className="p-6">
+                        <TableCell colSpan={12} className="p-6">
                           <div className="flex gap-6">
                             {/* Left Column - Basic Info */}
                             <div className="flex-1 space-y-6">
@@ -1064,6 +1251,17 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                                   <p className="text-sm text-slate-700">
                                     Huidig: {String(order.shippingMethod || 'Niet ingesteld')}
                                   </p>
+                                  {(() => {
+                                    const currentShippingMeta = resolveShippingSelectionMeta(getOrderShippingContractId(order));
+                                    if (!currentShippingMeta.logo && !currentShippingMeta.icon) return null;
+
+                                    return (
+                                      <div className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white p-3">
+                                        {renderShippingSelectionIcon(currentShippingMeta)}
+                                        <span className="text-xs text-slate-700">{currentShippingMeta.label}</span>
+                                      </div>
+                                    );
+                                  })()}
                                   <Select
                                     value={getOrderShippingContractId(order)}
                                     onValueChange={async (value: string) => {
@@ -1078,21 +1276,31 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                                   >
                                     <SelectTrigger className="w-full border-slate-200 shadow-sm">
                                       <SelectValue placeholder="Selecteer verzendmethode">
-                                        {resolveShippingSelectionLabel(getOrderShippingContractId(order))}
+                                        {(() => {
+                                          const selectionMeta = resolveShippingSelectionMeta(getOrderShippingContractId(order));
+
+                                          return (
+                                            <div className="flex items-center gap-2 min-w-0">
+                                              {renderShippingSelectionIcon(selectionMeta)}
+                                              <span className="truncate">{selectionMeta.label}</span>
+                                            </div>
+                                          );
+                                        })()}
                                       </SelectValue>
                                     </SelectTrigger>
                                     <SelectContent className="border-slate-200 shadow-lg">
-                                      {carrierContracts.map((contract) => (
-                                        <SelectItem key={`contract-${contract.id}`} value={String(contract.id)}>
-                                          {contract.contractName} ({contract.carrierType.toUpperCase()})
-                                        </SelectItem>
-                                      ))}
+                                      {shippingMethodDropdownOptions.map((option) => {
+                                        const optionMeta = resolveShippingSelectionMeta(option.value);
 
-                                      {manualShippingOverrides.map((option) => (
-                                        <SelectItem key={`manual-${option.value}`} value={option.value}>
-                                          {option.label}
-                                        </SelectItem>
-                                      ))}
+                                        return (
+                                          <SelectItem key={`dropdown-${option.value}`} value={option.value}>
+                                            <div className="flex items-center gap-2">
+                                              {renderShippingSelectionIcon(optionMeta)}
+                                              <span>{optionMeta.label}</span>
+                                            </div>
+                                          </SelectItem>
+                                        );
+                                      })}
 
                                       {(() => {
                                         const currentSelection = getOrderShippingContractId(order);
@@ -1102,12 +1310,20 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                                           (contract) => String(contract.id) === currentSelection
                                         );
                                         const hasManualOption = isManualShippingOverride(currentSelection);
+                                        const hasDropdownOption = shippingMethodDropdownOptions.some(
+                                          (option) => option.value === currentSelection
+                                        );
 
-                                        if (hasContractOption || hasManualOption) return null;
+                                        if (hasContractOption || hasManualOption || hasDropdownOption) return null;
+
+                                        const fallbackMeta = resolveShippingSelectionMeta(currentSelection);
 
                                         return (
                                           <SelectItem value={currentSelection}>
-                                            {currentSelection}
+                                            <div className="flex items-center gap-2">
+                                              {renderShippingSelectionIcon(fallbackMeta)}
+                                              <span>{fallbackMeta.label}</span>
+                                            </div>
                                           </SelectItem>
                                         );
                                       })()}
@@ -1198,7 +1414,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
             <div className="text-sm text-slate-700">
               {totalOrders} orders gevonden
               {totalOrders > 0 && (
-                <span className="text-slate-500"> • {startOrderIndex}-{endOrderIndex}</span>
+                <span className="text-slate-500"> • {startOrderIndex} - {endOrderIndex}</span>
               )}
             </div>
             <div className="flex gap-6 text-sm">

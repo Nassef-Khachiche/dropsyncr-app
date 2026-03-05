@@ -617,6 +617,25 @@ export const syncBolOrders = async (req, res) => {
       const detailedOrderItems = bolOrderItemsDetails?.orderItems || [];
       const orderItems = mergeBolOrderItems(baseOrderItems, detailedOrderItems);
       const shipmentDetails = orderPayload.shipmentDetails || orderPayload.billingDetails || {};
+      const shipmentList = Array.isArray(bolShipmentDetails?.shipments)
+        ? bolShipmentDetails.shipments
+        : [];
+      const firstShipment = shipmentList[0] || null;
+      const resolvedTrackAndTrace = firstNonEmptyString(
+        firstShipment?.transport?.trackAndTrace,
+        firstShipment?.trackAndTrace,
+        firstShipment?.trackingCode,
+        firstShipment?.trackingNumber,
+        firstShipment?.parcelLabelNumber,
+        findStringValueByKey(firstShipment, /(track.?and.?trace|tracking.?code|tracking.?number|parcel.?label.?number)/i),
+        findStringValueByKey(bolShipmentDetails, /(track.?and.?trace|tracking.?code|tracking.?number|parcel.?label.?number)/i),
+      );
+      const resolvedTransporterCode = firstNonEmptyString(
+        firstShipment?.transport?.transporterCode,
+        firstShipment?.transporterCode,
+        firstShipment?.transporter,
+        findStringValueByKey(firstShipment, /(transporter.?code|carrier.?code|carrier)/i),
+      );
       const deliveryDate = resolveBolDeliveryDate(orderPayload, orderItems, bolShipmentDetails);
       const resolvedBolShippingMethod = inferBolShippingMethodFromOrderData({
         orderPayload,
@@ -681,6 +700,22 @@ export const syncBolOrders = async (req, res) => {
       const firstName = shipmentDetails?.firstName || '';
       const surname = shipmentDetails?.surname || '';
       const customerName = `${firstName} ${surname}`.trim() || 'Unknown';
+      let preservedShippingMethod = '';
+      if (existingOrder?.id) {
+        try {
+          const shippingMethodRows = await prisma.$queryRaw`
+            SELECT shippingMethod
+            FROM \`Order\`
+            WHERE id = ${existingOrder.id}
+            LIMIT 1
+          `;
+          const rawShippingMethod = Array.isArray(shippingMethodRows) ? shippingMethodRows[0]?.shippingMethod : null;
+          preservedShippingMethod = typeof rawShippingMethod === 'string' ? rawShippingMethod.trim() : '';
+        } catch {
+          preservedShippingMethod = '';
+        }
+      }
+
       const shippingAutomationResult = await resolveShippingAutomationForOrder({
         prisma,
         installationId: parseInt(installationId, 10),
@@ -689,6 +724,7 @@ export const syncBolOrders = async (req, res) => {
         bolShippingMethod: resolvedBolShippingMethod,
         isBrievenbus: mailboxOrder,
       });
+      const resolvedOrderShippingMethod = preservedShippingMethod || shippingAutomationResult.shippingAssignment || null;
 
       const orderData = {
         orderNumber: bolOrder.orderId,
@@ -714,8 +750,8 @@ export const syncBolOrders = async (req, res) => {
           return sum + (unitPrice * (item.quantity || 1));
         }, 0) || 0),
         itemCount: orderItems?.length || 1,
+        ...(resolvedTrackAndTrace ? { supplierTracking: resolvedTrackAndTrace } : {}),
         status: mapBolStatusToInternal(orderItems?.[0]?.fulfilmentStatus || bolOrder.orderItems?.[0]?.fulfilmentStatus),
-        shippingMethod: shippingAutomationResult.shippingAssignment,
       };
 
       console.log('[BOL SYNC] Mapped order data:', {
@@ -735,6 +771,37 @@ export const syncBolOrders = async (req, res) => {
             data: orderData,
             select: { id: true },
           });
+
+      if (resolvedTrackAndTrace) {
+        await prisma.tracking.upsert({
+          where: { orderId: savedOrder.id },
+          update: {
+            trackingCode: resolvedTrackAndTrace,
+            supplier: resolvedTransporterCode || 'bol.com',
+            source: 'bol_sync',
+            status: 'linked',
+          },
+          create: {
+            orderId: savedOrder.id,
+            trackingCode: resolvedTrackAndTrace,
+            supplier: resolvedTransporterCode || 'bol.com',
+            source: 'bol_sync',
+            status: 'linked',
+          },
+        });
+      }
+
+      if (resolvedOrderShippingMethod) {
+        try {
+          await prisma.$executeRaw`
+            UPDATE \`Order\`
+            SET shippingMethod = ${resolvedOrderShippingMethod}, updatedAt = NOW()
+            WHERE id = ${savedOrder.id} AND installationId = ${parseInt(installationId)}
+          `;
+        } catch {
+          // shippingMethod might not exist in some DBs; ignore for compatibility
+        }
+      }
 
       if (existingOrder) {
         updatedCount++;
@@ -972,13 +1039,34 @@ export const updateBolShipment = async (req, res) => {
     );
 
     // Update in our database
-    await prisma.order.update({
+    const updatedOrder = await prisma.order.update({
       where: { orderNumber: orderId },
       data: {
         status: 'verstuurd',
         shippingStatus: 'SHIPPED',
+        ...(trackAndTrace ? { supplierTracking: trackAndTrace } : {}),
       },
+      select: { id: true },
     });
+
+    if (trackAndTrace) {
+      await prisma.tracking.upsert({
+        where: { orderId: updatedOrder.id },
+        update: {
+          trackingCode: trackAndTrace,
+          supplier: transporterCode || 'bol.com',
+          source: 'bol_shipment_update',
+          status: 'linked',
+        },
+        create: {
+          orderId: updatedOrder.id,
+          trackingCode: trackAndTrace,
+          supplier: transporterCode || 'bol.com',
+          source: 'bol_shipment_update',
+          status: 'linked',
+        },
+      });
+    }
 
     res.json({ success: true, data: result });
   } catch (error) {

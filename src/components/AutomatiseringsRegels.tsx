@@ -52,6 +52,20 @@ interface InstallationOption {
   name: string;
 }
 
+interface CarrierContract {
+  id: number;
+  installationId: number;
+  carrierType: string;
+  contractName: string;
+  active: boolean;
+}
+
+interface CarrierSelectionOption {
+  value: string;
+  label: string;
+  logoUrl: string | null;
+}
+
 interface RuleFormData {
   name: string;
   countryCode: string;
@@ -61,12 +75,75 @@ interface RuleFormData {
   active: boolean;
 }
 
-const carrierOptions = [
-  { value: 'postnl', label: 'PostNL' },
-  { value: 'dhl', label: 'DHL' },
-  { value: 'dpd', label: 'DPD' },
-  { value: 'wegrow', label: 'WeGrow' },
+const postnlLogo = new URL('../assets/postnl-logo.png', import.meta.url).href;
+const dhlLogo = new URL('../assets/dhl-logo.png', import.meta.url).href;
+const dpdLogo = new URL('../assets/dpd-logo.png', import.meta.url).href;
+const bpostLogo = new URL('../assets/bpost-logo.png', import.meta.url).href;
+const wegrowLogo = new URL('../assets/wegrow-logo.jpg', import.meta.url).href;
+
+const carrierLogoMap: Record<string, string | null> = {
+  postnl: postnlLogo,
+  dhl: dhlLogo,
+  dpd: dpdLogo,
+  bpost: bpostLogo,
+  wegrow: wegrowLogo,
+};
+
+const defaultCountryOptions = [
+  'NL', 'BE', 'DE', 'FR', 'LU', 'AT', 'ES', 'IT', 'PT', 'IE',
+  'PL', 'CZ', 'SK', 'HU', 'RO', 'BG', 'HR', 'SI', 'DK', 'SE',
+  'NO', 'FI', 'EE', 'LV', 'LT', 'CH', 'GB', 'US', 'CA', 'AU',
 ];
+
+const countryAliases: Record<string, string> = {
+  NETHERLANDS: 'NL',
+  NEDERLAND: 'NL',
+  BELGIUM: 'BE',
+  BELGIE: 'BE',
+  BELGIË: 'BE',
+  GERMANY: 'DE',
+  DEUTSCHLAND: 'DE',
+  FRANCE: 'FR',
+  LUXEMBOURG: 'LU',
+  AUSTRIA: 'AT',
+  OOSTENRIJK: 'AT',
+  SPAIN: 'ES',
+  SPANJE: 'ES',
+  ITALY: 'IT',
+  ITALIE: 'IT',
+  PORTUGAL: 'PT',
+  IRELAND: 'IE',
+  IERLAND: 'IE',
+  POLAND: 'PL',
+  POLEN: 'PL',
+  CZECHIA: 'CZ',
+  CZECH_REPUBLIC: 'CZ',
+  SLOVAKIA: 'SK',
+  HUNGARY: 'HU',
+  ROMANIA: 'RO',
+  BULGARIA: 'BG',
+  CROATIA: 'HR',
+  SLOVENIA: 'SI',
+  DENMARK: 'DK',
+  DENEMARKEN: 'DK',
+  SWEDEN: 'SE',
+  ZWEDEN: 'SE',
+  NORWAY: 'NO',
+  NOORWEGEN: 'NO',
+  FINLAND: 'FI',
+  ESTONIA: 'EE',
+  LATVIA: 'LV',
+  LITHUANIA: 'LT',
+  SWITZERLAND: 'CH',
+  ZWITSERLAND: 'CH',
+  UNITED_KINGDOM: 'GB',
+  UK: 'GB',
+  GREAT_BRITAIN: 'GB',
+  UNITED_STATES: 'US',
+  USA: 'US',
+  CANADA: 'CA',
+  AUSTRALIA: 'AU',
+};
 
 export function AutomatiseringsRegels({ activeProfile }: AutomatiseringsRegelsProps) {
   const [rules, setRules] = useState<AutomationRule[]>([]);
@@ -75,6 +152,7 @@ export function AutomatiseringsRegels({ activeProfile }: AutomatiseringsRegelsPr
   const [showDialog, setShowDialog] = useState(false);
   const [editingRule, setEditingRule] = useState<AutomationRule | null>(null);
   const [installations, setInstallations] = useState<InstallationOption[]>([]);
+  const [carrierOptionsByInstallation, setCarrierOptionsByInstallation] = useState<Record<number, CarrierSelectionOption[]>>({});
   const [formData, setFormData] = useState<RuleFormData>({
     name: '',
     countryCode: '',
@@ -97,6 +175,18 @@ export function AutomatiseringsRegels({ activeProfile }: AutomatiseringsRegelsPr
       loadInstallations();
     }
   }, [isAllStoresMode]);
+
+  useEffect(() => {
+    if (!activeProfile) return;
+
+    const selectedInstallationId = isAllStoresMode
+      ? parseInt(formData.installationId, 10)
+      : parseInt(activeProfile, 10);
+
+    if (!Number.isInteger(selectedInstallationId)) return;
+
+    void loadCarrierOptionsForInstallation(selectedInstallationId);
+  }, [activeProfile, isAllStoresMode, formData.installationId]);
 
   const loadRules = async () => {
     if (!activeProfile) {
@@ -124,6 +214,9 @@ export function AutomatiseringsRegels({ activeProfile }: AutomatiseringsRegelsPr
       }));
 
       setRules(mappedRules);
+
+      const uniqueInstallationIds = Array.from(new Set(mappedRules.map((rule) => rule.installationId)));
+      await Promise.all(uniqueInstallationIds.map((installationId) => loadCarrierOptionsForInstallation(installationId)));
     } catch (error: any) {
       console.error('Failed to load automation rules:', error);
       toast.error(error.message || 'Kon automatiseringsregels niet laden');
@@ -156,10 +249,182 @@ export function AutomatiseringsRegels({ activeProfile }: AutomatiseringsRegelsPr
 
   const activeCount = useMemo(() => rules.filter((rule) => rule.active).length, [rules]);
 
-  const formatCarrierLabel = (carrierType: string) => {
-    const match = carrierOptions.find((option) => option.value === carrierType);
-    return match ? match.label : carrierType.toUpperCase();
+  const loadCarrierOptionsForInstallation = async (installationId: number) => {
+    if (!Number.isInteger(installationId) || installationId <= 0) return;
+    if (carrierOptionsByInstallation[installationId]) return;
+
+    try {
+      const contracts: CarrierContract[] = await api.getCarriers(String(installationId));
+      const activeContracts = (contracts || []).filter((contract) => contract.active);
+
+      const selectionOptions: CarrierSelectionOption[] = activeContracts.flatMap((contract) => {
+        const normalizedCarrierType = String(contract.carrierType || '').trim().toLowerCase();
+        const normalizedContractName = String(contract.contractName || '').trim();
+        if (!normalizedContractName) return [];
+
+        if (normalizedCarrierType === 'wegrow') {
+          return [
+            {
+              value: `${normalizedContractName} | wegrow-dhl`,
+              label: `${normalizedContractName} · WeGrow DHL`,
+              logoUrl: dhlLogo,
+            },
+            {
+              value: `${normalizedContractName} | wegrow-postnl`,
+              label: `${normalizedContractName} · WeGrow PostNL`,
+              logoUrl: postnlLogo,
+            },
+            {
+              value: `${normalizedContractName} | wegrow-bpost`,
+              label: `${normalizedContractName} · WeGrow Bpost`,
+              logoUrl: bpostLogo,
+            },
+          ];
+        }
+
+        return [{
+          value: `${normalizedContractName} | ${normalizedCarrierType.toUpperCase()}`,
+          label: normalizedContractName,
+          logoUrl: carrierLogoMap[normalizedCarrierType] || null,
+        }];
+      });
+
+      setCarrierOptionsByInstallation((previousMap) => ({
+        ...previousMap,
+        [installationId]: selectionOptions,
+      }));
+    } catch (error) {
+      console.error('Failed to load carrier options:', error);
+    }
   };
+
+  const getCarrierPresentation = (carrierValue: string, installationId: number) => {
+    const normalizedValue = String(carrierValue || '').trim();
+    const installationOptions = carrierOptionsByInstallation[installationId] || [];
+    const matchingOption = installationOptions.find((option) => option.value === normalizedValue);
+
+    if (matchingOption) {
+      return {
+        label: matchingOption.label,
+        logoUrl: matchingOption.logoUrl,
+      };
+    }
+
+    const [contractPart = '', servicePart = ''] = normalizedValue.split('|').map((segment) => segment.trim());
+    const normalizedService = servicePart.toLowerCase();
+
+    if (normalizedService.includes('wegrow-dhl')) {
+      return { label: `${contractPart || 'WeGrow'} · WeGrow DHL`, logoUrl: dhlLogo };
+    }
+    if (normalizedService.includes('wegrow-postnl')) {
+      return { label: `${contractPart || 'WeGrow'} · WeGrow PostNL`, logoUrl: postnlLogo };
+    }
+    if (normalizedService.includes('wegrow-bpost')) {
+      return { label: `${contractPart || 'WeGrow'} · WeGrow Bpost`, logoUrl: bpostLogo };
+    }
+    if (normalizedService.includes('postnl')) {
+      return { label: contractPart || 'PostNL', logoUrl: postnlLogo };
+    }
+    if (normalizedService.includes('dhl')) {
+      return { label: contractPart || 'DHL', logoUrl: dhlLogo };
+    }
+    if (normalizedService.includes('dpd')) {
+      return { label: contractPart || 'DPD', logoUrl: dpdLogo };
+    }
+    if (normalizedService.includes('bpost')) {
+      return { label: contractPart || 'Bpost', logoUrl: bpostLogo };
+    }
+    if (normalizedService.includes('wegrow')) {
+      return { label: contractPart || 'WeGrow', logoUrl: wegrowLogo };
+    }
+
+    const normalizedToken = normalizedValue.toLowerCase();
+    if (normalizedToken.includes('postnl')) return { label: contractPart || 'PostNL', logoUrl: postnlLogo };
+    if (normalizedToken.includes('dhl')) return { label: contractPart || 'DHL', logoUrl: dhlLogo };
+    if (normalizedToken.includes('dpd')) return { label: contractPart || 'DPD', logoUrl: dpdLogo };
+    if (normalizedToken.includes('bpost')) return { label: contractPart || 'Bpost', logoUrl: bpostLogo };
+    if (normalizedToken.includes('wegrow')) return { label: contractPart || 'WeGrow', logoUrl: wegrowLogo };
+
+    return {
+      label: normalizedValue || '-',
+      logoUrl: null,
+    };
+  };
+
+  const normalizeCountryCodeForDisplay = (countryCode: string) => {
+    const normalized = String(countryCode || '').trim().toUpperCase();
+    if (!normalized) return '';
+    if (/^[A-Z]{2}$/.test(normalized)) return normalized;
+
+    const key = normalized.replace(/\s+/g, '_');
+    return countryAliases[key] || normalized;
+  };
+
+  const getCountryFlagUrl = (countryCode: string) => {
+    const normalizedCode = normalizeCountryCodeForDisplay(countryCode);
+    if (!/^[A-Z]{2}$/.test(normalizedCode)) return null;
+    return `https://flagcdn.com/24x18/${normalizedCode.toLowerCase()}.png`;
+  };
+
+  const countryOptions = useMemo(() => {
+    const dynamicCodesFromRules = rules
+      .map((rule) => normalizeCountryCodeForDisplay(rule.countryCode))
+      .filter(Boolean);
+
+    const currentFormCode = normalizeCountryCodeForDisplay(formData.countryCode);
+
+    return Array.from(
+      new Set([
+        ...defaultCountryOptions,
+        ...dynamicCodesFromRules,
+        ...(currentFormCode ? [currentFormCode] : []),
+      ])
+    );
+  }, [rules, formData.countryCode]);
+
+  const formatCountryDisplay = (countryCode: string) => {
+    const normalizedCode = normalizeCountryCodeForDisplay(countryCode);
+    if (!normalizedCode) {
+      return {
+        code: '-',
+        flagUrl: null,
+      };
+    }
+
+    return {
+      code: normalizedCode,
+      flagUrl: getCountryFlagUrl(normalizedCode),
+    };
+  };
+
+  const selectedInstallationIdForForm = isAllStoresMode
+    ? parseInt(formData.installationId, 10)
+    : parseInt(activeProfile || '', 10);
+
+  const selectedCarrierOptionsBase = Number.isInteger(selectedInstallationIdForForm)
+    ? (carrierOptionsByInstallation[selectedInstallationIdForForm] || [])
+    : [];
+
+  const selectedCarrierOptions = useMemo(() => {
+    const currentCarrierValue = String(formData.carrierType || '').trim();
+    if (!currentCarrierValue) return selectedCarrierOptionsBase;
+
+    const hasCurrentValue = selectedCarrierOptionsBase.some((option) => option.value === currentCarrierValue);
+    if (hasCurrentValue) return selectedCarrierOptionsBase;
+
+    const fallbackPresentation = Number.isInteger(selectedInstallationIdForForm)
+      ? getCarrierPresentation(currentCarrierValue, selectedInstallationIdForForm)
+      : { label: currentCarrierValue, logoUrl: null };
+
+    return [
+      ...selectedCarrierOptionsBase,
+      {
+        value: currentCarrierValue,
+        label: fallbackPresentation.label,
+        logoUrl: fallbackPresentation.logoUrl || null,
+      },
+    ];
+  }, [selectedCarrierOptionsBase, formData.carrierType, selectedInstallationIdForForm]);
 
   const resetForm = () => {
     setEditingRule(null);
@@ -199,18 +464,18 @@ export function AutomatiseringsRegels({ activeProfile }: AutomatiseringsRegelsPr
 
   const submitRule = async () => {
     const normalizedCountryCode = formData.countryCode.trim().toUpperCase();
-    const normalizedCarrierType = formData.carrierType.trim().toLowerCase();
+    const selectedCarrierAssignment = formData.carrierType.trim();
     const parsedPriority = parseInt(formData.priority, 10);
     const selectedInstallationId = isAllStoresMode
       ? parseInt(formData.installationId, 10)
       : parseInt(activeProfile || '', 10);
 
     if (!normalizedCountryCode) {
-      toast.error('Vul een landcode of landnaam in, bijvoorbeeld NL of GERMANY');
+      toast.error('Selecteer een landcode');
       return;
     }
 
-    if (!normalizedCarrierType) {
+    if (!selectedCarrierAssignment) {
       toast.error('Selecteer een vervoerder');
       return;
     }
@@ -225,7 +490,10 @@ export function AutomatiseringsRegels({ activeProfile }: AutomatiseringsRegelsPr
       return;
     }
 
-    const ruleName = formData.name.trim() || `Order naar ${normalizedCountryCode} => ${formatCarrierLabel(normalizedCarrierType)}`;
+    const selectedCarrierPresentation = Number.isInteger(selectedInstallationId)
+      ? getCarrierPresentation(selectedCarrierAssignment, selectedInstallationId)
+      : { label: selectedCarrierAssignment };
+    const ruleName = formData.name.trim() || `Order naar ${normalizedCountryCode} => ${selectedCarrierPresentation.label}`;
 
     try {
       setSubmitting(true);
@@ -234,7 +502,7 @@ export function AutomatiseringsRegels({ activeProfile }: AutomatiseringsRegelsPr
         await api.updateAutomationRule(editingRule.id, {
           name: ruleName,
           countryCode: normalizedCountryCode,
-          carrierType: normalizedCarrierType,
+          carrierType: selectedCarrierAssignment,
           priority: parsedPriority,
           active: formData.active,
         });
@@ -244,7 +512,7 @@ export function AutomatiseringsRegels({ activeProfile }: AutomatiseringsRegelsPr
           installationId: selectedInstallationId,
           name: ruleName,
           countryCode: normalizedCountryCode,
-          carrierType: normalizedCarrierType,
+          carrierType: selectedCarrierAssignment,
           priority: parsedPriority,
           active: formData.active,
         });
@@ -368,9 +636,37 @@ export function AutomatiseringsRegels({ activeProfile }: AutomatiseringsRegelsPr
                       <TableCell className="text-slate-700">{rule.installationName || `#${rule.installationId}`}</TableCell>
                     )}
                     <TableCell>
-                      <Badge variant="outline" className="border-slate-200 text-slate-700">{rule.countryCode}</Badge>
+                      <Badge variant="outline" className="border-slate-200 text-slate-700">
+                        {(() => {
+                          const countryDisplay = formatCountryDisplay(rule.countryCode);
+                          return (
+                            <span className="inline-flex items-center gap-2">
+                              {countryDisplay.flagUrl ? (
+                                <img src={countryDisplay.flagUrl} alt={countryDisplay.code} className="h-3 w-4 rounded-[2px]" loading="lazy" />
+                              ) : (
+                                <span>🌍</span>
+                              )}
+                              <span>{countryDisplay.code}</span>
+                            </span>
+                          );
+                        })()}
+                      </Badge>
                     </TableCell>
-                    <TableCell className="text-slate-700">{formatCarrierLabel(rule.carrierType)}</TableCell>
+                    <TableCell>
+                      {(() => {
+                        const carrierDisplay = getCarrierPresentation(rule.carrierType, rule.installationId);
+                        return (
+                          <div className="flex items-center justify-start">
+                            {carrierDisplay.logoUrl && (
+                              <div className="w-10 h-10 flex items-center justify-center">
+                                <img src={carrierDisplay.logoUrl} alt={carrierDisplay.label} className="w-full h-full object-contain" loading="lazy" />
+                              </div>
+                            )}
+                            {!carrierDisplay.logoUrl && <span className="text-xs text-slate-400">-</span>}
+                          </div>
+                        );
+                      })()}
+                    </TableCell>
                     <TableCell className="text-slate-700">{rule.priority}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-3">
@@ -445,12 +741,31 @@ export function AutomatiseringsRegels({ activeProfile }: AutomatiseringsRegelsPr
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Land (code of naam)</Label>
-                <Input
+                <Label>Land</Label>
+                <Select
                   value={formData.countryCode}
-                  onChange={(event) => setFormData((previousData) => ({ ...previousData, countryCode: event.target.value.toUpperCase() }))}
-                  placeholder="NL of GERMANY"
-                />
+                  onValueChange={(value) => setFormData((previousData) => ({ ...previousData, countryCode: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecteer land" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {countryOptions.map((countryCode) => {
+                      const countryDisplay = formatCountryDisplay(countryCode);
+                      return (
+                      <SelectItem key={countryCode} value={countryCode}>
+                        <span className="inline-flex items-center gap-2">
+                          {countryDisplay.flagUrl ? (
+                            <img src={countryDisplay.flagUrl} alt={countryDisplay.code} className="h-3 w-4 rounded-[2px]" loading="lazy" />
+                          ) : (
+                            <span>🌍</span>
+                          )}
+                          <span>{countryDisplay.code}</span>
+                        </span>
+                      </SelectItem>
+                    );})}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-2">
@@ -463,9 +778,14 @@ export function AutomatiseringsRegels({ activeProfile }: AutomatiseringsRegelsPr
                     <SelectValue placeholder="Selecteer vervoerder" />
                   </SelectTrigger>
                   <SelectContent>
-                    {carrierOptions.map((carrier) => (
+                    {selectedCarrierOptions.map((carrier) => (
                       <SelectItem key={carrier.value} value={carrier.value}>
-                        {carrier.label}
+                        <span className="inline-flex items-center gap-2">
+                          {carrier.logoUrl && (
+                            <img src={carrier.logoUrl} alt={carrier.label} className="h-4 w-4 rounded-sm object-contain" loading="lazy" />
+                          )}
+                          <span>{carrier.label}</span>
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectContent>

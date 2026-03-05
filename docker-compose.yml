@@ -59,7 +59,7 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
-    command: sh -c "sleep 3 && npm run dev"
+    command: sh -c "sleep 3 && npx prisma generate && npm run dev"
 
   # Frontend React App
   frontend:

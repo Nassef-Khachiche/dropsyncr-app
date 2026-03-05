@@ -594,11 +594,14 @@ export const generateCarrierLabels = async (req, res) => {
 
       const operations = [
         ...resolvedPackages.map(({ orderId, generatedLabel }) => {
+          const generatedTrackingCode = String(generatedLabel?.trackingCode || '').trim();
+
           if (hasShippingMethodColumn) {
             return prisma.$executeRaw`
               UPDATE \`Order\`
               SET
                 shippingMethod = ${selectedShippingMethod},
+                supplierTracking = ${generatedTrackingCode || null},
                 updatedAt = NOW()
               WHERE id = ${orderId} AND installationId = ${carrier.installationId}
             `;
@@ -607,6 +610,7 @@ export const generateCarrierLabels = async (req, res) => {
           return prisma.$executeRaw`
             UPDATE \`Order\`
             SET
+              supplierTracking = ${generatedTrackingCode || null},
               updatedAt = NOW()
             WHERE id = ${orderId} AND installationId = ${carrier.installationId}
           `;
@@ -624,9 +628,36 @@ export const generateCarrierLabels = async (req, res) => {
 
       resolvedPackages.forEach(({ orderId, generatedLabel }) => {
         const persistedLabelUrl = persistedLabelUrlsByOrderId.get(orderId) || null;
+        const generatedTrackingCode = String(generatedLabel?.trackingCode || '').trim();
+        const trackingUrl = String(generatedLabel?.trackingUrl || '').trim();
 
         if (persistedLabelUrl && generatedLabel) {
           generatedLabel.labelUrl = persistedLabelUrl;
+        }
+
+        if (generatedTrackingCode) {
+          operations.push(
+            prisma.tracking.upsert({
+              where: { orderId },
+              update: {
+                trackingCode: generatedTrackingCode,
+                supplier: carrier.carrierType,
+                source: 'label_generation',
+                status: 'linked',
+              },
+              create: {
+                orderId,
+                trackingCode: generatedTrackingCode,
+                supplier: carrier.carrierType,
+                source: 'label_generation',
+                status: 'linked',
+              },
+            })
+          );
+
+          if (trackingUrl && generatedLabel) {
+            generatedLabel.trackingUrl = trackingUrl;
+          }
         }
 
         operations.push(

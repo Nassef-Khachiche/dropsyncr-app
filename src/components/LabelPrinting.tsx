@@ -46,12 +46,15 @@ import {
   Eye,
   Download,
   MoreHorizontal,
-  Loader2
+  Loader2,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { Alert, AlertDescription } from './ui/alert';
 import { toast } from 'sonner@2.0.3';
 import { api } from '../services/api';
 import dhlLogo from '../assets/dhl-logo.png';
+import dpdLogo from '../assets/dpd-logo.png';
 import postnlLogo from '../assets/postnl-logo.png';
 import bpostLogo from '../assets/bpost-logo.png';
 
@@ -96,9 +99,18 @@ const wegrowCarrierOptions = [
 ];
 
 export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
+  const PACKAGES_PER_PAGE = 50;
+
+  const carrierLogoMap: Record<string, string> = {
+    dhl: dhlLogo,
+    dpd: dpdLogo,
+    wegrow: dhlLogo,
+  };
+
   const [scanInput, setScanInput] = useState('');
   const [scannedPackages, setScannedPackages] = useState<ScannedPackage[]>([]);
   const [selectedPackages, setSelectedPackages] = useState<number[]>([]);
+  const [currentPackagesPage, setCurrentPackagesPage] = useState(1);
   const [showShippingDialog, setShowShippingDialog] = useState(false);
   const [selectedShippingMethod, setSelectedShippingMethod] = useState<string>('');
   const [selectedWeGrowCarrier, setSelectedWeGrowCarrier] = useState<string>('');
@@ -117,6 +129,13 @@ export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
       setSelectedPackages([]);
     }
   }, [activeProfile]);
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(scannedPackages.length / PACKAGES_PER_PAGE));
+    if (currentPackagesPage > totalPages) {
+      setCurrentPackagesPage(totalPages);
+    }
+  }, [scannedPackages.length, currentPackagesPage]);
 
   const mapOrderToPackage = (order: any): ScannedPackage | null => {
     if (typeof order?.id !== 'number') return null;
@@ -208,6 +227,13 @@ export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
   const isWeGrowMethod = selectedMethod?.carrierType === 'wegrow';
   const selectedWeGrowCarrierName = wegrowCarrierOptions.find(option => option.id === selectedWeGrowCarrier)?.name;
 
+  const totalPackagesPages = Math.max(1, Math.ceil(scannedPackages.length / PACKAGES_PER_PAGE));
+  const packageStartIndex = (currentPackagesPage - 1) * PACKAGES_PER_PAGE;
+  const paginatedScannedPackages = scannedPackages.slice(packageStartIndex, packageStartIndex + PACKAGES_PER_PAGE);
+  const visiblePackageIds = paginatedScannedPackages.map((pkg) => pkg.id);
+  const allVisibleSelected = visiblePackageIds.length > 0 && visiblePackageIds.every((pkgId) => selectedPackages.includes(pkgId));
+  const someVisibleSelected = visiblePackageIds.some((pkgId) => selectedPackages.includes(pkgId)) && !allVisibleSelected;
+
   const handleScan = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!scanInput.trim()) return;
@@ -243,6 +269,7 @@ export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
         toast.info('Order staat al op de labels pagina');
       } else {
         setScannedPackages((prev) => [mappedPackage, ...prev]);
+        setCurrentPackagesPage(1);
         toast.success('Order gevonden en toegevoegd aan labels');
       }
     } catch (error: any) {
@@ -255,12 +282,13 @@ export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
     }
   };
 
-  const handleSelectAll = () => {
-    if (selectedPackages.length === scannedPackages.length) {
-      setSelectedPackages([]);
-    } else {
-      setSelectedPackages(scannedPackages.map(p => p.id));
+  const handleSelectAll = (checked: boolean) => {
+    if (!checked) {
+      setSelectedPackages((previousSelected) => previousSelected.filter((pkgId) => !visiblePackageIds.includes(pkgId)));
+      return;
     }
+
+    setSelectedPackages((previousSelected) => Array.from(new Set([...previousSelected, ...visiblePackageIds])));
   };
 
   const handleSelectPackage = (id: number) => {
@@ -416,6 +444,7 @@ export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
   const handleClearAll = () => {
     setScannedPackages([]);
     setSelectedPackages([]);
+    setCurrentPackagesPage(1);
     toast.success('Alle pakketten verwijderd');
   };
 
@@ -544,8 +573,8 @@ export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
                     <TableRow className="bg-slate-50/50">
                       <TableHead className="w-12">
                         <Checkbox
-                          checked={selectedPackages.length === scannedPackages.length}
-                          onCheckedChange={handleSelectAll}
+                          checked={allVisibleSelected ? true : (someVisibleSelected ? 'indeterminate' : false)}
+                          onCheckedChange={(checked: boolean | 'indeterminate') => handleSelectAll(checked === true)}
                         />
                       </TableHead>
                       <TableHead>Tracking Code</TableHead>
@@ -559,7 +588,7 @@ export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {scannedPackages.map((pkg) => (
+                    {paginatedScannedPackages.map((pkg) => (
                       <TableRow key={pkg.id} className="hover:bg-slate-50/50">
                         <TableCell>
                           <Checkbox
@@ -662,6 +691,36 @@ export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
                 </Table>
               </div>
 
+              {scannedPackages.length > PACKAGES_PER_PAGE && (
+                <div className="mt-4 flex items-center justify-between border border-slate-200 rounded-lg px-4 py-3 bg-slate-50/50">
+                  <p className="text-sm text-slate-600">
+                    Pagina {currentPackagesPage} van {totalPackagesPages}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1 border-slate-200"
+                      onClick={() => setCurrentPackagesPage((prev) => Math.max(1, prev - 1))}
+                      disabled={currentPackagesPage === 1}
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                      Vorige
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1 border-slate-200"
+                      onClick={() => setCurrentPackagesPage((prev) => Math.min(totalPackagesPages, prev + 1))}
+                      disabled={currentPackagesPage === totalPackagesPages}
+                    >
+                      Volgende
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               {/* Actions */}
               <div className="mt-6 flex items-center justify-between p-5 bg-gradient-to-r from-slate-50 to-indigo-50/30 rounded-xl border border-slate-200">
                 <div className="space-y-1">
@@ -755,7 +814,20 @@ export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
                 }}
               >
                 <SelectTrigger className="border-slate-200 shadow-sm">
-                  <SelectValue placeholder="Kies een verzendmethode..." />
+                  <SelectValue placeholder="Kies een verzendmethode...">
+                    {selectedMethod ? (
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-5 h-5 rounded bg-white border border-slate-200 p-0.5 flex items-center justify-center">
+                          <img
+                            src={carrierLogoMap[selectedMethod.carrierType] || dhlLogo}
+                            alt={selectedMethod.carrier}
+                            className="w-full h-full object-contain"
+                          />
+                        </div>
+                        <span className="truncate">{selectedMethod.name}</span>
+                      </div>
+                    ) : null}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent className="border-slate-200 shadow-lg">
                   {loadingCarriers && (
@@ -772,9 +844,13 @@ export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
                   {availableShippingMethods.map((method) => (
                     <SelectItem key={method.id} value={method.id}>
                       <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-xs">
-                          {method.carrier}
-                        </Badge>
+                        <div className="w-5 h-5 rounded bg-white border border-slate-200 p-0.5 flex items-center justify-center">
+                          <img
+                            src={carrierLogoMap[method.carrierType] || dhlLogo}
+                            alt={method.carrier}
+                            className="w-full h-full object-contain"
+                          />
+                        </div>
                         <span>{method.name}</span>
                       </div>
                     </SelectItem>

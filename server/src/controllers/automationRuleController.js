@@ -114,6 +114,13 @@ export const createAutomationRule = async (req, res) => {
       return res.status(403).json({ error: 'Access denied to this installation' });
     }
 
+    if (!prisma?.automationRule || typeof prisma.automationRule.create !== 'function') {
+      return res.status(500).json({
+        error: 'Automation Rule model is unavailable in Prisma client',
+        details: 'Running backend Prisma Client is outdated. Regenerate inside the running environment (npx prisma generate) and restart backend container/process.',
+      });
+    }
+
     const rule = await prisma.automationRule.create({
       data: {
         installationId: parsedInstallationId,

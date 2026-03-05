@@ -96,7 +96,7 @@ export default function App() {
 
         {/* Main Content */}
         <main className="flex-1 p-8 overflow-auto">
-          <div className="max-w-[1400px] mx-auto">
+          <div className="mx-auto">
             {renderView()}
           </div>
         </main>

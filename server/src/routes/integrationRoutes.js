@@ -1,6 +1,7 @@
 import express from 'express';
 import {
   getIntegrations,
+  getIntegrationCredentials,
   createIntegration,
   updateIntegration,
   deleteIntegration,
@@ -14,6 +15,7 @@ const router = express.Router();
 router.use(authenticate);
 
 router.get('/', getIntegrations);
+router.get('/:id/credentials', getIntegrationCredentials);
 router.post('/', createIntegration);
 router.put('/:id', updateIntegration);
 router.delete('/:id', deleteIntegration);

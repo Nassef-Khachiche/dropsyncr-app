@@ -41,7 +41,7 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
-    command: sh -c "node --watch server.js"
+    command: sh -c "npx prisma generate && node --watch server.js"
 
   # Frontend
   frontend:

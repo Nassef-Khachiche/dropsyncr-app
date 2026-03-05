@@ -100,6 +100,62 @@ export const getIntegrations = async (req, res) => {
 };
 
 /**
+ * Get full credentials for a specific integration (settings edit only)
+ */
+export const getIntegrationCredentials = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const integrationId = parseInt(id, 10);
+
+    if (Number.isNaN(integrationId)) {
+      return res.status(400).json({ error: 'Invalid integration ID' });
+    }
+
+    const integration = await prisma.integration.findUnique({
+      where: { id: integrationId },
+      select: {
+        id: true,
+        installationId: true,
+        platform: true,
+        credentials: true,
+      },
+    });
+
+    if (!integration) {
+      return res.status(404).json({ error: 'Integration not found' });
+    }
+
+    if (!req.user.isGlobalAdmin) {
+      const hasAccess = await prisma.userInstallation.findFirst({
+        where: {
+          userId: req.user.id,
+          installationId: integration.installationId,
+        },
+      });
+
+      if (!hasAccess) {
+        return res.status(403).json({ error: 'Access denied to this installation' });
+      }
+    }
+
+    const credentials = parseJsonSafely(integration.credentials);
+
+    return res.json({
+      integrationId: integration.id,
+      platform: integration.platform,
+      credentials: {
+        shopName: credentials.shopName || null,
+        clientId: credentials.clientId || '',
+        clientSecret: credentials.clientSecret || '',
+      },
+    });
+  } catch (error) {
+    console.error('Get integration credentials error:', error);
+    return res.status(500).json({ error: 'Failed to get integration credentials' });
+  }
+};
+
+/**
  * Create a new integration
  */
 export const createIntegration = async (req, res) => {

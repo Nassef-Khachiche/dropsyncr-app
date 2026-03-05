@@ -501,6 +501,18 @@ class ApiService {
     });
   }
 
+  async getIntegrationCredentials(id: number) {
+    return this.request<{
+      integrationId: number;
+      platform: string;
+      credentials: {
+        shopName: string | null;
+        clientId: string;
+        clientSecret: string;
+      };
+    }>(`/integrations/${id}/credentials`);
+  }
+
   // Bol.com Integration
   async syncBolOrders(installationId: string, integrationId?: number) {
     const queryParams = new URLSearchParams();

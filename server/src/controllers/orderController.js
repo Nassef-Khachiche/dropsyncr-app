@@ -59,6 +59,47 @@ const normalizeLabelUrlForResponse = (labelUrl, req) => {
   return normalized;
 };
 
+const getShippingMethodForOrderId = async (orderId) => {
+  const parsedOrderId = parseInt(orderId, 10);
+  if (!Number.isInteger(parsedOrderId) || parsedOrderId <= 0) return null;
+
+  try {
+    const rows = await prisma.$queryRaw`
+      SELECT shippingMethod
+      FROM \`Order\`
+      WHERE id = ${parsedOrderId}
+      LIMIT 1
+    `;
+
+    if (!Array.isArray(rows) || rows.length === 0) return null;
+
+    const shippingMethod = rows[0]?.shippingMethod;
+    return typeof shippingMethod === 'string' && shippingMethod.trim() ? shippingMethod.trim() : null;
+  } catch {
+    return null;
+  }
+};
+
+const getShippingMethodMapForOrderIds = async (orderIds = []) => {
+  const uniqueOrderIds = Array.from(
+    new Set(
+      (orderIds || [])
+        .map((id) => parseInt(id, 10))
+        .filter((id) => Number.isInteger(id) && id > 0)
+    )
+  );
+
+  const shippingMethodMap = new Map();
+  await Promise.all(
+    uniqueOrderIds.map(async (orderId) => {
+      const shippingMethod = await getShippingMethodForOrderId(orderId);
+      shippingMethodMap.set(orderId, shippingMethod);
+    })
+  );
+
+  return shippingMethodMap;
+};
+
 export const getOrders = async (req, res) => {
   try {
     const { installationId, userScoped, status, search, page = 1, limit = 50 } = req.query;
@@ -195,8 +236,11 @@ export const getOrders = async (req, res) => {
       prisma.order.count({ where: finalWhere }),
     ]);
 
+    const shippingMethodMap = await getShippingMethodMapForOrderIds(orders.map((order) => order.id));
+
     const normalizedOrders = orders.map((order) => ({
       ...order,
+      shippingMethod: shippingMethodMap.get(order.id) || order.shippingMethod || null,
       label: order.label
         ? {
             ...order.label,
@@ -249,8 +293,11 @@ export const getOrder = async (req, res) => {
       return res.status(404).json({ error: 'Order not found' });
     }
 
+    const rawShippingMethod = await getShippingMethodForOrderId(order.id);
+
     const normalizedOrder = {
       ...order,
+      shippingMethod: rawShippingMethod || order.shippingMethod || null,
       label: order.label
         ? {
             ...order.label,
@@ -332,6 +379,8 @@ export const createOrder = async (req, res) => {
       isBrievenbus: mailboxOrder,
     });
 
+    const resolvedOrderShippingMethod = shippingAutomationResult.shippingAssignment || null;
+
     const order = await prisma.order.create({
       data: {
         orderNumber,
@@ -350,7 +399,6 @@ export const createOrder = async (req, res) => {
         supplierTracking,
         status: status || 'onderweg-ffm',
         orderStatus: 'openstaand',
-        shippingMethod: shippingAutomationResult.shippingAssignment,
         orderItems: {
           create: items?.map((item) => ({
             productId: item.productId || null,
@@ -372,7 +420,22 @@ export const createOrder = async (req, res) => {
       },
     });
 
-    res.status(201).json(order);
+    if (resolvedOrderShippingMethod) {
+      try {
+        await prisma.$executeRaw`
+          UPDATE \`Order\`
+          SET shippingMethod = ${resolvedOrderShippingMethod}, updatedAt = NOW()
+          WHERE id = ${order.id} AND installationId = ${parsedInstallationId}
+        `;
+      } catch {
+        // shippingMethod might not exist in some DBs; ignore for compatibility
+      }
+    }
+
+    res.status(201).json({
+      ...order,
+      shippingMethod: resolvedOrderShippingMethod,
+    });
   } catch (error) {
     console.error('Create order error:', error);
     if (error.code === 'P2002') {
@@ -430,6 +493,10 @@ export const updateOrder = async (req, res) => {
     if (updateData.deliveryDate) updateData.deliveryDate = new Date(updateData.deliveryDate);
     if (updateData.orderValue) updateData.orderValue = parseFloat(updateData.orderValue);
 
+    const finalUpdateData = {
+      ...updateData,
+    };
+
     if (hasShippingMethodUpdate) {
       await prisma.$executeRaw`
         UPDATE \`Order\`
@@ -439,12 +506,12 @@ export const updateOrder = async (req, res) => {
     }
 
     let order;
-    if (Object.keys(updateData).length > 0) {
+    if (Object.keys(finalUpdateData).length > 0) {
       order = await prisma.order.update({
         where: {
           id: orderId,
         },
-        data: updateData,
+        data: finalUpdateData,
         include: {
           orderItems: true,
           tracking: true,

@@ -154,7 +154,7 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
     setIsActive(true);
   };
 
-  const handleOpenSettings = (store: Store) => {
+  const handleOpenSettings = async (store: Store) => {
     const platform = availablePlatforms.find(p => p.id === store.platformId);
     if (!platform) {
       toast.error('Platform instellingen niet gevonden');
@@ -164,9 +164,23 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
     setEditingStore(store);
     setSelectedPlatform(platform);
     setShowConnectionDialog(true);
-    setShopName(store.name || '');
-    setApiKey('');
-    setApiSecret('');
+
+    try {
+      const credentialsResponse = await api.getIntegrationCredentials(store.id);
+      setShopName(credentialsResponse.credentials?.shopName || store.name || '');
+      setApiKey(credentialsResponse.credentials?.clientId || '');
+      setApiSecret(credentialsResponse.credentials?.clientSecret || '');
+    } catch (error: any) {
+      console.error('Failed to load integration credentials:', error);
+      toast.error('Kon integratie-credentials niet laden', {
+        description: error?.message || 'Probeer het opnieuw',
+      });
+
+      setShopName(store.name || '');
+      setApiKey('');
+      setApiSecret('');
+    }
+
     setProcessOrders(store.processOrders ?? false);
     setIsActive(store.active);
   };
