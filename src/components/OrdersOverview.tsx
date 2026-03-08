@@ -316,7 +316,12 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
     const shippedStatuses = [
       'verzonden',
       'verstuurd',
+      'send',
+      'sent',
       'shipped',
+      'processed',
+      'completed',
+      'finished',
       'delivered',
       'afgeleverd',
     ];
@@ -771,7 +776,9 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
   };
 
   const getOrderStatusBadge = (status: string) => {
-    switch (status) {
+    const normalizedStatus = String(status || '').trim().toLowerCase();
+
+    switch (normalizedStatus) {
       case 'openstaand':
         return <Badge variant="outline" className="text-orange-600 border-orange-300 bg-orange-50">Openstaand</Badge>;
       case 'onderweg-ffm':
@@ -781,11 +788,23 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
       case 'label-aangemaakt':
         return <Badge variant="outline" className="text-indigo-600 border-indigo-300 bg-indigo-50">Label aangemaakt</Badge>;
       case 'verstuurd':
-        return <Badge className="bg-gradient-to-r from-amber-500 to-orange-500 border-0">Verstuurd</Badge>;
+      case 'verzonden':
+      case 'shipped':
+      case 'processed':
+      case 'finished':
+      case 'send':
+      case 'sent':
+      case 'dispatched':
+      case 'fulfilled':
+      case 'fulfilment_completed':
+      case 'fulfillment_completed':
+      case 'completed':
+        return <Badge className="bg-gradient-to-r from-emerald-500 to-teal-500 border-0">Verstuurd</Badge>;
       case 'afgeleverd':
+      case 'delivered':
         return <Badge className="bg-gradient-to-r from-emerald-500 to-teal-500 border-0">Afgeleverd</Badge>;
       default:
-        return <Badge variant="outline">Onbekend</Badge>;
+        return <Badge variant="outline" className="text-orange-600 border-orange-300 bg-orange-50">Openstaand</Badge>;
     }
   };
 

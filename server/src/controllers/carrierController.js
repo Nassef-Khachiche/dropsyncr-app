@@ -601,6 +601,8 @@ export const generateCarrierLabels = async (req, res) => {
               UPDATE \`Order\`
               SET
                 shippingMethod = ${selectedShippingMethod},
+                orderStatus = 'verzonden',
+                status = 'verzonden',
                 supplierTracking = ${generatedTrackingCode || null},
                 updatedAt = NOW()
               WHERE id = ${orderId} AND installationId = ${carrier.installationId}
@@ -610,6 +612,8 @@ export const generateCarrierLabels = async (req, res) => {
           return prisma.$executeRaw`
             UPDATE \`Order\`
             SET
+              orderStatus = 'verzonden',
+              status = 'verzonden',
               supplierTracking = ${generatedTrackingCode || null},
               updatedAt = NOW()
             WHERE id = ${orderId} AND installationId = ${carrier.installationId}

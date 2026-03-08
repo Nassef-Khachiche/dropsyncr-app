@@ -151,6 +151,50 @@ const firstNonEmptyString = (...values) => {
   return null;
 };
 
+const normalizeStatusToken = (value) =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+
+const SHIPPED_STATUS_TOKENS = new Set([
+  'verzonden',
+  'verstuurd',
+  'send',
+  'sent',
+  'shipped',
+  'processed',
+  'finished',
+  'dispatched',
+  'fulfilled',
+  'fulfilment_completed',
+  'fulfillment_completed',
+  'completed',
+]);
+
+const DELIVERED_STATUS_TOKENS = new Set(['afgeleverd', 'delivered']);
+
+const resolvePersistedOrderStatus = (existingOrder) => {
+  const normalizedOrderStatus = normalizeStatusToken(existingOrder?.orderStatus);
+  const normalizedStatus = normalizeStatusToken(existingOrder?.status);
+
+  if (DELIVERED_STATUS_TOKENS.has(normalizedOrderStatus) || DELIVERED_STATUS_TOKENS.has(normalizedStatus)) {
+    return 'afgeleverd';
+  }
+
+  if (
+    SHIPPED_STATUS_TOKENS.has(normalizedOrderStatus) ||
+    SHIPPED_STATUS_TOKENS.has(normalizedStatus) ||
+    Boolean(String(existingOrder?.supplierTracking || '').trim()) ||
+    Boolean(String(existingOrder?.tracking?.trackingCode || '').trim()) ||
+    String(existingOrder?.label?.status || '').trim().toLowerCase() === 'generated'
+  ) {
+    return 'verzonden';
+  }
+
+  return null;
+};
+
 const isLikelyImageUrl = (value) => {
   if (!value || typeof value !== 'string') return false;
   const trimmed = value.trim();
@@ -636,6 +680,25 @@ export const syncBolOrders = async (req, res) => {
         firstShipment?.transporter,
         findStringValueByKey(firstShipment, /(transporter.?code|carrier.?code|carrier)/i),
       );
+      const bolStatusCandidates = [
+        ...orderItems
+          .map((item) => firstNonEmptyString(item?.fulfilmentStatus, item?.fulfillmentStatus, item?.status))
+          .filter(Boolean),
+        firstNonEmptyString(orderPayload?.fulfilmentStatus, orderPayload?.fulfillmentStatus, orderPayload?.status),
+        firstNonEmptyString(bolOrder?.fulfilmentStatus, bolOrder?.fulfillmentStatus, bolOrder?.status),
+        firstNonEmptyString(firstShipment?.status, firstShipment?.shipmentStatus),
+      ].filter(Boolean);
+      const resolvedShippingStatus = firstNonEmptyString(...bolStatusCandidates);
+      const resolvedInternalStatus = resolveBolStatusToInternal({
+        statuses: bolStatusCandidates,
+        hasTrackAndTrace: Boolean(resolvedTrackAndTrace),
+      });
+      console.log('[BOL SYNC] Order status candidates from bol.com:', {
+        orderId: bolOrder.orderId,
+        rawStatuses: bolStatusCandidates,
+        resolvedShippingStatus,
+        resolvedInternalStatus,
+      });
       const deliveryDate = resolveBolDeliveryDate(orderPayload, orderItems, bolShipmentDetails);
       const resolvedBolShippingMethod = inferBolShippingMethodFromOrderData({
         orderPayload,
@@ -660,6 +723,19 @@ export const syncBolOrders = async (req, res) => {
           id: true,
           storeName: true,
           installationId: true,
+          orderStatus: true,
+          status: true,
+          supplierTracking: true,
+          tracking: {
+            select: {
+              trackingCode: true,
+            },
+          },
+          label: {
+            select: {
+              status: true,
+            },
+          },
         },
       });
 
@@ -725,6 +801,8 @@ export const syncBolOrders = async (req, res) => {
         isBrievenbus: mailboxOrder,
       });
       const resolvedOrderShippingMethod = preservedShippingMethod || shippingAutomationResult.shippingAssignment || null;
+      const persistedStatus = resolvePersistedOrderStatus(existingOrder);
+      const finalInternalStatus = persistedStatus || resolvedInternalStatus;
 
       const orderData = {
         orderNumber: bolOrder.orderId,
@@ -743,15 +821,15 @@ export const syncBolOrders = async (req, res) => {
         platform: 'bol.com',
         orderDate: new Date(orderPayload.orderPlacedDateTime),
         deliveryDate,
-        orderStatus: mapBolStatusToInternal(orderItems?.[0]?.fulfilmentStatus || bolOrder.orderItems?.[0]?.fulfilmentStatus),
-        shippingStatus: orderItems?.[0]?.fulfilmentStatus || bolOrder.orderItems?.[0]?.fulfilmentStatus || null,
+        orderStatus: finalInternalStatus,
+        shippingStatus: resolvedShippingStatus || null,
         orderValue: parseFloat(orderItems?.reduce((sum, item) => {
           const unitPrice = parseFloat(item.unitPrice ?? item.totalPrice ?? item.offerPrice ?? 0) || 0;
           return sum + (unitPrice * (item.quantity || 1));
         }, 0) || 0),
         itemCount: orderItems?.length || 1,
         ...(resolvedTrackAndTrace ? { supplierTracking: resolvedTrackAndTrace } : {}),
-        status: mapBolStatusToInternal(orderItems?.[0]?.fulfilmentStatus || bolOrder.orderItems?.[0]?.fulfilmentStatus),
+        status: finalInternalStatus,
       };
 
       console.log('[BOL SYNC] Mapped order data:', {
@@ -998,6 +1076,17 @@ export const getBolShippingLabel = async (req, res) => {
     // Request shipping label from Bol
     const labelData = await bolApiRequest(credentials, `/orders/${orderId}/shipment-label`);
 
+    await prisma.order.updateMany({
+      where: {
+        orderNumber: String(orderId),
+        installationId: parseInt(installationId, 10),
+      },
+      data: {
+        orderStatus: 'verzonden',
+        status: 'verzonden',
+      },
+    });
+
     res.json(labelData);
   } catch (error) {
     console.error('Get Bol shipping label error:', error);
@@ -1042,7 +1131,8 @@ export const updateBolShipment = async (req, res) => {
     const updatedOrder = await prisma.order.update({
       where: { orderNumber: orderId },
       data: {
-        status: 'verstuurd',
+        status: 'verzonden',
+        orderStatus: 'verzonden',
         shippingStatus: 'SHIPPED',
         ...(trackAndTrace ? { supplierTracking: trackAndTrace } : {}),
       },
@@ -1213,15 +1303,56 @@ export const syncBolOrdersForInstallation = async ({ installationId, integration
 
 // Helper function to map Bol status to internal status
 function mapBolStatusToInternal(bolStatus) {
+  const normalizedStatus = String(bolStatus || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_');
+
   const statusMap = {
     'OPEN': 'openstaand',
     'NEW': 'openstaand',
     'ANNOUNCED': 'onderweg-ffm',
     'ARRIVED_AT_WH': 'binnengekomen-ffm',
-    'SHIPPED': 'verstuurd',
+    'PENDING': 'openstaand',
+    'PROCESSING': 'openstaand',
+    'PROCESSED': 'verzonden',
+    'FINISHED': 'verzonden',
+    'SEND': 'verzonden',
+    'SENT': 'verzonden',
+    'DISPATCHED': 'verzonden',
+    'SHIPPED': 'verzonden',
+    'FULFILLED': 'verzonden',
+    'FULFILMENT_COMPLETED': 'verzonden',
+    'FULFILLMENT_COMPLETED': 'verzonden',
+    'COMPLETED': 'verzonden',
     'DELIVERED': 'afgeleverd',
     'CANCELLED': 'geannuleerd',
+    'CANCELED': 'geannuleerd',
   };
-  console.log('[BOL SYNC] Mapping status:', bolStatus, '->', statusMap[bolStatus] || 'openstaand');
-  return statusMap[bolStatus] || 'openstaand';
+
+  const resolvedStatus = statusMap[normalizedStatus] || 'openstaand';
+  console.log('[BOL SYNC] Mapping status:', bolStatus, 'normalized:', normalizedStatus, '->', resolvedStatus);
+  return resolvedStatus;
+}
+
+function resolveBolStatusToInternal({ statuses = [], hasTrackAndTrace = false } = {}) {
+  if (hasTrackAndTrace) {
+    return 'verzonden';
+  }
+
+  let hasOpen = false;
+
+  for (const status of statuses) {
+    const mappedStatus = mapBolStatusToInternal(status);
+
+    if (mappedStatus === 'geannuleerd') return 'geannuleerd';
+    if (mappedStatus === 'afgeleverd') return 'afgeleverd';
+    if (mappedStatus === 'verzonden' || mappedStatus === 'verstuurd') return 'verzonden';
+
+    if (mappedStatus === 'openstaand' || mappedStatus === 'onderweg-ffm' || mappedStatus === 'binnengekomen-ffm') {
+      hasOpen = true;
+    }
+  }
+
+  return hasOpen ? 'openstaand' : 'openstaand';
 }
