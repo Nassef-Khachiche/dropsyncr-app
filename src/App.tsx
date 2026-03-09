@@ -15,6 +15,7 @@ import { AutomatiseringsRegels } from './components/AutomatiseringsRegels';
 import { useAuth } from './contexts/AuthContext';
 import { useLanguage } from './contexts/LanguageContext';
 import { Loader2 } from 'lucide-react';
+import { Toaster } from 'sonner';
 
 export default function App() {
   const { isAuthenticated, loading, logout } = useAuth();
@@ -76,6 +77,7 @@ export default function App() {
   return (
     <div className="flex min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/30">
       <GlobalTextTranslator />
+      <Toaster richColors position="top-right" />
       {/* Sidebar */}
       <AppSidebar activeView={activeView} onViewChange={setActiveView} />
       

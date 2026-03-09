@@ -87,6 +87,7 @@ model Order {
   orderStatus      String
   shippingStatus   String?
   shippingMethod   String?
+  isVVB            Boolean      @default(false) @map("IsVVB")
   orderValue       Float
   itemCount        Int          @default(1)
   supplierTracking String?

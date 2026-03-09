@@ -65,17 +65,20 @@ const dpdLogo = new URL('../assets/dpd-logo.png', import.meta.url).href;
 const wegrowLogo = new URL('../assets/wegrow-logo.jpg', import.meta.url).href;
 const postnlLogo = new URL('../assets/postnl-logo.png', import.meta.url).href;
 const bpostLogo = new URL('../assets/bpost-logo.png', import.meta.url).href;
+const bolLogo = new URL('../assets/bol-vvb.png', import.meta.url).href;
 
 interface OrdersOverviewProps {
   activeProfile: string;
 }
 
 interface CarrierContract {
-  id: number;
+  id: number | string;
   carrierType: string;
   contractName: string;
   active: boolean;
 }
+
+const VVB_CONTRACT_ID = 'vvb';
 
 const wegrowCarrierOptions = [
   { id: 'dhl', name: 'DHL', logo: dhlLogo },
@@ -106,6 +109,48 @@ const isManualShippingOverride = (value: string) => (
   manualShippingOverrides.some((option) => option.value === value)
 );
 
+const isLikelyUrl = (value: string) => /^https?:\/\//i.test(value);
+
+const isLikelyPdfBase64 = (value: string) => {
+  const normalized = String(value || '').trim();
+  if (!normalized) return false;
+  if (normalized.startsWith('data:application/pdf;base64,')) return true;
+  return /^JVBER/i.test(normalized);
+};
+
+const extractFirstStringMatch = (input: any, predicate: (value: string) => boolean): string | null => {
+  const visited = new Set<any>();
+
+  const walk = (value: any): string | null => {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      return predicate(trimmed) ? trimmed : null;
+    }
+
+    if (typeof value !== 'object') return null;
+    if (visited.has(value)) return null;
+    visited.add(value);
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const found = walk(item);
+        if (found) return found;
+      }
+      return null;
+    }
+
+    for (const nestedValue of Object.values(value)) {
+      const found = walk(nestedValue);
+      if (found) return found;
+    }
+
+    return null;
+  };
+
+  return walk(input);
+};
+
 export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
   const ORDERS_PER_PAGE = 50;
 
@@ -115,6 +160,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
     wegrow: wegrowLogo,
     postnl: postnlLogo,
     bpost: bpostLogo,
+    bol: bolLogo,
   };
 
   const isAllStoresSelected = activeProfile === 'all';
@@ -348,7 +394,13 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
       ? normalizedMethodLower.replace('wegrow-', '').trim()
       : '';
 
-    setSelectedContractId(matchingContract ? String(matchingContract.id) : '');
+    const shouldDefaultToVvb = Boolean(order?.isVVB);
+
+    setSelectedContractId(
+      shouldDefaultToVvb
+        ? VVB_CONTRACT_ID
+        : (matchingContract ? String(matchingContract.id) : '')
+    );
     setSelectedWeGrowCarrier(
       wegrowCarrierOptions.some((option) => option.id === initialWegrowCarrier)
         ? initialWegrowCarrier
@@ -387,6 +439,24 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
       ...prevDrafts,
       [orderId]: contractId,
     }));
+  };
+
+  const getApiErrorToastMeta = (error: unknown) => {
+    const fallbackMessage = 'Probeer het opnieuw';
+    const errorMessage = error instanceof Error ? error.message : fallbackMessage;
+    const isBadRequest = errorMessage.includes('(HTTP 400)') || errorMessage.includes('HTTP 400');
+
+    if (isBadRequest) {
+      return {
+        title: 'Actie niet toegestaan',
+        description: errorMessage,
+      };
+    }
+
+    return {
+      title: null as string | null,
+      description: errorMessage,
+    };
   };
 
   const handleSaveShippingMethod = async (order: any, explicitSelection?: string) => {
@@ -440,6 +510,107 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
   const handleGenerateLabel = async () => {
     if (!labelOrder) return;
     if (!selectedContractId) return;
+
+    if (selectedContractId === VVB_CONTRACT_ID) {
+      try {
+        setGeneratingLabel(true);
+
+        const installationId = String(
+          labelOrder.installation?.id
+          ?? labelOrder.installationId
+          ?? ''
+        ).trim();
+        const bolOrderId = String(labelOrder.orderNumber || '').trim();
+        const integrationId = labelOrder.integrationId
+          ?? labelOrder.integration?.id
+          ?? undefined;
+
+        if (!installationId || !bolOrderId) {
+          toast.error('Bol label kan niet worden aangemaakt', {
+            description: 'Installation ID of ordernummer ontbreekt',
+          });
+          return;
+        }
+
+        const bolLabelResult = await api.getBolShippingLabel(installationId, bolOrderId, integrationId);
+        const labelUrl = extractFirstStringMatch(bolLabelResult, isLikelyUrl);
+        const pdfBase64 = extractFirstStringMatch(bolLabelResult, isLikelyPdfBase64);
+        const resolvedLabelPreviewUrl = labelUrl
+          || (pdfBase64
+            ? (pdfBase64.startsWith('data:application/pdf;base64,') ? pdfBase64 : `data:application/pdf;base64,${pdfBase64}`)
+            : '');
+
+        const trackingUrl = extractFirstStringMatch(bolLabelResult, (value) => {
+          const normalized = value.toLowerCase();
+          return isLikelyUrl(value) && (normalized.includes('track') || normalized.includes('trace'));
+        });
+        const trackingCode = extractFirstStringMatch(
+          bolLabelResult,
+          (value) => value.length >= 6 && value.length <= 40 && /[a-z0-9]/i.test(value) && !isLikelyUrl(value)
+        );
+
+        if (resolvedLabelPreviewUrl) {
+          setLabelPreviewUrl(resolvedLabelPreviewUrl);
+        }
+
+        setGeneratedLabelMeta({
+          shipmentId: String(bolOrderId),
+          trackingCode: trackingCode || null,
+          trackingUrl: trackingUrl || null,
+        });
+
+        if (typeof labelOrder.id === 'number') {
+          await api.updateOrder(labelOrder.id, {
+            shippingMethod: 'Bol.com',
+          });
+
+          setOrders((prevOrders) => prevOrders.map((entry) => (
+            entry.id === labelOrder.id
+              ? {
+                  ...entry,
+                  shippingMethod: 'Bol.com',
+                  label: {
+                    ...(entry.label || {}),
+                    labelUrl: resolvedLabelPreviewUrl || entry.label?.labelUrl || null,
+                    status: resolvedLabelPreviewUrl ? 'generated' : (entry.label?.status || 'generated'),
+                  },
+                }
+              : entry
+          )));
+
+          setLabelOrder((prevLabelOrder: any) => (
+            prevLabelOrder
+              ? {
+                  ...prevLabelOrder,
+                  shippingMethod: 'Bol.com',
+                  label: {
+                    ...(prevLabelOrder.label || {}),
+                    labelUrl: resolvedLabelPreviewUrl || prevLabelOrder.label?.labelUrl || null,
+                    status: resolvedLabelPreviewUrl ? 'generated' : (prevLabelOrder.label?.status || 'generated'),
+                  },
+                }
+              : prevLabelOrder
+          ));
+
+          setShippingMethodDrafts((prevDrafts) => ({
+            ...prevDrafts,
+            [labelOrder.id]: 'Bol.com',
+          }));
+        }
+
+        toast.success('Bol label aangemaakt');
+      } catch (error) {
+        console.error('Failed to generate Bol label:', error);
+        const toastMeta = getApiErrorToastMeta(error);
+        toast.error(toastMeta.title || 'Kon Bol label niet aanmaken', {
+          description: toastMeta.description,
+        });
+      } finally {
+        setGeneratingLabel(false);
+      }
+
+      return;
+    }
 
     const selectedContract = carrierContracts.find((contract) => String(contract.id) === selectedContractId);
     if (!selectedContract) {
@@ -518,15 +689,18 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
           [labelOrder.id]: selectedContractId,
         }));
       }
+
+      toast.success('Label succesvol gegenereerd');
     } catch (error) {
       console.error('Failed to generate label:', error);
-      let errorDescription = error instanceof Error ? error.message : 'Probeer het opnieuw';
+      let errorDescription = getApiErrorToastMeta(error).description;
 
       if (errorDescription.includes('ERR_DELICOM_TOKEN_INCORRECT')) {
         errorDescription = 'DPD verificatietoken is onjuist. Ga naar Vervoerders > DPD contract > Instellingen en vul een nieuw Auth Token in vanuit de DPD Login Service.';
       }
 
-      toast.error('Kon label niet genereren', {
+      const toastMeta = getApiErrorToastMeta(error);
+      toast.error(toastMeta.title || 'Kon label niet genereren', {
         description: errorDescription,
       });
     } finally {
@@ -831,8 +1005,11 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
       String(contract.id) === normalizedSelection || contract.contractName === normalizedSelection
     ));
     if (matchingContract) {
+      const isWegrowContract = String(matchingContract.carrierType || '').toLowerCase() === 'wegrow';
       return {
-        label: `${matchingContract.contractName} (${matchingContract.carrierType.toUpperCase()})`,
+        label: isWegrowContract
+          ? matchingContract.contractName
+          : `${matchingContract.contractName} (${matchingContract.carrierType.toUpperCase()})`,
         logo: carrierLogoMap[matchingContract.carrierType] || null,
         icon: null as 'search' | null,
       };
@@ -843,7 +1020,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
       const wegrowCarrierLabel = wegrowCarrierOptions.find((option) => option.id === wegrowCarrier)?.name || wegrowCarrier.toUpperCase();
 
       return {
-        label: `WeGrow - ${wegrowCarrierLabel}`,
+        label: wegrowCarrierLabel,
         logo: carrierLogoMap[wegrowCarrier] || carrierLogoMap.wegrow || null,
         icon: null as 'search' | null,
       };
@@ -868,6 +1045,12 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
 
     if (normalizedLower.includes('postnl')) {
       return { label: normalizedSelection, logo: carrierLogoMap.postnl || null, icon: null as 'search' | null };
+    }
+    if (normalizedLower.includes('bol.com') || normalizedLower === 'bol' || normalizedLower === 'bolcom') {
+      return { label: 'Bol.com - VVB', logo: carrierLogoMap.bol || null, icon: null as 'search' | null };
+    }
+    if (normalizedLower === VVB_CONTRACT_ID) {
+      return { label: 'VVB', logo: carrierLogoMap.bol || null, icon: null as 'search' | null };
     }
     if (normalizedLower.includes('bpost')) {
       return { label: normalizedSelection, logo: carrierLogoMap.bpost || null, icon: null as 'search' | null };
@@ -911,6 +1094,24 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
 
   const selectedContract = carrierContracts.find((contract) => String(contract.id) === selectedContractId);
   const isWeGrowContractSelected = selectedContract?.carrierType === 'wegrow';
+  const isVvbContractSelected = selectedContractId === VVB_CONTRACT_ID;
+  const hasNativeVvbContract = carrierContracts.some((contract) => {
+    const normalizedId = String(contract.id || '').trim().toLowerCase();
+    const normalizedName = String(contract.contractName || '').trim().toLowerCase();
+    return normalizedId === VVB_CONTRACT_ID || normalizedName === 'vvb';
+  });
+
+  const labelDialogContracts: CarrierContract[] = hasNativeVvbContract
+    ? carrierContracts
+    : [
+        ...carrierContracts,
+        {
+          id: VVB_CONTRACT_ID,
+          carrierType: 'bol',
+          contractName: 'VVB',
+          active: true,
+        },
+      ];
   const startOrderIndex = totalOrders === 0 ? 0 : ((currentPage - 1) * ORDERS_PER_PAGE) + 1;
   const endOrderIndex = Math.min(currentPage * ORDERS_PER_PAGE, totalOrders);
 
@@ -1016,7 +1217,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                   <TableHead>Store naam</TableHead>
                   <TableHead className="text-center">Aantal items</TableHead>
                   <TableHead>Uiterste leverdatum</TableHead>
-                  <TableHead>Trackingnummer leverancier</TableHead>
+                  <TableHead>Tracking</TableHead>
                   <TableHead className="w-28 text-center">Verzend</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -1268,7 +1469,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                                     <span>Verzendmethode (handmatig)</span>
                                   </div>
                                   <p className="text-sm text-slate-700">
-                                    Huidig: {String(order.shippingMethod || 'Niet ingesteld')}
+                                    Huidig: {resolveShippingSelectionMeta(String(order.shippingMethod || '')).label}
                                   </p>
                                   {(() => {
                                     const currentShippingMeta = resolveShippingSelectionMeta(getOrderShippingContractId(order));
@@ -1308,6 +1509,22 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                                       </SelectValue>
                                     </SelectTrigger>
                                     <SelectContent className="border-slate-200 shadow-lg">
+                                      {carrierContracts
+                                        .filter((contract) => String(contract.carrierType || '').toLowerCase() !== 'wegrow')
+                                        .map((contract) => {
+                                        const contractValue = String(contract.id);
+                                        const contractMeta = resolveShippingSelectionMeta(contractValue);
+
+                                        return (
+                                          <SelectItem key={`contract-${contractValue}`} value={contractValue}>
+                                            <div className="flex items-center gap-2">
+                                              {renderShippingSelectionIcon(contractMeta)}
+                                              <span>{contractMeta.label}</span>
+                                            </div>
+                                          </SelectItem>
+                                        );
+                                      })}
+
                                       {shippingMethodDropdownOptions.map((option) => {
                                         const optionMeta = resolveShippingSelectionMeta(option.value);
 
@@ -1496,21 +1713,21 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
               <label className="text-sm text-slate-700">Contract</label>
               {loadingCarriers ? (
                 <div className="text-sm text-slate-500">Contracten laden...</div>
-              ) : carrierContracts.length === 0 ? (
+              ) : labelDialogContracts.length === 0 ? (
                 <div className="text-sm text-slate-500">Geen actieve contracten</div>
               ) : (
                 <RadioGroup
                   value={selectedContractId}
                   onValueChange={(value: string) => {
                     setSelectedContractId(value);
-                    const contract = carrierContracts.find((entry) => String(entry.id) === value);
+                    const contract = labelDialogContracts.find((entry) => String(entry.id) === value);
                     if (contract?.carrierType !== 'wegrow') {
                       setSelectedWeGrowCarrier('');
                     }
                   }}
                   className="grid grid-cols-1 md:grid-cols-2 gap-3"
                 >
-                  {carrierContracts.map((contract) => {
+                  {labelDialogContracts.map((contract) => {
                     const logo = carrierLogoMap[contract.carrierType] || null;
                     const isSelected = selectedContractId === String(contract.id);
 
@@ -1604,7 +1821,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                       <div className="text-sm text-slate-900 font-mono break-all">{generatedLabelMeta.shipmentId || '-'}</div>
                     </div>
                     <div>
-                      <div className="text-xs text-slate-500">Carrier tracking</div>
+                      <div className="text-xs text-slate-500">Tracking</div>
                       <div className="text-sm text-slate-900 font-mono break-all">{generatedLabelMeta.trackingCode || '-'}</div>
                     </div>
                     {generatedLabelMeta.trackingUrl && (
@@ -1640,7 +1857,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
               className="gap-2 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600"
             >
               {generatingLabel && <Loader2 className="w-4 h-4 animate-spin" />}
-              Label genereren
+              {isVvbContractSelected ? 'Bol label genereren' : 'Label genereren'}
             </Button>
           </DialogFooter>
         </DialogContent>

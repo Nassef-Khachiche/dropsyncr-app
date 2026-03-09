@@ -524,9 +524,16 @@ class ApiService {
     );
   }
 
-  async getBolShippingLabel(installationId: string, orderId: string) {
+  async getBolShippingLabel(installationId: string, orderId: string, integrationId?: number | string) {
+    const queryParams = new URLSearchParams();
+    queryParams.append('installationId', installationId);
+    queryParams.append('orderId', orderId);
+    if (integrationId !== undefined && integrationId !== null && String(integrationId).trim()) {
+      queryParams.append('integrationId', String(integrationId));
+    }
+
     return this.request<any>(
-      `/bol/shipping-label?installationId=${installationId}&orderId=${orderId}`
+      `/bol/shipping-label?${queryParams.toString()}`
     );
   }
 
