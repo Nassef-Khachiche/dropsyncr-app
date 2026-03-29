@@ -681,6 +681,16 @@ const firstNonEmptyString = (...values) => {
   return null;
 };
 
+const hasNonEmptyValue = (value) => {
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (typeof value === 'boolean') return value;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value).length > 0;
+  return false;
+};
+
 const normalizeStatusToken = (value) =>
   String(value || '')
     .trim()
@@ -730,6 +740,58 @@ const SHIPPED_STATUS_TOKENS = new Set([
 ]);
 
 const DELIVERED_STATUS_TOKENS = new Set(['afgeleverd', 'delivered']);
+
+const SHIPMENT_CONFIRMATION_KEY_PATTERN = /(^|_)(shipment(id|status|reference)?|shipped(at|date|datetime|time)?|fulfil(l?ment)?(_?(status|date|time))?|dispatch(ed)?(_?(status|date|time))?|process(ed)?(_?(status|id|date|time))?|track(andtrace|ing(code|number)?|_?trace)|tracking(code|number)?|parcel(labelnumber)?|shippinglabel(id|status)?|label(id|status)?|transporter(code)?)(_|$)/i;
+
+const collectShipmentConfirmationSignals = (input) => {
+  const signals = [];
+  const visited = new Set();
+
+  const visit = (node, parentKey = '') => {
+    if (node === null || node === undefined) return;
+
+    if (typeof node === 'string' || typeof node === 'number' || typeof node === 'boolean') {
+      if (SHIPMENT_CONFIRMATION_KEY_PATTERN.test(parentKey) && hasNonEmptyValue(node)) {
+        signals.push({ key: parentKey, value: node });
+      }
+      return;
+    }
+
+    if (typeof node !== 'object') return;
+    if (visited.has(node)) return;
+    visited.add(node);
+
+    if (Array.isArray(node)) {
+      node.forEach((entry) => visit(entry, parentKey));
+      return;
+    }
+
+    for (const [key, value] of Object.entries(node)) {
+      visit(value, key);
+    }
+  };
+
+  visit(input);
+  return signals;
+};
+
+const hasBolShipmentConfirmation = ({ orderPayload = null, shipmentPayload = null, shipmentList = [] } = {}) => {
+  const normalizedShipmentList = Array.isArray(shipmentList) ? shipmentList : [];
+  if (normalizedShipmentList.length > 0) {
+    return true;
+  }
+
+  const shipmentSignals = collectShipmentConfirmationSignals(shipmentPayload);
+  if (shipmentSignals.length > 0) {
+    return true;
+  }
+
+  const orderSignals = collectShipmentConfirmationSignals(orderPayload).filter(({ key }) =>
+    !/expected|promise|promised|latest|delivery/i.test(String(key || ''))
+  );
+
+  return orderSignals.length > 0;
+};
 
 const resolvePersistedOrderStatus = (existingOrder) => {
   const normalizedOrderStatus = normalizeStatusToken(existingOrder?.orderStatus);
@@ -1222,6 +1284,11 @@ export const syncBolOrders = async (req, res) => {
         ? bolShipmentDetails.shipments
         : [];
       const firstShipment = shipmentList[0] || null;
+      const shipmentConfirmedByBol = hasBolShipmentConfirmation({
+        orderPayload,
+        shipmentPayload: bolShipmentDetails,
+        shipmentList,
+      });
       const resolvedTrackAndTrace = firstNonEmptyString(
         firstShipment?.transport?.trackAndTrace,
         firstShipment?.trackAndTrace,
@@ -1245,12 +1312,13 @@ export const syncBolOrders = async (req, res) => {
         firstNonEmptyString(firstShipment?.transport?.status),
         findStringValueByKey(firstShipment, /(^|_)(status|shipment.?status|order.?status)$/i),
         findStringValueByKey(bolShipmentDetails, /(^|_)(status|shipment.?status|order.?status)$/i),
+        shipmentConfirmedByBol ? 'SHIPPED' : null,
       ].filter(Boolean);
       const resolvedBolOrderStatus = resolvePrimaryBolStatus(bolStatusCandidates);
       const resolvedShippingStatus = resolvedBolOrderStatus || null;
       const resolvedInternalStatus = resolveBolStatusToInternal({
         statuses: bolStatusCandidates,
-        hasTrackAndTrace: Boolean(resolvedTrackAndTrace),
+        hasTrackAndTrace: Boolean(resolvedTrackAndTrace) || shipmentConfirmedByBol,
       });
       console.log('[BOL SYNC] Bol status sources:', {
         orderId: bolOrder.orderId,
@@ -1259,6 +1327,7 @@ export const syncBolOrders = async (req, res) => {
         shipmentStatus: firstShipment?.status || null,
         shipmentShipmentStatus: firstShipment?.shipmentStatus || null,
         shipmentTransportStatus: firstShipment?.transport?.status || null,
+        shipmentConfirmedByBol,
       });
       console.log('[BOL SYNC] Order status candidates from bol.com:', {
         orderId: bolOrder.orderId,
