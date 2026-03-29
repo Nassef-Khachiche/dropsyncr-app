@@ -624,25 +624,70 @@ async function getBolLabelWithFallback(credentials, orderId) {
 }
 
 async function fetchAllBolOrders(credentials) {
-  const allOrders = [];
   const maxPages = 200;
+  const statusesToFetch = [
+    'ALL',
+    'OPEN',
+    'PROCESSING',
+    'PROCESSED',
+    'SHIPPED',
+    'DELIVERED',
+    'CANCELLED',
+  ];
+  const dedupedOrders = new Map();
 
-  for (let page = 1; page <= maxPages; page++) {
-    const response = await bolApiRequest(credentials, `/orders?status=ALL&page=${page}`);
-    const pageOrders = response?.orders || [];
+  for (const status of statusesToFetch) {
+    for (let page = 1; page <= maxPages; page += 1) {
+      let response;
 
-    if (pageOrders.length === 0) {
-      break;
-    }
+      try {
+        response = await bolApiRequest(
+          credentials,
+          `/orders?status=${encodeURIComponent(status)}&page=${page}`,
+        );
+      } catch (error) {
+        // Some Bol environments reject certain status filters; continue with remaining statuses.
+        if (page === 1) {
+          console.warn('[BOL SYNC] Skipping unsupported status filter', {
+            status,
+            message: error.message,
+          });
+        }
+        break;
+      }
 
-    allOrders.push(...pageOrders);
+      const pageOrders = Array.isArray(response?.orders) ? response.orders : [];
+      if (pageOrders.length === 0) {
+        break;
+      }
 
-    if (pageOrders.length < 50) {
-      break;
+      for (const order of pageOrders) {
+        const orderId = String(order?.orderId || order?.orderNumber || '').trim();
+        if (!orderId) continue;
+
+        if (!dedupedOrders.has(orderId)) {
+          dedupedOrders.set(orderId, order);
+          continue;
+        }
+
+        const existingOrder = dedupedOrders.get(orderId);
+        const existingStatus = String(existingOrder?.status || '').trim();
+        const incomingStatus = String(order?.status || '').trim();
+        if (!existingStatus && incomingStatus) {
+          dedupedOrders.set(orderId, {
+            ...existingOrder,
+            ...order,
+          });
+        }
+      }
+
+      if (pageOrders.length < 50) {
+        break;
+      }
     }
   }
 
-  return allOrders;
+  return Array.from(dedupedOrders.values());
 }
 
 async function findOrderInFbrOrderPages(credentials, orderId, maxPages = 8) {
