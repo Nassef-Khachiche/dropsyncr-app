@@ -1253,6 +1253,8 @@ const enrichBolProductData = async ({ credentials, ean }) => {
 export const syncBolOrders = async (req, res) => {
   try {
     const { installationId, integrationId } = req.query;
+    const debugOrderId = 'C00028PR4D';
+    let debugOrderSeen = false;
 
     if (!installationId) {
       return res.status(400).json({ error: 'Installation ID is required' });
@@ -1288,6 +1290,18 @@ export const syncBolOrders = async (req, res) => {
     const enrichmentCache = new Map();
 
     for (const bolOrder of bolOrders) {
+      const currentBolOrderId = String(bolOrder?.orderId || bolOrder?.orderNumber || '').trim();
+      const isDebugOrder = currentBolOrderId.toUpperCase() === debugOrderId;
+      if (isDebugOrder) {
+        debugOrderSeen = true;
+        console.log('[BOL SYNC][DEBUG ORDER] Matched target order in list', {
+          orderId: currentBolOrderId,
+          listedStatus: bolOrder?.status || null,
+          installationId: parseInt(installationId, 10),
+          integrationId: integrationId ? parseInt(integrationId, 10) : null,
+        });
+      }
+
       // Log the complete order data for debugging
       console.log('[BOL SYNC] ========================================');
       console.log('[BOL SYNC] Processing order:', bolOrder.orderId);
@@ -1365,6 +1379,20 @@ export const syncBolOrders = async (req, res) => {
         statuses: bolStatusCandidates,
         hasTrackAndTrace: Boolean(resolvedTrackAndTrace) || shipmentConfirmedByBol,
       });
+      if (isDebugOrder) {
+        console.log('[BOL SYNC][DEBUG ORDER] Status resolution', {
+          orderId: currentBolOrderId,
+          bolStatusCandidates,
+          resolvedBolOrderStatus,
+          resolvedShippingStatus,
+          resolvedInternalStatus,
+          shipmentConfirmedByBol,
+          resolvedTrackAndTrace,
+          firstShipmentStatus: firstShipment?.status || null,
+          firstShipmentShipmentStatus: firstShipment?.shipmentStatus || null,
+          firstShipmentTransportStatus: firstShipment?.transport?.status || null,
+        });
+      }
       console.log('[BOL SYNC] Bol status sources:', {
         orderId: bolOrder.orderId,
         bolOrderStatus: bolOrder?.status || null,
@@ -1482,21 +1510,6 @@ export const syncBolOrders = async (req, res) => {
       const firstName = shipmentDetails?.firstName || '';
       const surname = shipmentDetails?.surname || '';
       const customerName = `${firstName} ${surname}`.trim() || 'Unknown';
-      let preservedShippingMethod = '';
-      if (existingOrder?.id) {
-        try {
-          const shippingMethodRows = await prisma.$queryRaw`
-            SELECT shippingMethod
-            FROM \`Order\`
-            WHERE id = ${existingOrder.id}
-            LIMIT 1
-          `;
-          const rawShippingMethod = Array.isArray(shippingMethodRows) ? shippingMethodRows[0]?.shippingMethod : null;
-          preservedShippingMethod = typeof rawShippingMethod === 'string' ? rawShippingMethod.trim() : '';
-        } catch {
-          preservedShippingMethod = '';
-        }
-      }
 
       const shippingAutomationResult = await resolveShippingAutomationForOrder({
         prisma,
@@ -1508,11 +1521,22 @@ export const syncBolOrders = async (req, res) => {
       });
       const resolvedOrderShippingMethod = isVvbOrder
         ? 'Bol.com'
-        : (preservedShippingMethod || shippingAutomationResult.shippingAssignment || null);
+        : (shippingAutomationResult.shippingAssignment || null);
       const persistedStatus = resolvePersistedOrderStatus(existingOrder);
       const finalInternalStatus = persistedStatus || resolvedInternalStatus;
       const finalOrderStatus = resolvedBolOrderStatus || finalInternalStatus;
       const finalOrderStatusCode = toOrderStatusCode(finalInternalStatus || finalOrderStatus);
+      if (isDebugOrder) {
+        console.log('[BOL SYNC][DEBUG ORDER] Final mapped status before save', {
+          orderId: currentBolOrderId,
+          persistedStatus,
+          finalInternalStatus,
+          finalOrderStatus,
+          finalOrderStatusCode,
+          existingOrderStatus: existingOrder?.orderStatus || null,
+          existingStatus: existingOrder?.status || null,
+        });
+      }
 
       const orderData = {
         orderNumber: bolOrder.orderId,
@@ -1606,6 +1630,15 @@ export const syncBolOrders = async (req, res) => {
         updatedCount++;
       } else {
         importedCount++;
+      }
+
+      if (isDebugOrder) {
+        console.log('[BOL SYNC][DEBUG ORDER] Save complete', {
+          orderId: currentBolOrderId,
+          savedOrderId: savedOrder?.id || null,
+          importedCount,
+          updatedCount,
+        });
       }
 
       if (Array.isArray(orderItems)) {
@@ -1766,6 +1799,13 @@ export const syncBolOrders = async (req, res) => {
           });
         }
       }
+    }
+
+    if (!debugOrderSeen) {
+      console.warn('[BOL SYNC][DEBUG ORDER] Target order not found in fetched Bol orders', {
+        targetOrderId: debugOrderId,
+        totalFetchedOrders: bolOrders.length,
+      });
     }
 
     res.json({
