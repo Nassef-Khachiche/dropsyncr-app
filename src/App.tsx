@@ -12,6 +12,8 @@ import { GlobalTextTranslator } from './components/GlobalTextTranslator';
 import { Login } from './components/Login';
 import { Administrative } from './components/Administrative';
 import { AutomatiseringsRegels } from './components/AutomatiseringsRegels';
+import { Dashboard } from './components/Dashboard';
+import { FulfillmentAnalytics } from './components/FulfillmentAnalytics';
 import { useAuth } from './contexts/AuthContext';
 import { useLanguage } from './contexts/LanguageContext';
 import { Loader2 } from 'lucide-react';
@@ -51,6 +53,10 @@ export default function App() {
         return <Administrative activeProfile={activeProfile} />;
       case 'automation-rules':
         return <AutomatiseringsRegels activeProfile={activeProfile} />;
+      case 'dashboard':
+        return <Dashboard activeProfile={activeProfile} />;
+      case 'fulfillment-analytics':
+        return <FulfillmentAnalytics activeProfile={activeProfile} />;
       default:
         return <OrdersOverview activeProfile={activeProfile} />;
     }
