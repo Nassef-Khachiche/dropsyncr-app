@@ -1,5 +1,10 @@
 import prisma from '../config/database.js';
 
+const normalizeProductName = (value) => {
+  const normalized = String(value ?? '').trim();
+  return normalized || 'Unnamed product';
+};
+
 export const getProducts = async (req, res) => {
   try {
     const { installationId, search, archived, bundled, page = 1, limit = 50 } = req.query;
@@ -126,12 +131,14 @@ export const createProduct = async (req, res) => {
       }
     }
 
+    const normalizedName = normalizeProductName(name);
+
     const product = await prisma.product.create({
       data: {
         installationId: parseInt(installationId),
         sku,
         ean,
-        name,
+        name: normalizedName,
         image,
         brand,
         price: parseFloat(price),
@@ -158,6 +165,9 @@ export const createProduct = async (req, res) => {
     if (error.code === 'P2002') {
       return res.status(400).json({ error: 'Product SKU already exists for this installation' });
     }
+    if (error.code === 'P2000') {
+      return res.status(400).json({ error: 'One or more fields are too long' });
+    }
     res.status(500).json({ error: 'Internal server error' });
   }
 };
@@ -176,6 +186,10 @@ export const updateProduct = async (req, res) => {
       await prisma.productLocation.deleteMany({
         where: { productId: parseInt(id) },
       });
+
+      if (updateData.name !== undefined) {
+        updateData.name = normalizeProductName(updateData.name);
+      }
 
       await prisma.product.update({
         where: { id: parseInt(id) },
@@ -196,6 +210,7 @@ export const updateProduct = async (req, res) => {
       if (updateData.availableStock !== undefined) updateData.availableStock = parseInt(updateData.availableStock);
       if (updateData.fulfillmentStock !== undefined) updateData.fulfillmentStock = parseInt(updateData.fulfillmentStock);
       if (updateData.salesPerMonth !== undefined) updateData.salesPerMonth = parseInt(updateData.salesPerMonth);
+      if (updateData.name !== undefined) updateData.name = normalizeProductName(updateData.name);
 
       await prisma.product.update({
         where: { id: parseInt(id) },
@@ -215,6 +230,9 @@ export const updateProduct = async (req, res) => {
     console.error('Update product error:', error);
     if (error.code === 'P2025') {
       return res.status(404).json({ error: 'Product not found' });
+    }
+    if (error.code === 'P2000') {
+      return res.status(400).json({ error: 'One or more fields are too long' });
     }
     res.status(500).json({ error: 'Internal server error' });
   }

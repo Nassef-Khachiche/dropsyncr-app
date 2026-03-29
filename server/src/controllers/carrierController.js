@@ -603,6 +603,7 @@ export const generateCarrierLabels = async (req, res) => {
                 shippingMethod = ${selectedShippingMethod},
                 orderStatus = 'verzonden',
                 status = 'verzonden',
+                orderStatusCode = 'SHIPPED',
                 supplierTracking = ${generatedTrackingCode || null},
                 updatedAt = NOW()
               WHERE id = ${orderId} AND installationId = ${carrier.installationId}
@@ -614,6 +615,7 @@ export const generateCarrierLabels = async (req, res) => {
             SET
               orderStatus = 'verzonden',
               status = 'verzonden',
+              orderStatusCode = 'SHIPPED',
               supplierTracking = ${generatedTrackingCode || null},
               updatedAt = NOW()
             WHERE id = ${orderId} AND installationId = ${carrier.installationId}

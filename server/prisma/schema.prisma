@@ -92,10 +92,12 @@ model Order {
   itemCount        Int          @default(1)
   supplierTracking String?
   status           String
+  orderStatusCode  String       @default("OPEN")
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
   label            Label?
   installation     Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  orderStatusRef   OrderStatus  @relation(fields: [orderStatusCode], references: [code])
   user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   orderItems       OrderItem[]
   tracking         Tracking?
@@ -103,13 +105,21 @@ model Order {
   @@index([installationId])
   @@index([userId])
   @@index([orderStatus])
+  @@index([orderStatusCode])
+}
+
+model OrderStatus {
+  code   String  @id
+  orders Order[]
+
+  @@map("orderStatus")
 }
 
 model OrderItem {
   id           Int      @id @default(autoincrement())
   orderId      Int
   productId    Int?
-  productName  String
+  productName  String   @db.Text
   productImage String?
   ean          String?
   sku          String?
@@ -131,7 +141,7 @@ model Product {
   installationId   Int
   sku              String
   ean              String?
-  name             String
+  name             String            @db.Text
   image            String?
   brand            String?
   price            Float

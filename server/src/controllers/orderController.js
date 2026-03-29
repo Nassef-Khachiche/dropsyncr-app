@@ -18,6 +18,32 @@ const normalizeOrderShippingState = (order) => {
   return 'openstaand';
 };
 
+const toOrderStatusCode = (value) => {
+  const normalized = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  const shippedTokens = new Set([
+    'verzonden',
+    'verstuurd',
+    'afgeleverd',
+    'shipped',
+    'delivered',
+    'send',
+    'sent',
+    'processed',
+    'finished',
+    'dispatched',
+    'fulfilled',
+    'fulfilment_completed',
+    'fulfillment_completed',
+    'completed',
+  ]);
+
+  if (shippedTokens.has(normalized)) {
+    return 'SHIPPED';
+  }
+
+  return 'OPEN';
+};
+
 const normalizeLabelUrlForResponse = (labelUrl, req) => {
   const normalized = String(labelUrl || '').trim();
   if (!normalized) return normalized;
@@ -380,6 +406,7 @@ export const createOrder = async (req, res) => {
     });
 
     const resolvedOrderShippingMethod = shippingAutomationResult.shippingAssignment || null;
+    const normalizedInternalStatus = status || 'onderweg-ffm';
 
     const order = await prisma.order.create({
       data: {
@@ -397,8 +424,9 @@ export const createOrder = async (req, res) => {
         orderValue: parseFloat(orderValue),
         itemCount: items?.length || 1,
         supplierTracking,
-        status: status || 'onderweg-ffm',
+        status: normalizedInternalStatus,
         orderStatus: 'openstaand',
+        orderStatusCode: toOrderStatusCode(normalizedInternalStatus),
         orderItems: {
           create: items?.map((item) => ({
             productId: item.productId || null,
@@ -496,6 +524,12 @@ export const updateOrder = async (req, res) => {
     const finalUpdateData = {
       ...updateData,
     };
+
+    if (Object.prototype.hasOwnProperty.call(finalUpdateData, 'status')) {
+      finalUpdateData.orderStatusCode = toOrderStatusCode(finalUpdateData.status);
+    } else if (Object.prototype.hasOwnProperty.call(finalUpdateData, 'orderStatus')) {
+      finalUpdateData.orderStatusCode = toOrderStatusCode(finalUpdateData.orderStatus);
+    }
 
     if (hasShippingMethodUpdate) {
       await prisma.$executeRaw`

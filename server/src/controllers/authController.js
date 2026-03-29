@@ -1,13 +1,19 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import prisma from '../config/database.js';
+import { getJwtSecret } from '../utils/security.js';
 
 export const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+    const password = typeof req.body?.password === 'string' ? req.body.password : '';
 
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password are required' });
+    }
+
+    if (email.length > 254 || password.length > 256) {
+      return res.status(400).json({ error: 'Invalid credentials format' });
     }
 
     const user = await prisma.user.findUnique({
@@ -23,11 +29,15 @@ export const login = async (req, res) => {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    const jwtSecret = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production';
+    const jwtSecret = getJwtSecret();
+    const tokenExpiry = process.env.JWT_EXPIRES_IN || '12h';
     const token = jwt.sign(
       { userId: user.id, email: user.email },
       jwtSecret,
-      { expiresIn: '7d' } // Extended to 7 days for development
+      {
+        expiresIn: tokenExpiry,
+        issuer: 'dropsyncr-server',
+      }
     );
 
     res.json({
