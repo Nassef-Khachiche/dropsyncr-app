@@ -1,6 +1,8 @@
 import { 
   Package, 
   ShoppingCart, 
+  BarChart2,
+  TrendingUp,
   Plug, 
   Truck,
   ChevronDown,
@@ -72,6 +74,21 @@ const menuItems: { sectionKey: 'orderManagement' | 'system' | 'administrativeSec
         id: 'automation-rules',
         labelKey: 'automationRules',
         icon: Workflow,
+      },
+    ],
+  },
+  {
+    sectionKey: 'analytics',
+    items: [
+      {
+        id: 'dashboard',
+        labelKey: 'dashboard',
+        icon: BarChart2,
+      },
+      {
+        id: 'fulfillment-analytics',
+        labelKey: 'fulfillmentAnalytics',
+        icon: TrendingUp,
       },
     ],
   },
