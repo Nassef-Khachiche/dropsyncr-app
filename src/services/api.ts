@@ -1,6 +1,38 @@
 // Use environment variable for API URL, fallback to /api for production
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
+const formatApiErrorPart = (value: unknown): string => {
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => formatApiErrorPart(entry))
+      .filter(Boolean)
+      .join(' | ');
+  }
+
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    const prioritized = [record.detail, record.message, record.error, record.description, record.title, record.code]
+      .map((entry) => formatApiErrorPart(entry))
+      .filter(Boolean);
+
+    if (prioritized.length > 0) {
+      return prioritized.join(' | ');
+    }
+
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+
+  return String(value);
+};
+
 class ApiService {
   private getAuthHeaders(): HeadersInit {
     const token = localStorage.getItem('token');
@@ -38,8 +70,8 @@ class ApiService {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Request failed' }));
-      const errorMessage = error.error || 'Request failed';
-      const errorDetails = error.details || '';
+      const errorMessage = formatApiErrorPart(error.error) || 'Request failed';
+      const errorDetails = formatApiErrorPart(error.details);
       const endpointWithStatus = `${endpoint} (HTTP ${response.status})`;
       
       // Debug: Log 401 errors with full details

@@ -84,6 +84,8 @@ model Order {
   platform         String
   orderDate        DateTime
   deliveryDate     DateTime?
+  earliestDropOffDate DateTime?
+  latestDropOffDate DateTime?
   orderStatus      String
   shippingStatus   String?
   shippingMethod   String?

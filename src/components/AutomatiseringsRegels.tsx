@@ -89,6 +89,15 @@ const carrierLogoMap: Record<string, string | null> = {
   wegrow: wegrowLogo,
 };
 
+const wegrowServiceOptions = [
+  { id: 'dhl-nl', label: 'WeGrow DHL NL', logoUrl: dhlLogo },
+  { id: 'dhl-for-you-envelop', label: 'WeGrow DHL For You - Envelop', logoUrl: dhlLogo },
+  { id: 'dhl-for-you-brievenbuspakje', label: 'WeGrow DHL For You Brievenbuspakje', logoUrl: dhlLogo },
+  { id: 'dhl-for-you', label: 'WeGrow DHL For You', logoUrl: dhlLogo },
+  { id: 'postnl-nederland-brievenbuspakketje-0-2kg', label: 'WeGrow PostNL Brievenbuspakketje 0-2kg', logoUrl: postnlLogo },
+  { id: 'postnl-belgie-standaard-0-23kg', label: 'WeGrow PostNL België Standaard 0-23kg', logoUrl: postnlLogo },
+];
+
 const defaultCountryOptions = [
   'NL', 'BE', 'DE', 'FR', 'LU', 'AT', 'ES', 'IT', 'PT', 'IE',
   'PL', 'CZ', 'SK', 'HU', 'RO', 'BG', 'HR', 'SI', 'DK', 'SE',
@@ -263,23 +272,11 @@ export function AutomatiseringsRegels({ activeProfile }: AutomatiseringsRegelsPr
         if (!normalizedContractName) return [];
 
         if (normalizedCarrierType === 'wegrow') {
-          return [
-            {
-              value: `${normalizedContractName} | wegrow-dhl`,
-              label: `${normalizedContractName} · WeGrow DHL`,
-              logoUrl: dhlLogo,
-            },
-            {
-              value: `${normalizedContractName} | wegrow-postnl`,
-              label: `${normalizedContractName} · WeGrow PostNL`,
-              logoUrl: postnlLogo,
-            },
-            {
-              value: `${normalizedContractName} | wegrow-bpost`,
-              label: `${normalizedContractName} · WeGrow Bpost`,
-              logoUrl: bpostLogo,
-            },
-          ];
+          return wegrowServiceOptions.map((serviceOption) => ({
+            value: `${normalizedContractName} | wegrow-${serviceOption.id}`,
+            label: `${normalizedContractName} · ${serviceOption.label}`,
+            logoUrl: serviceOption.logoUrl,
+          }));
         }
 
         return [{
@@ -312,6 +309,17 @@ export function AutomatiseringsRegels({ activeProfile }: AutomatiseringsRegelsPr
 
     const [contractPart = '', servicePart = ''] = normalizedValue.split('|').map((segment) => segment.trim());
     const normalizedService = servicePart.toLowerCase();
+
+    if (normalizedService.startsWith('wegrow-')) {
+      const normalizedOptionId = normalizedService.replace('wegrow-', '').trim();
+      const matchingWegrowOption = wegrowServiceOptions.find((serviceOption) => serviceOption.id === normalizedOptionId);
+      if (matchingWegrowOption) {
+        return {
+          label: `${contractPart || 'WeGrow'} · ${matchingWegrowOption.label}`,
+          logoUrl: matchingWegrowOption.logoUrl,
+        };
+      }
+    }
 
     if (normalizedService.includes('wegrow-dhl')) {
       return { label: `${contractPart || 'WeGrow'} · WeGrow DHL`, logoUrl: dhlLogo };

@@ -63,12 +63,16 @@ const normalizeWeGrowCredentials = (rawCredentials = {}) => {
   if (credentials.baseUrl === undefined) credentials.baseUrl = credentials.base_url;
   if (credentials.apiVersion === undefined) credentials.apiVersion = credentials.xVersion ?? credentials.version ?? credentials.x_version;
   if (credentials.serviceCode === undefined) credentials.serviceCode = credentials.service_code;
+  if (credentials.serviceCodes === undefined) credentials.serviceCodes = credentials.service_codes;
 
   if (credentials.apiKey !== undefined) credentials.apiKey = sanitizeSecret(credentials.apiKey);
   if (credentials.bearerToken !== undefined) credentials.bearerToken = sanitizeSecret(credentials.bearerToken);
   if (credentials.baseUrl !== undefined) credentials.baseUrl = trimMaybe(credentials.baseUrl);
   if (credentials.apiVersion !== undefined) credentials.apiVersion = trimMaybe(credentials.apiVersion);
   if (credentials.serviceCode !== undefined) credentials.serviceCode = trimMaybe(credentials.serviceCode);
+  if (credentials.serviceCodes !== undefined) {
+    credentials.serviceCodes = normalizeWeGrowServiceCodeMap(credentials.serviceCodes);
+  }
   if (credentials.environment !== undefined) credentials.environment = trimMaybe(credentials.environment);
 
   const hasSandbox = Object.prototype.hasOwnProperty.call(credentials, 'sandbox');
@@ -125,6 +129,66 @@ const getWeGrowAuthConfig = (rawCredentials = {}) => {
   };
 
   return { apiKey: sanitizedApiKey, bearerToken, headers };
+};
+
+const WEGROW_SERVICE_OPTIONS = {
+  'dhl-nl': { label: 'DHL NL', defaultServiceCode: null },
+  'dhl-for-you-envelop': { label: 'DHL For You - Envelop', defaultServiceCode: null },
+  'dhl-for-you-brievenbuspakje': { label: 'DHL For You Brievenbuspakje', defaultServiceCode: null },
+  'dhl-for-you': { label: 'DHL For You', defaultServiceCode: null },
+  'postnl-nederland-brievenbuspakketje-0-2kg': { label: 'PostNL Brievenbuspakketje 0-2kg', defaultServiceCode: null },
+  'postnl-belgie-standaard-0-23kg': { label: 'PostNL België Standaard 0-23kg', defaultServiceCode: null },
+};
+
+const normalizeWeGrowServiceCodeMap = (rawServiceCodeMap) => {
+  if (!rawServiceCodeMap || typeof rawServiceCodeMap !== 'object') return {};
+
+  return Object.entries(rawServiceCodeMap).reduce((accumulator, [key, value]) => {
+    const normalizedKey = String(key || '').trim().toLowerCase();
+    const normalizedValue = value === undefined || value === null ? '' : String(value).trim();
+    if (!normalizedKey || !normalizedValue) return accumulator;
+
+    accumulator[normalizedKey] = normalizedValue;
+    return accumulator;
+  }, {});
+};
+
+const stringifyApiErrorDetail = (value) => {
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => stringifyApiErrorDetail(entry))
+      .filter(Boolean)
+      .join(' | ');
+  }
+
+  if (typeof value === 'object') {
+    const prioritized = [
+      value.detail,
+      value.message,
+      value.error,
+      value.description,
+      value.title,
+      value.code,
+    ]
+      .map((entry) => stringifyApiErrorDetail(entry))
+      .filter(Boolean);
+
+    if (prioritized.length > 0) {
+      return prioritized.join(' | ');
+    }
+
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+
+  return String(value);
 };
 
 const persistNormalizedCredentialsIfChanged = async (carrierId, previousCredentials, normalizedCredentials) => {
@@ -730,7 +794,31 @@ export const generateCarrierLabels = async (req, res) => {
         .filter(Boolean);
 
       if (!street) {
+        const postalIndex = addressParts.findIndex((part) => /\d{4}\s?[A-Z]{2}/i.test(part));
+        if (postalIndex > 0) {
+          street = String(addressParts.slice(0, postalIndex).join(', ') || '').trim();
+        }
+      }
+
+      if (!street) {
         street = String(addressParts[0] || address.street || pkg.address || '').trim();
+      }
+
+      if (!zipCode && country === 'NL') {
+        const nlPostalSegment = addressParts.find((part) => /\d{4}\s?[A-Z]{2}/i.test(part));
+        if (nlPostalSegment) {
+          const postalMatch = nlPostalSegment.match(/(\d{4}\s?[A-Z]{2})/i);
+          if (postalMatch?.[1]) {
+            zipCode = normalizePostalCode(postalMatch[1], country);
+          }
+        }
+      }
+
+      if (!city) {
+        const nlPostalIndex = addressParts.findIndex((part) => /\d{4}\s?[A-Z]{2}/i.test(part));
+        if (nlPostalIndex >= 0 && addressParts[nlPostalIndex + 1]) {
+          city = String(addressParts[nlPostalIndex + 1] || '').trim();
+        }
       }
 
       if ((!zipCode || !city) && addressText) {
@@ -772,6 +860,13 @@ export const generateCarrierLabels = async (req, res) => {
           const broadZipMatch = withoutTrailingCountry.match(/(?:^|[\s,.-])(?:[A-Z]{1,3}-)?(\d{4,6})(?=$|[\s,.-])/i);
           if (broadZipMatch?.[1]) {
             zipCode = normalizePostalCode(broadZipMatch[1], country);
+          }
+        }
+
+        if (!zipCode && country === 'NL') {
+          const nlZipMatch = withoutTrailingCountry.match(/(?:^|[\s,.-])(\d{4}\s?[A-Z]{2})(?=$|[\s,.-])/i);
+          if (nlZipMatch?.[1]) {
+            zipCode = normalizePostalCode(nlZipMatch[1], country);
           }
         }
       }
@@ -1296,15 +1391,35 @@ export const generateCarrierLabels = async (req, res) => {
     if (carrier.carrierType === 'wegrow') {
       const credentials = normalizeWeGrowCredentials(parseCredentialsSafely(carrier.credentials));
       const { apiKey } = getWeGrowAuthConfig(credentials);
-      const selectedWeGrowCarrier = String(wegrowCarrier || '').trim().toLowerCase();
+      const normalizedSelectedShippingMethod = String(selectedShippingMethod || '').trim().toLowerCase();
+      const selectedWeGrowCarrier = String(wegrowCarrier || '').trim().toLowerCase()
+        || (normalizedSelectedShippingMethod.startsWith('wegrow-')
+          ? normalizedSelectedShippingMethod.replace('wegrow-', '').trim()
+          : '');
+
+      const serviceCodeMapFromCredentials = normalizeWeGrowServiceCodeMap(
+        credentials.serviceCodes || credentials.serviceCodeMap || credentials.serviceCodeByOption
+      );
       const serviceCodeByCarrier = {
         dhl: credentials.dhlServiceCode,
         postnl: credentials.postnlServiceCode,
         bpost: credentials.bpostServiceCode,
+        'dhl-nl': credentials.dhlNlServiceCode,
+        'dhl-for-you-envelop': credentials.dhlForYouEnvelopServiceCode,
+        'dhl-for-you-brievenbuspakje': credentials.dhlForYouBrievenbuspakjeServiceCode,
+        'dhl-for-you': credentials.dhlForYouServiceCode,
+        'postnl-nederland-brievenbuspakketje-0-2kg': credentials.postnlNederlandBrievenbuspakketje02kgServiceCode,
+        'postnl-belgie-standaard-0-23kg': credentials.postnlBelgieStandaard023kgServiceCode,
       };
+      const selectedServiceOption = selectedWeGrowCarrier ? WEGROW_SERVICE_OPTIONS[selectedWeGrowCarrier] : null;
       const selectedCarrierServiceCode = selectedWeGrowCarrier
-        ? serviceCodeByCarrier[selectedWeGrowCarrier]
-        : null;
+        ? (
+          serviceCodeMapFromCredentials[selectedWeGrowCarrier]
+          || (serviceCodeByCarrier[selectedWeGrowCarrier] ? String(serviceCodeByCarrier[selectedWeGrowCarrier]).trim() : '')
+          || selectedServiceOption?.defaultServiceCode
+          || ''
+        )
+        : '';
       const serviceCode = selectedCarrierServiceCode || credentials.serviceCode;
 
       if (!apiKey) {
@@ -1314,15 +1429,18 @@ export const generateCarrierLabels = async (req, res) => {
         });
       }
 
-      if (selectedWeGrowCarrier && !['dhl', 'postnl', 'bpost'].includes(selectedWeGrowCarrier)) {
-        return res.status(400).json({ error: 'Ongeldige WeGrow vervoerder. Kies DHL, PostNL of Bpost.' });
+      if (selectedWeGrowCarrier && !Object.prototype.hasOwnProperty.call(WEGROW_SERVICE_OPTIONS, selectedWeGrowCarrier)) {
+        return res.status(400).json({
+          error: 'Ongeldige WeGrow verzendoptie.',
+          details: `Kies een geldige optie: ${Object.keys(WEGROW_SERVICE_OPTIONS).join(', ')}`,
+        });
       }
 
       if (!serviceCode) {
         return res.status(400).json({
           error: 'WeGrow service code ontbreekt',
           details: selectedWeGrowCarrier
-            ? `Geen service code gevonden voor WeGrow vervoerder ${selectedWeGrowCarrier.toUpperCase()}`
+            ? `Geen service code gevonden voor WeGrow optie ${selectedServiceOption?.label || selectedWeGrowCarrier.toUpperCase()}`
             : 'Stel een algemene WeGrow service code in of kies een WeGrow vervoerder met service code mapping.',
         });
       }
@@ -1330,11 +1448,11 @@ export const generateCarrierLabels = async (req, res) => {
       const baseUrl = getWeGrowBaseUrl(credentials).replace(/\/+$/, '');
       const apiVersion = String(credentials.apiVersion || 'v1').trim().toLowerCase() || 'v1';
 
-      const senderName = credentials.senderName || 'Dropsyncr Warehouse';
-      const senderStreet = credentials.senderStreet || 'Warehouse Street 1';
-      const senderPostalCode = credentials.senderPostalCode || '1012AB';
-      const senderCity = credentials.senderCity || 'Amsterdam';
-      const senderCountry = credentials.senderCountry || 'NL';
+      const senderName = String(credentials.senderName || 'Dropsyncr Warehouse').trim();
+      const senderCountry = String(credentials.senderCountry || 'NL').trim().toUpperCase() || 'NL';
+      const senderStreet = String(credentials.senderStreet || 'Warehouse Street 1').trim();
+      const senderPostalCode = normalizePostalCode(credentials.senderPostalCode || credentials.senderZipCode || '1012AB', senderCountry);
+      const senderCity = String(credentials.senderCity || 'Amsterdam').trim();
       const senderEmail = credentials.senderEmail || 'operations@dropsyncr.local';
       const senderPhone = credentials.senderPhone || '+31000000000';
 
@@ -1342,11 +1460,79 @@ export const generateCarrierLabels = async (req, res) => {
       for (let index = 0; index < (packages || []).length; index += 1) {
         const pkg = packages[index] || {};
         const address = parseAddress(pkg.address || '');
-        const recipientName = pkg.customerName || 'Recipient';
-        const destinationStreet = pkg.street || address.street || pkg.address || 'Unknown';
-        const destinationPostalCode = pkg.zipCode || address.zipCode || pkg.postalCode || '0000AA';
-        const destinationCity = pkg.city || address.city || 'Unknown';
-        const destinationCountry = pkg.country || 'NL';
+        const shipmentDetails = pkg.shipmentDetails || pkg.shippingAddress || {};
+        const recipientName = pkg.customerName || shipmentDetails.fullName || shipmentDetails.firstName || 'Recipient';
+        const destinationCountry = String(pkg.country || pkg.shippingCountry || shipmentDetails.countryCode || 'NL').trim().toUpperCase() || 'NL';
+        let parsedRecipientAddress = null;
+        try {
+          parsedRecipientAddress = buildDpdRecipientAddress({
+            ...pkg,
+            country: destinationCountry,
+          });
+        } catch {
+          parsedRecipientAddress = null;
+        }
+        const shipmentStreet = [shipmentDetails.streetName, shipmentDetails.houseNumber, shipmentDetails.houseNumberExtension]
+          .filter(Boolean)
+          .join(' ')
+          .trim();
+        const destinationStreet = String(
+          pkg.street
+          || pkg.addressLine1
+          || pkg.shippingStreet
+          || shipmentStreet
+          || shipmentDetails.addressLine1
+          || shipmentDetails.street
+          || parsedRecipientAddress?.street
+          || address.street
+          || pkg.address
+          || ''
+        ).trim();
+        const destinationPostalCode = normalizePostalCode(
+          pkg.zipCode
+          || pkg.postalCode
+          || pkg.shippingZipCode
+          || shipmentDetails.zipCode
+          || shipmentDetails.postalCode
+          || parsedRecipientAddress?.zipCode
+          || address.zipCode,
+          destinationCountry
+        );
+        const destinationCity = String(
+          pkg.city
+          || pkg.town
+          || pkg.shippingCity
+          || shipmentDetails.city
+          || shipmentDetails.town
+          || parsedRecipientAddress?.city
+          || address.city
+          || ''
+        ).trim();
+        const hasPlaceholderPostalCode = destinationPostalCode === '0000AA' || destinationPostalCode === '0000';
+
+        if (!destinationStreet || !destinationPostalCode || !destinationCity || hasPlaceholderPostalCode) {
+          return res.status(400).json({
+            error: 'WeGrow ontvangeradres is incompleet',
+            details: `Order ${String(pkg.orderNumber || pkg.id || index)} mist een geldige straat, postcode of plaats voor labelgeneratie.`,
+            packageId: pkg.id || index,
+            address: {
+              street: destinationStreet || null,
+              postalCode: destinationPostalCode || null,
+              city: destinationCity || null,
+              country: destinationCountry,
+              rawAddress: String(pkg.address || '').trim() || null,
+            },
+          });
+        }
+
+        if (destinationCountry === 'NL' && !/^\d{4}[A-Z]{2}$/.test(destinationPostalCode)) {
+          return res.status(400).json({
+            error: 'WeGrow ontvangerpostcode is ongeldig',
+            details: `Order ${String(pkg.orderNumber || pkg.id || index)} heeft geen geldige Nederlandse postcode. Verwacht formaat: 1234AB.`,
+            packageId: pkg.id || index,
+            postalCode: destinationPostalCode,
+          });
+        }
 
         const weightValue = Number(pkg.weightKg ?? pkg.weight ?? 1);
         const payload = {
@@ -1384,8 +1570,8 @@ export const generateCarrierLabels = async (req, res) => {
                 },
                 contact: {
                   name: recipientName,
-                  email: pkg.email || null,
-                  mobile: pkg.phone || null,
+                  email: pkg.email || shipmentDetails.email || null,
+                  mobile: pkg.phone || shipmentDetails.phoneNumber || null,
                 },
               },
             },
@@ -1421,6 +1607,7 @@ export const generateCarrierLabels = async (req, res) => {
         if (!response.ok) {
           const responseStatus = Number(response?.status || 0);
           const likelyAuthIssue = responseStatus === 401 || responseStatus === 403;
+          const normalizedErrorDetail = stringifyApiErrorDetail(responseData?.detail || responseData?.error || responseData);
 
           let diagnosticDetails = null;
           if (likelyAuthIssue) {
@@ -1461,7 +1648,7 @@ export const generateCarrierLabels = async (req, res) => {
 
           return res.status(502).json({
             error: 'Failed to generate WeGrow label',
-            details: `${responseData?.detail || responseData?.error || (likelyAuthIssue
+            details: `${normalizedErrorDetail || (likelyAuthIssue
               ? 'Unauthorized - controleer WeGrow API key (x-key), live endpoint, API version (v1) en service code permissies'
               : 'Unknown WeGrow error')}${diagnosticSummary}`,
             statusCode: responseStatus || null,
