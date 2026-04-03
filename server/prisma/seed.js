@@ -6,6 +6,18 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('Seeding database...');
 
+  await prisma.orderStatus.upsert({
+    where: { code: 'OPEN' },
+    update: {},
+    create: { code: 'OPEN' },
+  });
+
+  await prisma.orderStatus.upsert({
+    where: { code: 'SHIPPED' },
+    update: {},
+    create: { code: 'SHIPPED' },
+  });
+
   // Create admin user
   const hashedPassword = await bcrypt.hash('admin123', 10);
   const admin = await prisma.user.upsert({
@@ -162,6 +174,7 @@ async function main() {
           itemCount: 1,
           supplierTracking: 'TBA123456789012',
           status: 'onderweg-ffm',
+          orderStatusCode: 'OPEN',
           orderItems: {
             create: {
               productId: products[0].id,
@@ -196,6 +209,7 @@ async function main() {
           itemCount: 2,
           supplierTracking: 'LP987654321NL',
           status: 'binnengekomen-ffm',
+          orderStatusCode: 'OPEN',
           orderItems: {
             create: {
               productId: products[1].id,

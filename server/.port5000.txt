@@ -1,0 +1,3 @@
+PID=11764
+NAME=com.docker.backend
+PATH=C:\Program Files\Docker\Docker\resources\com.docker.backend.exe

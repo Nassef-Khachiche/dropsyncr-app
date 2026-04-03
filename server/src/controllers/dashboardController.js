@@ -64,7 +64,7 @@ export const getDashboardStats = async (req, res) => {
       prisma.order.aggregate({
         where: {
           ...where,
-          orderStatus: { in: ['verzonden', 'afgeleverd'] },
+          status: { in: ['verzonden', 'afgeleverd'] },
         },
         _sum: {
           orderValue: true,
@@ -80,7 +80,7 @@ export const getDashboardStats = async (req, res) => {
       prisma.order.count({
         where: {
           ...where,
-          orderStatus: 'openstaand',
+          status: 'openstaand',
         },
       }),
 
@@ -88,7 +88,7 @@ export const getDashboardStats = async (req, res) => {
       prisma.order.count({
         where: {
           ...where,
-          orderStatus: 'verzonden',
+          status: 'verzonden',
           updatedAt: {
             gte: new Date(new Date().setHours(0, 0, 0, 0)),
           },

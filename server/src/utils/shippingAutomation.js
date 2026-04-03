@@ -89,8 +89,9 @@ const matchStoreName = (ruleName, storeName) => {
   const normalizedRuleName = normalizeComparable(ruleName);
   const normalizedStoreName = normalizeComparable(storeName);
 
-  if (!normalizedRuleName || !normalizedStoreName) return false;
+  if (!normalizedRuleName) return false;
   if (normalizedRuleName === '*') return true;
+  if (!normalizedStoreName) return false;
 
   if (normalizedRuleName.startsWith('store:')) {
     return normalizeComparable(normalizedRuleName.replace(/^store:/, '')) === normalizedStoreName;
@@ -99,11 +100,23 @@ const matchStoreName = (ruleName, storeName) => {
   return normalizedRuleName === normalizedStoreName;
 };
 
-const findStoreException = async ({ prisma, installationId, storeName, countryCode }) => {
+const isExplicitStoreRule = (ruleName, storeName) => {
+  const normalizedRuleName = normalizeComparable(ruleName);
+  const normalizedStoreName = normalizeComparable(storeName);
+
+  if (!normalizedRuleName) return false;
+  if (normalizedRuleName === '*') return true;
+  if (normalizedRuleName.startsWith('store:')) return true;
+  if (normalizedStoreName && normalizedRuleName === normalizedStoreName) return true;
+
+  return false;
+};
+
+const findAutomationRuleAssignment = async ({ prisma, installationId, storeName, countryCode }) => {
   const normalizedStoreName = normalizeString(storeName);
   const normalizedCountryCode = normalizeCountryCode(countryCode);
 
-  if (!normalizedStoreName || !normalizedCountryCode) return null;
+  if (!normalizedCountryCode) return null;
 
   const rules = await prisma.automationRule.findMany({
     where: {
@@ -124,20 +137,32 @@ const findStoreException = async ({ prisma, installationId, storeName, countryCo
     },
   });
 
-  for (const rule of rules) {
-    if (!matchStoreName(rule.name, normalizedStoreName)) continue;
+  let genericRuleMatch = null;
 
+  for (const rule of rules) {
     const parsedAssignment = parseShippingAssignment(rule.carrierType);
     if (!parsedAssignment) continue;
 
-    return {
-      ...parsedAssignment,
-      source: 'store-exception',
-      ruleId: rule.id,
-    };
+    if (isExplicitStoreRule(rule.name, normalizedStoreName)) {
+      if (!matchStoreName(rule.name, normalizedStoreName)) continue;
+
+      return {
+        ...parsedAssignment,
+        source: 'store-rule',
+        ruleId: rule.id,
+      };
+    }
+
+    if (!genericRuleMatch) {
+      genericRuleMatch = {
+        ...parsedAssignment,
+        source: 'country-rule',
+        ruleId: rule.id,
+      };
+    }
   }
 
-  return null;
+  return genericRuleMatch;
 };
 
 export const normalizeBolShippingMethod = (value) => {
@@ -249,26 +274,26 @@ export const resolveShippingAutomationForOrder = async ({
     };
   }
 
+  const automationRuleAssignment = await findAutomationRuleAssignment({
+    prisma,
+    installationId,
+    storeName,
+    countryCode: receiverCountry,
+  });
+
+  if (automationRuleAssignment) {
+    return {
+      route: 'AUTO',
+      shippingMethod: shippingMethod || null,
+      contract: automationRuleAssignment.contract,
+      service: automationRuleAssignment.service,
+      source: automationRuleAssignment.source,
+      ruleId: automationRuleAssignment.ruleId,
+      shippingAssignment: formatShippingMethod(automationRuleAssignment.contract, automationRuleAssignment.service),
+    };
+  }
+
   if (shippingMethod === 'OWN') {
-    const storeException = await findStoreException({
-      prisma,
-      installationId,
-      storeName,
-      countryCode: receiverCountry,
-    });
-
-    if (storeException) {
-      return {
-        route: 'AUTO',
-        shippingMethod,
-        contract: storeException.contract,
-        service: storeException.service,
-        source: storeException.source,
-        ruleId: storeException.ruleId,
-        shippingAssignment: formatShippingMethod(storeException.contract, storeException.service),
-      };
-    }
-
     if (receiverCountry === 'BE') {
       return {
         route: 'AUTO',

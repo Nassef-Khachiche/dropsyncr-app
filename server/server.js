@@ -3,6 +3,9 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+import { getJwtSecret } from './src/utils/security.js';
 
 // Routes
 import authRoutes from './src/routes/authRoutes.js';
@@ -27,7 +30,9 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+getJwtSecret();
 app.set('trust proxy', true);
+app.disable('x-powered-by');
 
 const normalizeOrigin = (value) => String(value || '').trim().replace(/\/$/, '');
 
@@ -43,6 +48,10 @@ const allowedOrigins = [
   .filter(Boolean);
 
 // Middleware
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
+
 app.use(cors({
   origin: (origin, callback) => {
     const normalizedOrigin = normalizeOrigin(origin);
@@ -55,8 +64,21 @@ app.use(cors({
   },
   credentials: true
 }));
-app.use(express.json());
-app.use('/labels', express.static(path.join(__dirname, 'storage', 'labels')));
+
+app.use(rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 800,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Please try again later.' },
+}));
+
+app.use(express.json({ limit: '1mb' }));
+app.use('/labels', express.static(path.join(__dirname, 'storage', 'labels'), {
+  dotfiles: 'ignore',
+  index: false,
+  maxAge: '1d',
+}));
 
 // Health check endpoint
 app.get('/api/health', async (req, res) => {
@@ -70,7 +92,7 @@ app.get('/api/health', async (req, res) => {
     res.status(500).json({ 
       status: 'error', 
       message: 'Server is running but database connection failed',
-      error: error.message 
+      ...(process.env.NODE_ENV !== 'production' ? { error: error.message } : {})
     });
   }
 });
@@ -112,7 +134,6 @@ app.use((err, req, res, next) => {
 // Start server
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
-  console.log(`Default user: admin@dropsyncr.com / admin123`);
   startBolSyncCronJob();
 });
 

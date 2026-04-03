@@ -81,10 +81,18 @@ interface CarrierContract {
 const VVB_CONTRACT_ID = 'vvb';
 
 const wegrowCarrierOptions = [
-  { id: 'dhl', name: 'DHL', logo: dhlLogo },
-  { id: 'postnl', name: 'PostNL', logo: postnlLogo },
-  { id: 'bpost', name: 'Bpost', logo: bpostLogo },
+  { id: 'dhl-nl', name: 'DHL NL', logo: dhlLogo },
+  { id: 'dhl-for-you-envelop', name: 'DHL For You - Envelop', logo: dhlLogo },
+  { id: 'dhl-for-you-brievenbuspakje', name: 'DHL For You Brievenbuspakje', logo: dhlLogo },
+  { id: 'dhl-for-you', name: 'DHL For You', logo: dhlLogo },
+  { id: 'postnl-nederland-brievenbuspakketje-0-2kg', name: 'PostNL Brievenbuspakketje 0-2kg', logo: postnlLogo },
+  { id: 'postnl-belgie-standaard-0-23kg', name: 'PostNL België Standaard 0-23kg', logo: postnlLogo },
 ];
+
+const getWegrowCarrierOptionById = (carrierId: string) => {
+  const normalizedCarrierId = String(carrierId || '').trim().toLowerCase();
+  return wegrowCarrierOptions.find((option) => option.id === normalizedCarrierId) || null;
+};
 
 const shippingMethodDropdownOptions = wegrowCarrierOptions.map((option) => ({
   value: `wegrow-${option.id}`,
@@ -149,6 +157,113 @@ const extractFirstStringMatch = (input: any, predicate: (value: string) => boole
   };
 
   return walk(input);
+};
+
+const firstNonEmptyOrderValue = (...values: any[]) => {
+  for (const value of values) {
+    const normalized = String(value ?? '').trim();
+    if (normalized) return normalized;
+  }
+  return undefined;
+};
+
+const toValidDate = (value: any): Date | null => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const resolveDropOffDateRange = (order: any) => {
+  const orderPayload = order?.orderPayload || {};
+  const shipmentDetails = orderPayload?.shipmentDetails || order?.shipmentDetails || {};
+
+  const earliestCandidates = [
+    order?.earliestDropOffDate,
+    order?.earliestDeliveryDate,
+    orderPayload?.earliestDropOffDate,
+    orderPayload?.earliestDeliveryDate,
+    orderPayload?.deliveryPromiseStartDate,
+    shipmentDetails?.earliestDropOffDate,
+    shipmentDetails?.earliestDeliveryDate,
+    shipmentDetails?.deliveryPromiseStartDate,
+  ].map((candidate) => toValidDate(candidate)).filter(Boolean) as Date[];
+
+  const latestCandidates = [
+    order?.latestDropOffDate,
+    order?.latestDeliveryDate,
+    order?.deliveryDate,
+    orderPayload?.latestDropOffDate,
+    orderPayload?.latestDeliveryDate,
+    orderPayload?.deliveryDate,
+    orderPayload?.deliveryPromiseEndDate,
+    shipmentDetails?.latestDropOffDate,
+    shipmentDetails?.latestDeliveryDate,
+    shipmentDetails?.deliveryDate,
+    shipmentDetails?.deliveryPromiseEndDate,
+  ].map((candidate) => toValidDate(candidate)).filter(Boolean) as Date[];
+
+  const earliestDropOffDate = earliestCandidates.length > 0
+    ? earliestCandidates.reduce((earliest, current) => (
+      current.getTime() < earliest.getTime() ? current : earliest
+    ))
+    : null;
+
+  const latestDropOffDate = latestCandidates.length > 0
+    ? latestCandidates.reduce((latest, current) => (
+      current.getTime() > latest.getTime() ? current : latest
+    ))
+    : null;
+
+  return {
+    earliestDropOffDate,
+    latestDropOffDate,
+  };
+};
+
+const buildOrderLabelPackage = (order: any) => {
+  const shipmentDetails = order?.orderPayload?.shipmentDetails || order?.shipmentDetails || order?.shippingAddress || {};
+  const shipmentStreet = [
+    shipmentDetails?.streetName,
+    shipmentDetails?.houseNumber,
+    shipmentDetails?.houseNumberExtension,
+  ].filter(Boolean).join(' ').trim();
+
+  return {
+    id: order.orderNumber || order.id,
+    orderId: order.id,
+    orderNumber: order.orderNumber,
+    customerName: firstNonEmptyOrderValue(order.customerName, shipmentDetails?.fullName, shipmentDetails?.firstName),
+    email: firstNonEmptyOrderValue(order.customerEmail, order.email, shipmentDetails?.email),
+    phone: firstNonEmptyOrderValue(order.phone, order.customerPhone, shipmentDetails?.phoneNumber),
+    address: firstNonEmptyOrderValue(
+      order.address,
+      [shipmentStreet, shipmentDetails?.zipCode, shipmentDetails?.city].filter(Boolean).join(', ')
+    ),
+    country: firstNonEmptyOrderValue(order.country, order.shippingCountry, shipmentDetails?.countryCode) || 'NL',
+    street: firstNonEmptyOrderValue(
+      order.street,
+      order.addressLine1,
+      order.shippingStreet,
+      shipmentStreet,
+      shipmentDetails?.addressLine1,
+      shipmentDetails?.street
+    ),
+    zipCode: firstNonEmptyOrderValue(
+      order.zipCode,
+      order.postalCode,
+      order.shippingZipCode,
+      shipmentDetails?.zipCode,
+      shipmentDetails?.postalCode
+    ),
+    city: firstNonEmptyOrderValue(
+      order.city,
+      order.town,
+      order.shippingCity,
+      shipmentDetails?.city,
+      shipmentDetails?.town
+    ),
+    shipmentDetails,
+  };
 };
 
 export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
@@ -533,6 +648,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
         }
 
         const bolLabelResult = await api.getBolShippingLabel(installationId, bolOrderId, integrationId);
+        const deliveryOptionValidation = bolLabelResult?.deliveryOptionValidation || null;
         const labelUrl = extractFirstStringMatch(bolLabelResult, isLikelyUrl);
         const pdfBase64 = extractFirstStringMatch(bolLabelResult, isLikelyPdfBase64);
         const resolvedLabelPreviewUrl = labelUrl
@@ -599,6 +715,30 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
         }
 
         toast.success('Bol label aangemaakt');
+
+        if (deliveryOptionValidation?.hasSelectedDeliveryOption) {
+          if (deliveryOptionValidation.isDeliveryOptionAttached) {
+            toast.success('VVB delivery option bevestigd', {
+              description: 'Label bevat de juiste delivery option en handover window.',
+            });
+          } else {
+            const mismatchDetails = [
+              deliveryOptionValidation.matchesShippingLabelOfferId === false
+                ? `Offer mismatch (verwacht ${deliveryOptionValidation.expectedShippingLabelOfferId}, kreeg ${deliveryOptionValidation.actualShippingLabelOfferId || 'onbekend'})`
+                : null,
+              deliveryOptionValidation.matchesTransporterCode === false
+                ? `Transporter mismatch (verwacht ${deliveryOptionValidation.expectedTransporterCode}, kreeg ${deliveryOptionValidation.actualTransporterCode || 'onbekend'})`
+                : null,
+              !deliveryOptionValidation.hasHandoverWindow
+                ? 'Handover window ontbreekt op delivery option.'
+                : null,
+            ].filter(Boolean).join(' | ');
+
+            toast.error('VVB delivery option niet bevestigd', {
+              description: mismatchDetails || 'De label response kon niet volledig worden gevalideerd.',
+            });
+          }
+        }
       } catch (error) {
         console.error('Failed to generate Bol label:', error);
         const toastMeta = getApiErrorToastMeta(error);
@@ -619,7 +759,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
     }
 
     if (selectedContract.carrierType === 'wegrow' && !selectedWeGrowCarrier) {
-      toast.error('Selecteer WeGrow vervoerder: DHL, PostNL of Bpost');
+      toast.error('Selecteer een WeGrow verzendoptie');
       return;
     }
 
@@ -632,19 +772,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
       const result = await api.generateCarrierLabels(Number(selectedContractId), {
         shippingMethod: selectedShippingMethod,
         ...(selectedContract.carrierType === 'wegrow' ? { wegrowCarrier: selectedWeGrowCarrier } : {}),
-        packages: [
-          {
-            id: labelOrder.orderNumber || labelOrder.id,
-            orderId: labelOrder.id,
-            orderNumber: labelOrder.orderNumber,
-            customerName: labelOrder.customerName,
-            address: labelOrder.address,
-            country: labelOrder.country,
-            street: labelOrder.street || labelOrder.addressLine1 || labelOrder.shippingStreet || undefined,
-            zipCode: labelOrder.zipCode || labelOrder.postalCode || labelOrder.shippingZipCode || undefined,
-            city: labelOrder.city || labelOrder.town || labelOrder.shippingCity || undefined,
-          },
-        ],
+        packages: [buildOrderLabelPackage(labelOrder)],
       });
 
       const label = (result.labels || [])[0];
@@ -834,7 +962,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
 
       results.forEach((result, index) => {
         const orderId = selectedOrders[index]?.id;
-        if (result.status === 'fulfilled') {
+        if (result.status === 'fulfilled' && typeof orderId === 'number') {
           successfulIds.push(orderId);
         } else {
           failedCount++;
@@ -899,7 +1027,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
     const colWidths = [
       { wch: 15 }, // Ordernummer
       { wch: 20 }, // Klantnaam
-      { wch: 8 },  // Land
+      { wch: 8  }, // Land
       { wch: 15 }, // Store
       { wch: 12 }, // Platform
       { wch: 12 }, // Aantal items
@@ -1017,11 +1145,12 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
 
     if (normalizedLower.startsWith('wegrow-')) {
       const wegrowCarrier = normalizedLower.replace('wegrow-', '').trim();
-      const wegrowCarrierLabel = wegrowCarrierOptions.find((option) => option.id === wegrowCarrier)?.name || wegrowCarrier.toUpperCase();
+      const wegrowCarrierOption = getWegrowCarrierOptionById(wegrowCarrier);
+      const wegrowCarrierLabel = wegrowCarrierOption?.name || wegrowCarrier.toUpperCase();
 
       return {
         label: wegrowCarrierLabel,
-        logo: carrierLogoMap[wegrowCarrier] || carrierLogoMap.wegrow || null,
+        logo: wegrowCarrierOption?.logo || carrierLogoMap[wegrowCarrier] || carrierLogoMap.wegrow || null,
         icon: null as 'search' | null,
       };
     }
@@ -1415,13 +1544,17 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                                   </p>
                                 </div>
 
-                                {/* Inleverdatum */}
+                                {/* Vroegste inleverdatum */}
                                 <div className="space-y-1">
                                   <div className="flex items-center gap-2 text-sm text-slate-500">
                                     <Calendar className="w-4 h-4" />
-                                    <span>Inleverdatum</span>
+                                    <span>Vroegste inleverdatum</span>
                                   </div>
-                                  <p className="text-sm text-slate-900">-</p>
+                                  <p className="text-sm text-slate-900">
+                                    {resolveDropOffDateRange(order).earliestDropOffDate
+                                      ? resolveDropOffDateRange(order).earliestDropOffDate?.toLocaleDateString('nl-NL')
+                                      : '-'}
+                                  </p>
                                 </div>
 
                                 {/* Platform */}
@@ -1433,6 +1566,19 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                                   <Badge variant="outline" className="border-blue-200 text-blue-700 bg-blue-50">
                                     {order.platform}
                                   </Badge>
+                                </div>
+
+                                {/* Uiterste inleverdatum */}
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2 text-sm text-slate-500">
+                                    <Calendar className="w-4 h-4" />
+                                    <span>Uiterste inleverdatum</span>
+                                  </div>
+                                  <p className="text-sm text-slate-900">
+                                    {resolveDropOffDateRange(order).latestDropOffDate
+                                      ? resolveDropOffDateRange(order).latestDropOffDate?.toLocaleDateString('nl-NL')
+                                      : '-'}
+                                  </p>
                                 </div>
 
                                 {/* Orderstatus */}
@@ -1451,15 +1597,6 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                                     <span>Orderwaarde</span>
                                   </div>
                                   <p className="text-sm text-slate-900">€ {order.orderValue?.toFixed(2) || '0.00'}</p>
-                                </div>
-
-                                {/* Zendingstatus */}
-                                <div className="space-y-1">
-                                  <div className="flex items-center gap-2 text-sm text-slate-500">
-                                    <Truck className="w-4 h-4" />
-                                    <span>Zendingstatus</span>
-                                  </div>
-                                  <p className="text-sm text-slate-900">{order.shippingStatus}</p>
                                 </div>
 
                                 {/* Handmatige verzendmethode */}
@@ -1769,7 +1906,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                 <label className="text-sm text-slate-700">WeGrow vervoerder</label>
                 <Select value={selectedWeGrowCarrier} onValueChange={setSelectedWeGrowCarrier}>
                   <SelectTrigger className="border-slate-200 shadow-sm">
-                    <SelectValue placeholder="Kies WeGrow DHL, PostNL of Bpost" />
+                    <SelectValue placeholder="Kies een WeGrow verzendoptie" />
                   </SelectTrigger>
                   <SelectContent className="border-slate-200 shadow-lg">
                     {wegrowCarrierOptions.map((option) => (

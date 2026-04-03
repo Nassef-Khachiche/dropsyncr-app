@@ -10,10 +10,11 @@ cd server
 npm install
 ```
 
-2. Create a `.env` file (optional, defaults are provided):
+2. Create a `.env` file:
 ```env
 PORT=5000
-JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
+JWT_SECRET=replace-with-a-random-string-at-least-32-characters
+JWT_EXPIRES_IN=12h
 ```
 
 3. Start the server:
@@ -81,14 +82,33 @@ Health check endpoint.
 }
 ```
 
-## Default Credentials
+## Security Notes
 
-- Email: `admin@dropsyncr.com`
-- Password: `admin123`
+- Always use a strong `JWT_SECRET` (32+ chars).
+- Login endpoint has built-in rate limiting to reduce brute-force attempts.
+- JWT tokens are signed with issuer validation (`dropsyncr-server`).
+- In production, detailed internal errors are not returned in API responses.
 
 ## Notes
 
-- The server uses in-memory user storage. Replace with a database in production.
-- JWT tokens expire after 24 hours.
-- CORS is configured to allow requests from `http://localhost:3000`.
+- CORS is allowlisted for configured frontend origins.
+
+## Maintenance Scripts
+
+Run from the `server` folder.
+
+- Preview Bol status repair (dry-run):
+```bash
+npm run backfill:bol-status
+```
+
+- Apply Bol status repair:
+```bash
+npm run backfill:bol-status:apply
+```
+
+- Optional: limit rows or scope to installation:
+```bash
+node backfill-bol-status.js --apply --limit=1000 --installationId=12
+```
 

@@ -5,6 +5,12 @@ import {
   inferBolShippingMethodFromOrderData,
   inferIsMailboxFromOrderData,
 } from '../utils/shippingAutomation.js';
+import { Console } from 'console';
+
+const normalizeProductName = (value) => {
+  const normalized = String(value ?? '').trim();
+  return normalized || 'Onbekend product';
+};
 
 /**
  * Bol.com API Integration Controller
@@ -310,6 +316,90 @@ const extractBolOrderItemsForLabel = (payload) => {
   }));
 };
 
+const fetchBolDeliveryOptionHandoverWindow = async (credentials, orderItems = []) => {
+  const normalizedOrderItems = Array.isArray(orderItems) ? orderItems : [];
+  if (normalizedOrderItems.length === 0) {
+    return {
+      deliveryOptionsPayload: null,
+      selectedDeliveryOption: null,
+      earliestHandoverDateTime: null,
+      latestHandoverDateTime: null,
+    };
+  }
+
+  const deliveryOptionsPayload = await bolApiRequest(
+    credentials,
+    '/shipping-labels/delivery-options',
+    'POST',
+    { orderItems: normalizedOrderItems },
+  );
+
+  const deliveryOptions = Array.isArray(deliveryOptionsPayload?.deliveryOptions)
+    ? deliveryOptionsPayload.deliveryOptions
+    : [];
+
+  const selectedDeliveryOption = deliveryOptions.find((option) => option?.recommended)
+    || deliveryOptions[0]
+    || null;
+
+  const earliestHandoverDateTime = selectedDeliveryOption?.handoverDetails?.earliestHandoverDateTime
+    || null;
+  const latestHandoverDateTime = selectedDeliveryOption?.handoverDetails?.latestHandoverDateTime
+    || null;
+
+  return {
+    deliveryOptionsPayload,
+    selectedDeliveryOption,
+    earliestHandoverDateTime,
+    latestHandoverDateTime,
+  };
+};
+
+const validateBolDeliveryOptionAttachment = ({
+  selectedDeliveryOption = null,
+  labelData = null,
+  earliestHandoverDateTime = null,
+  latestHandoverDateTime = null,
+} = {}) => {
+  const expectedShippingLabelOfferId = String(selectedDeliveryOption?.shippingLabelOfferId || '').trim() || null;
+  const expectedTransporterCode = String(selectedDeliveryOption?.transporterCode || '').trim().toUpperCase() || null;
+
+  const actualShippingLabelOfferId = String(
+    labelData?.shippingLabelOfferId
+    || labelData?.shippingLabelOffer?.id
+    || ''
+  ).trim() || null;
+  const actualTransporterCode = String(labelData?.transporterCode || '').trim().toUpperCase() || null;
+
+  const matchesShippingLabelOfferId = expectedShippingLabelOfferId && actualShippingLabelOfferId
+    ? expectedShippingLabelOfferId === actualShippingLabelOfferId
+    : null;
+  const matchesTransporterCode = expectedTransporterCode && actualTransporterCode
+    ? expectedTransporterCode === actualTransporterCode
+    : null;
+
+  const hasSelectedDeliveryOption = Boolean(selectedDeliveryOption);
+  const hasHandoverWindow = Boolean(earliestHandoverDateTime && latestHandoverDateTime);
+
+  const offerIdCheckPass = matchesShippingLabelOfferId === null || matchesShippingLabelOfferId === true;
+  const transporterCheckPass = matchesTransporterCode === null || matchesTransporterCode === true;
+  const isDeliveryOptionAttached = hasSelectedDeliveryOption && hasHandoverWindow && offerIdCheckPass && transporterCheckPass;
+
+  return {
+    isDeliveryOptionAttached,
+    hasSelectedDeliveryOption,
+    hasHandoverWindow,
+    expectedShippingLabelOfferId,
+    actualShippingLabelOfferId,
+    matchesShippingLabelOfferId,
+    expectedTransporterCode,
+    actualTransporterCode,
+    matchesTransporterCode,
+    collectionMethod: selectedDeliveryOption?.handoverDetails?.collectionMethod || null,
+    recommended: Boolean(selectedDeliveryOption?.recommended),
+  };
+};
+
 const extractFirstLinkId = (payload, fragment) => {
   const links = Array.isArray(payload?.links) ? payload.links : [];
   for (const link of links) {
@@ -422,7 +512,7 @@ async function getBolLabelWithFallback(credentials, orderId) {
 
   const errors = [];
   const directEndpoints = [
-    `/shipments?order-id=${normalizedOrderId}`,,
+    `/shipments?order-id=${normalizedOrderId}`,
     `/orders/${normalizedOrderId}/shipment-label`,
     `/orders/${normalizedOrderId}/shipping-label`,
   ];
@@ -482,29 +572,18 @@ async function getBolLabelWithFallback(credentials, orderId) {
         };
       }
     } catch (error) {
-      errors.push({ endpoint: '/orders?fulfilment-method=FBR&page=*', error });
+      errors.push({ endpoint: '/orders?status=ALL&page=*', error });
     }
   }
 
   if (orderItemsPayload) {
     const orderItems = extractBolOrderItemsForLabel(orderItemsPayload);
+    let handoverWindow = null;
 
     if (orderItems.length > 0) {
       try {
-        const deliveryOptionsPayload = await bolApiRequest(
-          credentials,
-          '/shipping-labels/delivery-options',
-          'POST',
-          { orderItems },
-        );
-
-        const deliveryOptions = Array.isArray(deliveryOptionsPayload?.deliveryOptions)
-          ? deliveryOptionsPayload.deliveryOptions
-          : [];
-
-        const selectedDeliveryOption = deliveryOptions.find((option) => option?.recommended)
-          || deliveryOptions[0]
-          || null;
+        handoverWindow = await fetchBolDeliveryOptionHandoverWindow(credentials, orderItems);
+        const selectedDeliveryOption = handoverWindow.selectedDeliveryOption;
 
         const shippingLabelOfferId = String(selectedDeliveryOption?.shippingLabelOfferId || '').trim();
         if (shippingLabelOfferId) {
@@ -537,8 +616,22 @@ async function getBolLabelWithFallback(credentials, orderId) {
             const labelEndpoint = `/shipping-labels/${encodeURIComponent(createdShippingLabelId)}`;
             try {
               const response = await fetchBolShippingLabelById(credentials, createdShippingLabelId);
-              return {
+              const earliestHandoverDateTime = handoverWindow?.earliestHandoverDateTime || null;
+              const latestHandoverDateTime = handoverWindow?.latestHandoverDateTime || null;
+              const deliveryOptionValidation = validateBolDeliveryOptionAttachment({
+                selectedDeliveryOption,
                 labelData: response,
+                earliestHandoverDateTime,
+                latestHandoverDateTime,
+              });
+
+              return {
+                labelData: {
+                  ...response,
+                  earliestHandoverDateTime,
+                  latestHandoverDateTime,
+                  deliveryOptionValidation,
+                },
                 endpoint: labelEndpoint,
               };
             } catch (error) {
@@ -618,25 +711,70 @@ async function getBolLabelWithFallback(credentials, orderId) {
 }
 
 async function fetchAllBolOrders(credentials) {
-  const allOrders = [];
   const maxPages = 200;
+  const statusesToFetch = [
+    'ALL',
+    'OPEN',
+    'PROCESSING',
+    'PROCESSED',
+    'SHIPPED',
+    'DELIVERED',
+    'CANCELLED',
+  ];
+  const dedupedOrders = new Map();
 
-  for (let page = 1; page <= maxPages; page++) {
-    const response = await bolApiRequest(credentials, `/orders?fulfilment-method=FBR&page=${page}`);
-    const pageOrders = response?.orders || [];
+  for (const status of statusesToFetch) {
+    for (let page = 1; page <= maxPages; page += 1) {
+      let response;
 
-    if (pageOrders.length === 0) {
-      break;
-    }
+      try {
+        response = await bolApiRequest(
+          credentials,
+          `/orders?status=${encodeURIComponent(status)}&page=${page}`,
+        );
+      } catch (error) {
+        // Some Bol environments reject certain status filters; continue with remaining statuses.
+        if (page === 1) {
+          console.warn('[BOL SYNC] Skipping unsupported status filter', {
+            status,
+            message: error.message,
+          });
+        }
+        break;
+      }
 
-    allOrders.push(...pageOrders);
+      const pageOrders = Array.isArray(response?.orders) ? response.orders : [];
+      if (pageOrders.length === 0) {
+        break;
+      }
 
-    if (pageOrders.length < 50) {
-      break;
+      for (const order of pageOrders) {
+        const orderId = String(order?.orderId || order?.orderNumber || '').trim();
+        if (!orderId) continue;
+
+        if (!dedupedOrders.has(orderId)) {
+          dedupedOrders.set(orderId, order);
+          continue;
+        }
+
+        const existingOrder = dedupedOrders.get(orderId);
+        const existingStatus = String(existingOrder?.status || '').trim();
+        const incomingStatus = String(order?.status || '').trim();
+        if (!existingStatus && incomingStatus) {
+          dedupedOrders.set(orderId, {
+            ...existingOrder,
+            ...order,
+          });
+        }
+      }
+
+      if (pageOrders.length < 50) {
+        break;
+      }
     }
   }
 
-  return allOrders;
+  return Array.from(dedupedOrders.values());
 }
 
 async function findOrderInFbrOrderPages(credentials, orderId, maxPages = 8) {
@@ -644,7 +782,7 @@ async function findOrderInFbrOrderPages(credentials, orderId, maxPages = 8) {
   if (!normalizedOrderId) return null;
 
   for (let page = 1; page <= maxPages; page += 1) {
-    const response = await bolApiRequest(credentials, `/orders?fulfilment-method=FBR&page=${page}`);
+    const response = await bolApiRequest(credentials, `/orders?status=ALL&page=${page}`);
     const pageOrders = Array.isArray(response?.orders) ? response.orders : [];
 
     if (pageOrders.length === 0) return null;
@@ -675,11 +813,48 @@ const firstNonEmptyString = (...values) => {
   return null;
 };
 
+const hasNonEmptyValue = (value) => {
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (typeof value === 'boolean') return value;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value).length > 0;
+  return false;
+};
+
 const normalizeStatusToken = (value) =>
   String(value || '')
     .trim()
     .toLowerCase()
     .replace(/[\s-]+/g, '_');
+
+const toOrderStatusCode = (value) => {
+  const normalized = normalizeStatusToken(value);
+
+  const shippedTokens = new Set([
+    'verzonden',
+    'verstuurd',
+    'afgeleverd',
+    'shipped',
+    'delivered',
+    'send',
+    'sent',
+    'processed',
+    'finished',
+    'dispatched',
+    'fulfilled',
+    'fulfilment_completed',
+    'fulfillment_completed',
+    'completed',
+  ]);
+
+  if (normalized === 'shipped' || shippedTokens.has(normalized)) {
+    return 'SHIPPED';
+  }
+
+  return 'OPEN';
+};
 
 const SHIPPED_STATUS_TOKENS = new Set([
   'verzonden',
@@ -697,6 +872,58 @@ const SHIPPED_STATUS_TOKENS = new Set([
 ]);
 
 const DELIVERED_STATUS_TOKENS = new Set(['afgeleverd', 'delivered']);
+
+const SHIPMENT_CONFIRMATION_KEY_PATTERN = /(^|_)(shipment(id|status|reference)?|shipped(at|date|datetime|time)?|fulfil(l?ment)?(_?(status|date|time))?|dispatch(ed)?(_?(status|date|time))?|process(ed)?(_?(status|id|date|time))?|track(andtrace|ing(code|number)?|_?trace)|tracking(code|number)?|parcel(labelnumber)?|shippinglabel(id|status)?|label(id|status)?|transporter(code)?)(_|$)/i;
+
+const collectShipmentConfirmationSignals = (input) => {
+  const signals = [];
+  const visited = new Set();
+
+  const visit = (node, parentKey = '') => {
+    if (node === null || node === undefined) return;
+
+    if (typeof node === 'string' || typeof node === 'number' || typeof node === 'boolean') {
+      if (SHIPMENT_CONFIRMATION_KEY_PATTERN.test(parentKey) && hasNonEmptyValue(node)) {
+        signals.push({ key: parentKey, value: node });
+      }
+      return;
+    }
+
+    if (typeof node !== 'object') return;
+    if (visited.has(node)) return;
+    visited.add(node);
+
+    if (Array.isArray(node)) {
+      node.forEach((entry) => visit(entry, parentKey));
+      return;
+    }
+
+    for (const [key, value] of Object.entries(node)) {
+      visit(value, key);
+    }
+  };
+
+  visit(input);
+  return signals;
+};
+
+const hasBolShipmentConfirmation = ({ orderPayload = null, shipmentPayload = null, shipmentList = [] } = {}) => {
+  const normalizedShipmentList = Array.isArray(shipmentList) ? shipmentList : [];
+  if (normalizedShipmentList.length > 0) {
+    return true;
+  }
+
+  const shipmentSignals = collectShipmentConfirmationSignals(shipmentPayload);
+  if (shipmentSignals.length > 0) {
+    return true;
+  }
+
+  const orderSignals = collectShipmentConfirmationSignals(orderPayload).filter(({ key }) =>
+    !/expected|promise|promised|latest|delivery/i.test(String(key || ''))
+  );
+
+  return orderSignals.length > 0;
+};
 
 const resolvePersistedOrderStatus = (existingOrder) => {
   const normalizedOrderStatus = normalizeStatusToken(existingOrder?.orderStatus);
@@ -1113,6 +1340,8 @@ const enrichBolProductData = async ({ credentials, ean }) => {
 export const syncBolOrders = async (req, res) => {
   try {
     const { installationId, integrationId } = req.query;
+    const debugOrderId = 'C00028PR4D';
+    let debugOrderSeen = false;
 
     if (!installationId) {
       return res.status(400).json({ error: 'Installation ID is required' });
@@ -1148,6 +1377,18 @@ export const syncBolOrders = async (req, res) => {
     const enrichmentCache = new Map();
 
     for (const bolOrder of bolOrders) {
+      const currentBolOrderId = String(bolOrder?.orderId || bolOrder?.orderNumber || '').trim();
+      const isDebugOrder = currentBolOrderId.toUpperCase() === debugOrderId;
+      if (isDebugOrder) {
+        debugOrderSeen = true;
+        console.log('[BOL SYNC][DEBUG ORDER] Matched target order in list', {
+          orderId: currentBolOrderId,
+          listedStatus: bolOrder?.status || null,
+          installationId: parseInt(installationId, 10),
+          integrationId: integrationId ? parseInt(integrationId, 10) : null,
+        });
+      }
+
       // Log the complete order data for debugging
       console.log('[BOL SYNC] ========================================');
       console.log('[BOL SYNC] Processing order:', bolOrder.orderId);
@@ -1189,6 +1430,11 @@ export const syncBolOrders = async (req, res) => {
         ? bolShipmentDetails.shipments
         : [];
       const firstShipment = shipmentList[0] || null;
+      const shipmentConfirmedByBol = hasBolShipmentConfirmation({
+        orderPayload,
+        shipmentPayload: bolShipmentDetails,
+        shipmentList,
+      });
       const resolvedTrackAndTrace = firstNonEmptyString(
         firstShipment?.transport?.trackAndTrace,
         firstShipment?.trackAndTrace,
@@ -1205,24 +1451,56 @@ export const syncBolOrders = async (req, res) => {
         findStringValueByKey(firstShipment, /(transporter.?code|carrier.?code|carrier)/i),
       );
       const bolStatusCandidates = [
-        ...orderItems
-          .map((item) => firstNonEmptyString(item?.fulfilmentStatus, item?.fulfillmentStatus, item?.status))
-          .filter(Boolean),
-        firstNonEmptyString(orderPayload?.fulfilmentStatus, orderPayload?.fulfillmentStatus, orderPayload?.status),
-        firstNonEmptyString(bolOrder?.fulfilmentStatus, bolOrder?.fulfillmentStatus, bolOrder?.status),
-        firstNonEmptyString(firstShipment?.status, firstShipment?.shipmentStatus),
+        firstNonEmptyString(bolOrder?.status),
+        firstNonEmptyString(orderPayload?.status),
+        firstNonEmptyString(firstShipment?.status),
+        firstNonEmptyString(firstShipment?.shipmentStatus),
+        firstNonEmptyString(firstShipment?.transport?.status),
+        findStringValueByKey(firstShipment, /(^|_)(status|shipment.?status|order.?status)$/i),
+        findStringValueByKey(bolShipmentDetails, /(^|_)(status|shipment.?status|order.?status)$/i),
+        shipmentConfirmedByBol ? 'SHIPPED' : null,
       ].filter(Boolean);
-      const resolvedShippingStatus = firstNonEmptyString(...bolStatusCandidates);
+      const resolvedBolOrderStatus = resolvePrimaryBolStatus(bolStatusCandidates);
+      const resolvedShippingStatus = resolvedBolOrderStatus || null;
       const resolvedInternalStatus = resolveBolStatusToInternal({
         statuses: bolStatusCandidates,
-        hasTrackAndTrace: Boolean(resolvedTrackAndTrace),
+        hasTrackAndTrace: Boolean(resolvedTrackAndTrace) || shipmentConfirmedByBol,
+      });
+      if (isDebugOrder) {
+        console.log('[BOL SYNC][DEBUG ORDER] Status resolution', {
+          orderId: currentBolOrderId,
+          bolStatusCandidates,
+          resolvedBolOrderStatus,
+          resolvedShippingStatus,
+          resolvedInternalStatus,
+          shipmentConfirmedByBol,
+          resolvedTrackAndTrace,
+          firstShipmentStatus: firstShipment?.status || null,
+          firstShipmentShipmentStatus: firstShipment?.shipmentStatus || null,
+          firstShipmentTransportStatus: firstShipment?.transport?.status || null,
+        });
+      }
+      console.log('[BOL SYNC] Bol status sources:', {
+        orderId: bolOrder.orderId,
+        bolOrderStatus: bolOrder?.status || null,
+        orderDetailsStatus: orderPayload?.status || null,
+        shipmentStatus: firstShipment?.status || null,
+        shipmentShipmentStatus: firstShipment?.shipmentStatus || null,
+        shipmentTransportStatus: firstShipment?.transport?.status || null,
+        shipmentConfirmedByBol,
       });
       console.log('[BOL SYNC] Order status candidates from bol.com:', {
         orderId: bolOrder.orderId,
         rawStatuses: bolStatusCandidates,
+        resolvedBolOrderStatus,
         resolvedShippingStatus,
         resolvedInternalStatus,
       });
+
+      console.log('[BOL SYNC] ALL ORDER DATA:', {
+        order1: orderPayload,
+      });
+
       const deliveryDate = resolveBolDeliveryDate(orderPayload, orderItems, bolShipmentDetails);
       const resolvedBolShippingMethod = inferBolShippingMethodFromOrderData({
         orderPayload,
@@ -1319,21 +1597,6 @@ export const syncBolOrders = async (req, res) => {
       const firstName = shipmentDetails?.firstName || '';
       const surname = shipmentDetails?.surname || '';
       const customerName = `${firstName} ${surname}`.trim() || 'Unknown';
-      let preservedShippingMethod = '';
-      if (existingOrder?.id) {
-        try {
-          const shippingMethodRows = await prisma.$queryRaw`
-            SELECT shippingMethod
-            FROM \`Order\`
-            WHERE id = ${existingOrder.id}
-            LIMIT 1
-          `;
-          const rawShippingMethod = Array.isArray(shippingMethodRows) ? shippingMethodRows[0]?.shippingMethod : null;
-          preservedShippingMethod = typeof rawShippingMethod === 'string' ? rawShippingMethod.trim() : '';
-        } catch {
-          preservedShippingMethod = '';
-        }
-      }
 
       const shippingAutomationResult = await resolveShippingAutomationForOrder({
         prisma,
@@ -1345,9 +1608,22 @@ export const syncBolOrders = async (req, res) => {
       });
       const resolvedOrderShippingMethod = isVvbOrder
         ? 'Bol.com'
-        : (preservedShippingMethod || shippingAutomationResult.shippingAssignment || null);
+        : (shippingAutomationResult.shippingAssignment || null);
       const persistedStatus = resolvePersistedOrderStatus(existingOrder);
       const finalInternalStatus = persistedStatus || resolvedInternalStatus;
+      const finalOrderStatus = resolvedBolOrderStatus || finalInternalStatus;
+      const finalOrderStatusCode = toOrderStatusCode(finalInternalStatus || finalOrderStatus);
+      if (isDebugOrder) {
+        console.log('[BOL SYNC][DEBUG ORDER] Final mapped status before save', {
+          orderId: currentBolOrderId,
+          persistedStatus,
+          finalInternalStatus,
+          finalOrderStatus,
+          finalOrderStatusCode,
+          existingOrderStatus: existingOrder?.orderStatus || null,
+          existingStatus: existingOrder?.status || null,
+        });
+      }
 
       const orderData = {
         orderNumber: bolOrder.orderId,
@@ -1366,7 +1642,8 @@ export const syncBolOrders = async (req, res) => {
         platform: 'bol.com',
         orderDate: new Date(orderPayload.orderPlacedDateTime),
         deliveryDate,
-        orderStatus: finalInternalStatus,
+        orderStatus: finalOrderStatus,
+        orderStatusCode: finalOrderStatusCode,
         shippingStatus: resolvedShippingStatus || null,
         isVVB: isVvbOrder,
         orderValue: parseFloat(orderItems?.reduce((sum, item) => {
@@ -1377,6 +1654,38 @@ export const syncBolOrders = async (req, res) => {
         ...(resolvedTrackAndTrace ? { supplierTracking: resolvedTrackAndTrace } : {}),
         status: finalInternalStatus,
       };
+
+      if (isVvbOrder && orderItems.length > 0) {
+        try {
+          const bolLabelOrderItems = orderItems
+            .map((item) => {
+              const orderItemId = String(item?.orderItemId || item?.id || '').trim();
+              if (!orderItemId) return null;
+
+              const rawQuantity = Number(item?.quantity || item?.amount || item?.quantityOrdered || 1);
+              const quantity = Number.isFinite(rawQuantity) && rawQuantity > 0
+                ? Math.max(1, Math.floor(rawQuantity))
+                : 1;
+
+              return { orderItemId, quantity };
+            })
+            .filter(Boolean);
+
+          if (bolLabelOrderItems.length > 0) {
+            const handoverWindow = await fetchBolDeliveryOptionHandoverWindow(credentials, bolLabelOrderItems);
+            const earliestDropOffDate = toValidDate(handoverWindow.earliestHandoverDateTime);
+            const latestDropOffDate = toValidDate(handoverWindow.latestHandoverDateTime);
+
+            orderData.earliestDropOffDate = earliestDropOffDate;
+            orderData.latestDropOffDate = latestDropOffDate;
+          }
+        } catch (handoverError) {
+          console.warn('[BOL SYNC] Failed to resolve handover window from delivery options', {
+            orderId: bolOrder.orderId,
+            message: handoverError?.message || String(handoverError),
+          });
+        }
+      }
 
       console.log('[BOL SYNC] Mapped order data:', {
         customerName: orderData.customerName,
@@ -1440,6 +1749,15 @@ export const syncBolOrders = async (req, res) => {
         updatedCount++;
       } else {
         importedCount++;
+      }
+
+      if (isDebugOrder) {
+        console.log('[BOL SYNC][DEBUG ORDER] Save complete', {
+          orderId: currentBolOrderId,
+          savedOrderId: savedOrder?.id || null,
+          importedCount,
+          updatedCount,
+        });
       }
 
       if (Array.isArray(orderItems)) {
@@ -1548,12 +1866,14 @@ export const syncBolOrders = async (req, res) => {
             },
           });
 
+          const normalizedProductName = normalizeProductName(productName);
+
           if (product) {
             product = await prisma.product.update({
               where: { id: product.id },
               data: {
                 ean: ean || undefined,
-                name: productName,
+                name: normalizedProductName,
                 image: resolvedProductImage || undefined,
                 brand: resolvedProductBrand || undefined,
                 internalRef: internalRef || sku,
@@ -1570,7 +1890,7 @@ export const syncBolOrders = async (req, res) => {
                 installationId: installationIdNumber,
                 sku,
                 ean,
-                name: productName,
+                name: normalizedProductName,
                 image: resolvedProductImage,
                 brand: resolvedProductBrand,
                 internalRef: internalRef || sku,
@@ -1587,7 +1907,7 @@ export const syncBolOrders = async (req, res) => {
             data: {
               orderId: savedOrder.id,
               productId: product.id,
-              productName,
+              productName: normalizedProductName,
               productImage: resolvedProductImage || product.image || null,
               ean,
               sku,
@@ -1600,6 +1920,13 @@ export const syncBolOrders = async (req, res) => {
       }
     }
 
+    if (!debugOrderSeen) {
+      console.warn('[BOL SYNC][DEBUG ORDER] Target order not found in fetched Bol orders', {
+        targetOrderId: debugOrderId,
+        totalFetchedOrders: bolOrders.length,
+      });
+    }
+
     res.json({
       success: true,
       imported: importedCount,
@@ -1608,6 +1935,12 @@ export const syncBolOrders = async (req, res) => {
     });
   } catch (error) {
     console.error('Sync Bol orders error:', error);
+    if (error?.code === 'P2000') {
+      return res.status(400).json({
+        error: 'One or more fields are too long to save',
+        details: error?.meta?.target ? `Field: ${error.meta.target}` : undefined,
+      });
+    }
     res.status(500).json({ 
       error: 'Failed to sync orders from Bol.com',
       details: error.message 
@@ -1724,6 +2057,9 @@ export const getBolShippingLabel = async (req, res) => {
       throw new Error(`${baseMessage} (Geprobeerd met integraties: ${attemptedIntegrationIds.join(', ') || 'geen'})`);
     }
 
+    const earliestDropOffDate = toValidDate(labelData?.earliestHandoverDateTime);
+    const latestDropOffDate = toValidDate(labelData?.latestHandoverDateTime);
+
     await prisma.order.updateMany({
       where: {
         orderNumber: normalizedOrderId,
@@ -1734,6 +2070,9 @@ export const getBolShippingLabel = async (req, res) => {
       data: {
         orderStatus: 'verzonden',
         status: 'verzonden',
+        orderStatusCode: 'SHIPPED',
+        earliestDropOffDate,
+        latestDropOffDate,
       },
     });
 
@@ -1792,6 +2131,7 @@ export const updateBolShipment = async (req, res) => {
       data: {
         status: 'verzonden',
         orderStatus: 'verzonden',
+        orderStatusCode: 'SHIPPED',
         shippingStatus: 'SHIPPED',
         ...(trackAndTrace ? { supplierTracking: trackAndTrace } : {}),
       },
@@ -1984,9 +2324,13 @@ function mapBolStatusToInternal(bolStatus) {
     'FULFILMENT_COMPLETED': 'verzonden',
     'FULFILLMENT_COMPLETED': 'verzonden',
     'COMPLETED': 'verzonden',
+    'VERZONDEN': 'verzonden',
+    'VERSTUURD': 'verzonden',
     'DELIVERED': 'afgeleverd',
+    'AFGELEVERD': 'afgeleverd',
     'CANCELLED': 'geannuleerd',
     'CANCELED': 'geannuleerd',
+    'GEANNULEERD': 'geannuleerd',
   };
 
   const resolvedStatus = statusMap[normalizedStatus] || 'openstaand';
@@ -1999,7 +2343,7 @@ function resolveBolStatusToInternal({ statuses = [], hasTrackAndTrace = false } 
     return 'verzonden';
   }
 
-  let hasOpen = false;
+  let fallbackOpenStatus = 'openstaand';
 
   for (const status of statuses) {
     const mappedStatus = mapBolStatusToInternal(status);
@@ -2009,9 +2353,40 @@ function resolveBolStatusToInternal({ statuses = [], hasTrackAndTrace = false } 
     if (mappedStatus === 'verzonden' || mappedStatus === 'verstuurd') return 'verzonden';
 
     if (mappedStatus === 'openstaand' || mappedStatus === 'onderweg-ffm' || mappedStatus === 'binnengekomen-ffm') {
-      hasOpen = true;
+      fallbackOpenStatus = mappedStatus;
     }
   }
 
-  return hasOpen ? 'openstaand' : 'openstaand';
+  return fallbackOpenStatus;
+}
+
+function resolvePrimaryBolStatus(statuses = []) {
+  const normalizedCandidates = (statuses || [])
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+
+  if (normalizedCandidates.length === 0) {
+    return null;
+  }
+
+  const priorityGroups = [
+    new Set(['CANCELLED', 'CANCELED', 'GEANNULEERD']),
+    new Set(['DELIVERED', 'AFGELEVERD']),
+    new Set(['SHIPPED', 'SENT', 'SEND', 'DISPATCHED', 'FULFILLED', 'FULFILMENT_COMPLETED', 'FULFILLMENT_COMPLETED', 'COMPLETED', 'FINISHED', 'PROCESSED', 'VERSTUURD', 'VERZONDEN']),
+    new Set(['ARRIVED_AT_WH', 'ANNOUNCED', 'PROCESSING', 'PENDING', 'NEW', 'OPEN', 'OPENSTAAND', 'ONDERWEG_FFM', 'BINNENGEKOMEN_FFM']),
+  ];
+
+  const uppercaseCandidates = normalizedCandidates.map((value) =>
+    value.toUpperCase().replace(/[\s-]+/g, '_')
+  );
+
+  for (const group of priorityGroups) {
+    for (let index = 0; index < uppercaseCandidates.length; index += 1) {
+      if (group.has(uppercaseCandidates[index])) {
+        return normalizedCandidates[index];
+      }
+    }
+  }
+
+  return normalizedCandidates[0];
 }
