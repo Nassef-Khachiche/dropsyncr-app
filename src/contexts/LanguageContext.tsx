@@ -23,6 +23,25 @@ type TranslationKey =
   | 'analytics'
   | 'dashboard'
   | 'fulfillmentAnalytics'
+  | 'klkAnalytics'
+  | 'warehouseManagement'
+  | 'inventoryManagement'
+  | 'inventoryAnalysis'
+  | 'klkSubtitle'
+  | 'totalRevenue'
+  | 'totalPurchaseCosts'
+  | 'grossProfit'
+  | 'advertisingCosts'
+  | 'vsPreviousPeriod'
+  | 'purchaseCostsAndCogs'
+  | 'margin'
+  | 'shopifyChannels'
+  | 'totalRevenueAllChannels'
+  | 'revenue'
+  | 'purchaseCosts'
+  | 'advertisingCostsLabel'
+  | 'fulfilmentOnlyRevenue'
+  | 'selectPeriod'
   | 'dashboardSubtitle'
   | 'totalRevenue'
   | 'totalOrders'
@@ -44,6 +63,34 @@ type TranslationKey =
   | 'startDate'
   | 'endDate'
   | 'cancel'
+  | 'inventoryManagementSubtitle'
+  | 'searchEanOrProduct'
+  | 'allClients'
+  | 'sortBy'
+  | 'sortNameAsc'
+  | 'sortNameDesc'
+  | 'sortStockLow'
+  | 'sortStockHigh'
+  | 'incomingShipments'
+  | 'filterAll'
+  | 'filterRegistered'
+  | 'filterInProgress'
+  | 'filterReserved'
+  | 'filterLowStock'
+  | 'itemsSelected'
+  | 'printEanBarcode'
+  | 'deselectAll'
+  | 'product'
+  | 'locations'
+  | 'client'
+  | 'registered'
+  | 'inProgress'
+  | 'reserved'
+  | 'available'
+  | 'total'
+  | 'noItemsFound'
+  | 'articles'
+  | 'status'
   | 'apply';
 
 type Dictionary = Record<TranslationKey, string>;
@@ -70,6 +117,25 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     analytics: 'ANALYTICS',
     dashboard: 'Dashboard',
     fulfillmentAnalytics: 'Fulfillment Analytics',
+    klkAnalytics: 'KLK Analytics',
+    warehouseManagement: 'WAREHOUSE MANAGEMENT',
+    inventoryManagement: 'Manage Inventory',
+    inventoryAnalysis: 'Inventory Analysis',
+    klkSubtitle: 'Overview of all revenue and costs per sales channel',
+    totalRevenue: 'Total Revenue',
+    totalPurchaseCosts: 'Total Purchase Costs',
+    grossProfit: 'Gross Profit',
+    advertisingCosts: 'Advertising Costs',
+    vsPreviousPeriod: 'vs previous period',
+    purchaseCostsAndCogs: 'Purchase costs + COGS',
+    margin: 'Margin',
+    shopifyChannels: 'Shopify channels',
+    totalRevenueAllChannels: 'Total revenue — all channels',
+    revenue: 'Revenue',
+    purchaseCosts: 'Purchase costs',
+    advertisingCostsLabel: 'Advertising costs',
+    fulfilmentOnlyRevenue: 'Fulfilment only has revenue — no costs here',
+    selectPeriod: 'Select period',
     dashboardSubtitle: 'Overview of your most important metrics',
     totalRevenue: 'Total Revenue',
     totalOrders: 'Total Orders',
@@ -91,6 +157,34 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     startDate: 'Start date',
     endDate: 'End date',
     cancel: 'Cancel',
+    inventoryManagementSubtitle: 'Manage your inventory and stock locations',
+    searchEanOrProduct: 'Search by EAN or product name...',
+    allClients: 'All clients',
+    sortBy: 'Sort by...',
+    sortNameAsc: 'Name (A-Z)',
+    sortNameDesc: 'Name (Z-A)',
+    sortStockLow: 'Stock (low-high)',
+    sortStockHigh: 'Stock (high-low)',
+    incomingShipments: 'Incoming shipments',
+    filterAll: 'All',
+    filterRegistered: 'Registered',
+    filterInProgress: 'In progress',
+    filterReserved: 'Reserved',
+    filterLowStock: 'Low stock',
+    itemsSelected: 'item(s) selected',
+    printEanBarcode: 'Print EAN barcode',
+    deselectAll: 'Deselect all',
+    product: 'Product',
+    locations: 'Location(s)',
+    client: 'Client',
+    registered: 'Registered',
+    inProgress: 'In prog.',
+    reserved: 'Reserved',
+    available: 'Available',
+    total: 'Total',
+    noItemsFound: 'No items found',
+    articles: 'articles',
+    status: 'Status',
     apply: 'Apply',
   },
   nl: {
@@ -114,6 +208,25 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     analytics: 'ANALYTICS',
     dashboard: 'Dashboard',
     fulfillmentAnalytics: 'Fulfilment Analytics',
+    klkAnalytics: 'KLK Analytics',
+    warehouseManagement: 'WAREHOUSE MANAGEMENT',
+    inventoryManagement: 'Voorraad managen',
+    inventoryAnalysis: 'Voorraadanalyse',
+    klkSubtitle: 'Overzicht van alle omzet en kosten per verkoopkanaal',
+    totalRevenue: 'Totale omzet',
+    totalPurchaseCosts: 'Totale inkoopkosten',
+    grossProfit: 'Brutowinst',
+    advertisingCosts: 'Advertentiekosten',
+    vsPreviousPeriod: 'vs vorige periode',
+    purchaseCostsAndCogs: 'Inkoopkosten + COGS',
+    margin: 'Marge',
+    shopifyChannels: 'Shopify kanalen',
+    totalRevenueAllChannels: 'Totale omzet — alle kanalen',
+    revenue: 'Omzet',
+    purchaseCosts: 'Inkoopkosten',
+    advertisingCostsLabel: 'Advertentiekosten',
+    fulfilmentOnlyRevenue: 'Fulfilment heeft alleen omzet — geen kosten hier',
+    selectPeriod: 'Selecteer periode',
     dashboardSubtitle: 'Overzicht van je belangrijkste metrics',
     totalRevenue: 'Totale Omzet',
     totalOrders: 'Totale Orders',
@@ -135,6 +248,34 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     startDate: 'Startdatum',
     endDate: 'Einddatum',
     cancel: 'Annuleren',
+    inventoryManagementSubtitle: 'Beheer je inventaris en voorraadlocaties',
+    searchEanOrProduct: 'Zoek op EAN of artikelnaam...',
+    allClients: 'Alle klanten',
+    sortBy: 'Sorteer op...',
+    sortNameAsc: 'Naam (A-Z)',
+    sortNameDesc: 'Naam (Z-A)',
+    sortStockLow: 'Voorraad (laag-hoog)',
+    sortStockHigh: 'Voorraad (hoog-laag)',
+    incomingShipments: 'Aankomende zendingen',
+    filterAll: 'Alles',
+    filterRegistered: 'Aangemeld',
+    filterInProgress: 'In behandeling',
+    filterReserved: 'Gereserveerd',
+    filterLowStock: 'Laag op voorraad',
+    itemsSelected: 'artikel(en) geselecteerd',
+    printEanBarcode: 'EAN barcode printen',
+    deselectAll: 'Deselecteer alles',
+    product: 'Artikel',
+    locations: 'Locatie(s)',
+    client: 'Klant',
+    registered: 'Aangemeld',
+    inProgress: 'In beh.',
+    reserved: 'Gereserveerd',
+    available: 'Beschikbaar',
+    total: 'Totaal',
+    noItemsFound: 'Geen artikelen gevonden',
+    articles: 'artikelen',
+    status: 'Status',
     apply: 'Toepassen',
   },
   de: {
@@ -158,6 +299,25 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     analytics: 'ANALYTICS',
     dashboard: 'Dashboard',
     fulfillmentAnalytics: 'Fulfillment Analyse',
+    klkAnalytics: 'KLK Analytics',
+    warehouseManagement: 'LAGERVERWALTUNG',
+    inventoryManagement: 'Bestand verwalten',
+    inventoryAnalysis: 'Bestandsanalyse',
+    klkSubtitle: 'Übersicht aller Umsätze und Kosten pro Verkaufskanal',
+    totalRevenue: 'Gesamtumsatz',
+    totalPurchaseCosts: 'Gesamteinkaufskosten',
+    grossProfit: 'Bruttogewinn',
+    advertisingCosts: 'Werbekosten',
+    vsPreviousPeriod: 'vs. vorheriger Zeitraum',
+    purchaseCostsAndCogs: 'Einkaufskosten + COGS',
+    margin: 'Marge',
+    shopifyChannels: 'Shopify-Kanäle',
+    totalRevenueAllChannels: 'Gesamtumsatz — alle Kanäle',
+    revenue: 'Umsatz',
+    purchaseCosts: 'Einkaufskosten',
+    advertisingCostsLabel: 'Werbekosten',
+    fulfilmentOnlyRevenue: 'Fulfilment hat nur Umsatz — keine Kosten hier',
+    selectPeriod: 'Zeitraum auswählen',
     dashboardSubtitle: 'Übersicht Ihrer wichtigsten Kennzahlen',
     totalRevenue: 'Gesamtumsatz',
     totalOrders: 'Gesamtbestellungen',
@@ -179,6 +339,34 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     startDate: 'Startdatum',
     endDate: 'Enddatum',
     cancel: 'Abbrechen',
+    inventoryManagementSubtitle: 'Verwalten Sie Ihren Bestand und Lagerorte',
+    searchEanOrProduct: 'Nach EAN oder Artikelname suchen...',
+    allClients: 'Alle Kunden',
+    sortBy: 'Sortieren nach...',
+    sortNameAsc: 'Name (A-Z)',
+    sortNameDesc: 'Name (Z-A)',
+    sortStockLow: 'Bestand (niedrig-hoch)',
+    sortStockHigh: 'Bestand (hoch-niedrig)',
+    incomingShipments: 'Eingehende Sendungen',
+    filterAll: 'Alle',
+    filterRegistered: 'Angemeldet',
+    filterInProgress: 'In Bearbeitung',
+    filterReserved: 'Reserviert',
+    filterLowStock: 'Geringer Bestand',
+    itemsSelected: 'Artikel ausgewählt',
+    printEanBarcode: 'EAN-Barcode drucken',
+    deselectAll: 'Alle abwählen',
+    product: 'Artikel',
+    locations: 'Standort(e)',
+    client: 'Kunde',
+    registered: 'Angemeldet',
+    inProgress: 'In Bearb.',
+    reserved: 'Reserviert',
+    available: 'Verfügbar',
+    total: 'Gesamt',
+    noItemsFound: 'Keine Artikel gefunden',
+    articles: 'Artikel',
+    status: 'Status',
     apply: 'Anwenden',
   },
 };

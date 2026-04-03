@@ -9,9 +9,10 @@ import {
   ChevronRight,
   QrCode,
   FileText,
-  Settings,
   Shield,
-  Workflow
+  Workflow,
+  Warehouse,
+  BarChart3
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from './ui/utils';
@@ -26,80 +27,48 @@ interface AppSidebarProps {
 
 interface MenuItem {
   id: string;
-  labelKey: 'orders' | 'tracking' | 'labels' | 'integrations' | 'carriers' | 'settings' | 'automationRules' | 'administrative';
+  labelKey: 'orders' | 'tracking' | 'labels' | 'integrations' | 'carriers' | 'settings' | 'automationRules' | 'administrative' | 'dashboard' | 'klkAnalytics' | 'fulfillmentAnalytics' | 'warehouseManagement' | 'inventoryManagement' | 'inventoryAnalysis';
   icon: any;
+  adminOnly?: boolean;
   children?: MenuItem[];
 }
 
-const menuItems: { sectionKey: 'orderManagement' | 'system' | 'administrativeSection'; items: MenuItem[] }[] = [
+const menuItems: { sectionKey: 'orderManagement' | 'system' | 'warehouseManagement' | 'analytics' | 'administrativeSection'; items: MenuItem[] }[] = [
   {
     sectionKey: 'orderManagement',
     items: [
-      {
-        id: 'orders',
-        labelKey: 'orders',
-        icon: ShoppingCart,
-      },
-      {
-        id: 'tracking',
-        labelKey: 'tracking',
-        icon: QrCode,
-      },
-      {
-        id: 'labels',
-        labelKey: 'labels',
-        icon: FileText,
-      },
-      {
-        id: 'integrations',
-        labelKey: 'integrations',
-        icon: Plug,
-      },
-      {
-        id: 'carriers',
-        labelKey: 'carriers',
-        icon: Truck,
-      },
+      { id: 'orders', labelKey: 'orders', icon: ShoppingCart },
+      { id: 'tracking', labelKey: 'tracking', icon: QrCode },
+      { id: 'labels', labelKey: 'labels', icon: FileText },
+      { id: 'integrations', labelKey: 'integrations', icon: Plug },
+      { id: 'carriers', labelKey: 'carriers', icon: Truck },
     ],
   },
   {
     sectionKey: 'system',
     items: [
-      {
-        id: 'settings',
-        labelKey: 'settings',
-        icon: Settings,
-      },
-      {
-        id: 'automation-rules',
-        labelKey: 'automationRules',
-        icon: Workflow,
-      },
+      { id: 'automation-rules', labelKey: 'automationRules', icon: Workflow },
+    ],
+  },
+  {
+    sectionKey: 'warehouseManagement',
+    items: [
+      { id: 'inventory-management', labelKey: 'inventoryManagement', icon: Warehouse },
+      { id: 'inventory-analysis', labelKey: 'inventoryAnalysis', icon: BarChart3 },
     ],
   },
   {
     sectionKey: 'analytics',
     items: [
-      {
-        id: 'dashboard',
-        labelKey: 'dashboard',
-        icon: BarChart2,
-      },
-      {
-        id: 'fulfillment-analytics',
-        labelKey: 'fulfillmentAnalytics',
-        icon: TrendingUp,
-      },
+      { id: 'dashboard', labelKey: 'dashboard', icon: BarChart2 },
+      { id: 'klk-analytics', labelKey: 'klkAnalytics', icon: TrendingUp, adminOnly: true },
+      { id: 'fulfillment-analytics', labelKey: 'fulfillmentAnalytics', icon: Package, adminOnly: true },
     ],
   },
   {
     sectionKey: 'administrativeSection',
     items: [
-      {
-        id: 'administrative',
-        labelKey: 'administrative',
-        icon: Shield,
-      },
+      { id: 'administrative', labelKey: 'administrative', icon: Shield },
     ],
   },
 ];
@@ -111,23 +80,29 @@ export function AppSidebar({ activeView, onViewChange }: AppSidebarProps) {
     'orderManagement'
   ]);
 
-  // Filter menu items based on user permissions
+  const isGlobalAdmin = 
+    user?.isGlobalAdmin === true || 
+    user?.isGlobalAdmin === 1 || 
+    user?.isGlobalAdmin === '1' ||
+    user?.isGlobalAdmin === 'true' ||
+    user?.email === 'admin@dropsyncr.com';
+
   const filteredMenuItems = menuItems.map(group => {
-    // Hide ADMINISTRATIEF section for non-global admins
-    if (group.sectionKey === 'administrativeSection') {
-      // Check multiple possible values (true, 1, "1", "true")
-      const isGlobalAdmin = 
-        user?.isGlobalAdmin === true || 
-        user?.isGlobalAdmin === 1 || 
-        user?.isGlobalAdmin === '1' ||
-        user?.isGlobalAdmin === 'true' ||
-        user?.email === 'admin@dropsyncr.com'; // Fallback: show for admin email
-      
-      if (!isGlobalAdmin) {
-        return null;
-      }
+    // Verberg administratieve sectie voor niet-admins
+    if (group.sectionKey === 'administrativeSection' && !isGlobalAdmin) {
+      return null;
     }
-    return group;
+
+    // Filter adminOnly items binnen een sectie
+    const filteredItems = group.items.filter(item => {
+      if (item.adminOnly && !isGlobalAdmin) return false;
+      return true;
+    });
+
+    // Als er geen items meer over zijn, verberg de hele sectie
+    if (filteredItems.length === 0) return null;
+
+    return { ...group, items: filteredItems };
   }).filter(Boolean) as typeof menuItems;
 
   const toggleSection = (section: string) => {
@@ -148,9 +123,9 @@ export function AppSidebar({ activeView, onViewChange }: AppSidebarProps) {
           <div className="w-12 h-12 rounded-full overflow-hidden shadow-lg flex-shrink-0">
             <img src={logo} alt="Dropsyncr" className="w-full h-full object-cover" />
           </div>
-        <h2 className="text-lg bg-gradient-to-r fw-bolder from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-          <b>DROPSYNCR</b>
-        </h2>
+          <h2 className="text-lg bg-gradient-to-r fw-bolder from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+            <b>DROPSYNCR</b>
+          </h2>
         </div>
       </div>
 
@@ -158,7 +133,6 @@ export function AppSidebar({ activeView, onViewChange }: AppSidebarProps) {
       <nav className="flex-1 overflow-y-auto p-4">
         {filteredMenuItems.map((group) => {
           const isAdminSection = group.sectionKey === 'administrativeSection';
-          const isGlobalAdmin = user?.isGlobalAdmin === true || user?.isGlobalAdmin === 1 || user?.isGlobalAdmin === '1';
           const shouldBeExpanded = isSectionExpanded(group.sectionKey);
           
           return (
@@ -167,7 +141,7 @@ export function AppSidebar({ activeView, onViewChange }: AppSidebarProps) {
                 onClick={() => toggleSection(group.sectionKey)}
                 className={cn(
                   "flex items-center justify-between w-full px-3 py-2 text-xs uppercase tracking-wider transition-colors mb-2",
-                  isAdminSection && user?.isGlobalAdmin
+                  isAdminSection && isGlobalAdmin
                     ? "text-purple-600 hover:text-purple-700 font-semibold"
                     : "text-slate-500 hover:text-slate-700"
                 )}
@@ -216,7 +190,6 @@ export function AppSidebar({ activeView, onViewChange }: AppSidebarProps) {
           );
         })}
       </nav>
-
     </aside>
   );
 }
