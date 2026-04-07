@@ -45,6 +45,9 @@ services:
       dockerfile: Dockerfile
     container_name: dropsyncr-backend
     restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     environment:
       DATABASE_URL: "mysql://dropsyncr:dropsyncr@mysql:3306/dropsyncr"
       PORT: 5000
@@ -68,6 +71,9 @@ services:
       dockerfile: Dockerfile
     container_name: dropsyncr-frontend
     restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     environment:
       VITE_API_URL: "http://localhost:5000/api"
       CHOKIDAR_USEPOLLING: "true" # Enable polling for file watching in Docker
