@@ -23,6 +23,27 @@ services:
     networks:
       - dropsyncr-network
 
+  # phpMyAdmin (Production diagnostics)
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: dropsyncr-phpmyadmin-prod
+    restart: always
+    env_file:
+      - .env.production
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_USER: ${MYSQL_USER:-dropsyncr_db}
+      PMA_PASSWORD: ${MYSQL_PASSWORD:-changeme}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-changeme}
+    ports:
+      - "${PHPMYADMIN_PORT:-8080}:80"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - dropsyncr-network
+
   # Backend Server
   backend:
     build:
