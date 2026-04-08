@@ -5,7 +5,6 @@ import { TrackingManager } from './components/TrackingManager';
 import { LabelPrinting } from './components/LabelPrinting';
 import { Integrations } from './components/Integrations';
 import { Carriers } from './components/Carriers';
-import { Settings } from './components/Settings';
 import { ProfileSwitcher } from './components/ProfileSwitcher';
 import { LanguageSwitcher } from './components/LanguageSwitcher';
 import { GlobalTextTranslator } from './components/GlobalTextTranslator';
@@ -14,8 +13,11 @@ import { Administrative } from './components/Administrative';
 import { AutomatiseringsRegels } from './components/AutomatiseringsRegels';
 import { Dashboard } from './components/Dashboard';
 import { FulfillmentAnalytics } from './components/FulfillmentAnalytics';
+import { KLKAnalytics } from './components/KLKAnalytics';
 import { useAuth } from './contexts/AuthContext';
 import { useLanguage } from './contexts/LanguageContext';
+import { InventoryManagement } from './components/InventoryManagement';
+import { InventoryAnalysis } from './components/InventoryAnalysis';
 import { Loader2 } from 'lucide-react';
 import { Toaster } from 'sonner';
 
@@ -47,18 +49,22 @@ export default function App() {
         return <Integrations activeProfile={activeProfile} />;
       case 'carriers':
         return <Carriers activeProfile={activeProfile} />;
-      case 'settings':
-        return <Settings activeProfile={activeProfile} />;
       case 'administrative':
         return <Administrative activeProfile={activeProfile} />;
       case 'automation-rules':
         return <AutomatiseringsRegels activeProfile={activeProfile} />;
       case 'dashboard':
         return <Dashboard activeProfile={activeProfile} />;
+      case 'klk-analytics':
+        return <KLKAnalytics activeProfile={activeProfile} />;
       case 'fulfillment-analytics':
         return <FulfillmentAnalytics activeProfile={activeProfile} />;
       default:
         return <OrdersOverview activeProfile={activeProfile} />;
+        case 'inventory-management':
+        return <InventoryManagement activeProfile={activeProfile} />;
+      case 'inventory-analysis':
+        return <InventoryAnalysis activeProfile={activeProfile} />;
     }
   };
 
