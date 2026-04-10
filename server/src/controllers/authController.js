@@ -3,6 +3,8 @@ import jwt from 'jsonwebtoken';
 import prisma from '../config/database.js';
 import { getJwtSecret } from '../utils/security.js';
 
+const BCRYPT_HASH_REGEX = /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/;
+
 export const login = async (req, res) => {
   try {
     const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
@@ -24,9 +26,28 @@ export const login = async (req, res) => {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    const isValidPassword = await bcrypt.compare(password, user.password);
+    const storedPassword = typeof user.password === 'string' ? user.password : '';
+    const isBcryptHash = BCRYPT_HASH_REGEX.test(storedPassword);
+
+    let isValidPassword = false;
+    if (isBcryptHash) {
+      // Guard against rare malformed hashes to avoid turning bad credentials into a 500.
+      isValidPassword = await bcrypt.compare(password, storedPassword).catch(() => false);
+    } else {
+      // Backward compatibility for legacy plaintext passwords.
+      isValidPassword = storedPassword.length > 0 && password === storedPassword;
+    }
+
     if (!isValidPassword) {
       return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    if (!isBcryptHash) {
+      const upgradedHash = await bcrypt.hash(password, 10);
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { password: upgradedHash },
+      });
     }
 
     const jwtSecret = getJwtSecret();
