@@ -856,6 +856,21 @@ const toOrderStatusCode = (value) => {
   return 'OPEN';
 };
 
+const ensureOrderStatusCodes = async () => {
+  await Promise.all([
+    prisma.orderStatus.upsert({
+      where: { code: 'OPEN' },
+      update: {},
+      create: { code: 'OPEN' },
+    }),
+    prisma.orderStatus.upsert({
+      where: { code: 'SHIPPED' },
+      update: {},
+      create: { code: 'SHIPPED' },
+    }),
+  ]);
+};
+
 const SHIPPED_STATUS_TOKENS = new Set([
   'verzonden',
   'verstuurd',
@@ -1360,6 +1375,8 @@ export const syncBolOrders = async (req, res) => {
         return res.status(403).json({ error: 'Access denied to this installation' });
       }
     }
+
+    await ensureOrderStatusCodes();
 
     const { integration, credentials } = await getBolIntegration(installationId, integrationId);
     const integrationCredentials = JSON.parse(integration.credentials || '{}');

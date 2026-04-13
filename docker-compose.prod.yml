@@ -1,49 +1,5 @@
 version: '3.8'
-
 services:
-  # MySQL Database
-  mysql:
-    image: mysql:8.0
-    container_name: dropsyncr-mysql-prod
-    restart: always
-    env_file:
-      - .env.production
-    environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-changeme}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-admin_dropsyncr}
-      MYSQL_USER: ${MYSQL_USER:-dropsyncr_db}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-changeme}
-    volumes:
-      - mysql_data_prod:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - dropsyncr-network
-
-  # phpMyAdmin (Production diagnostics)
-  phpmyadmin:
-    image: phpmyadmin/phpmyadmin
-    container_name: dropsyncr-phpmyadmin-prod
-    restart: always
-    env_file:
-      - .env.production
-    environment:
-      PMA_HOST: mysql
-      PMA_PORT: 3306
-      PMA_USER: ${MYSQL_USER:-dropsyncr_db}
-      PMA_PASSWORD: ${MYSQL_PASSWORD:-changeme}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-changeme}
-    ports:
-      - "${PHPMYADMIN_PORT:-8080}:80"
-    depends_on:
-      mysql:
-        condition: service_healthy
-    networks:
-      - dropsyncr-network
-
   # Backend Server
   backend:
     build:
@@ -51,25 +7,18 @@ services:
       dockerfile: Dockerfile
     container_name: dropsyncr-backend-prod
     restart: always
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
     env_file:
       - .env.production
     environment:
-      DATABASE_URL: mysql://${MYSQL_USER:-dropsyncr_db}:${MYSQL_PASSWORD:-changeme}@mysql:3306/${MYSQL_DATABASE:-admin_dropsyncr}
+      DATABASE_URL: ${DATABASE_URL}
       PORT: 5000
-      JWT_SECRET: ${JWT_SECRET:-your_very_secure_jwt_secret_at_least_32_characters_long_use_random_string}
+      JWT_SECRET: ${JWT_SECRET}
       NODE_ENV: production
     ports:
       - "5000:5000"
-    depends_on:
-      mysql:
-        condition: service_healthy
     networks:
       - dropsyncr-network
-    command: sh -c "npx prisma generate && npx prisma migrate deploy && npm start"
-
+    command: sh -c "npx prisma generate && npx prisma db push && npm start"
   # Frontend (Production Build)
   frontend:
     build:
@@ -83,11 +32,8 @@ services:
       - backend
     networks:
       - dropsyncr-network
-
 networks:
   dropsyncr-network:
     driver: bridge
-
 volumes:
   mysql_data_prod:
-
