@@ -19,6 +19,7 @@ import adminRoutes from './src/routes/adminRoutes.js';
 import installationRoutes from './src/routes/installationRoutes.js';
 import integrationRoutes from './src/routes/integrationRoutes.js';
 import bolRoutes from './src/routes/bolRoutes.js';
+import kauflandRoutes from './src/routes/kauflandRoutes.js';
 import automationRuleRoutes from './src/routes/automationRuleRoutes.js';
 import { startBolSyncCronJob } from './src/jobs/bolSyncJob.js';
 
@@ -109,6 +110,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/installations', installationRoutes);
 app.use('/api/integrations', integrationRoutes);
 app.use('/api/bol', bolRoutes);
+app.use('/api/kaufland', kauflandRoutes);
 app.use('/api/automation-rules', automationRuleRoutes);
 
 // Error handling middleware

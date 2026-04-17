@@ -545,6 +545,17 @@ class ApiService {
     }>(`/integrations/${id}/credentials`);
   }
 
+// Kaufland Integration
+  async syncKauflandOrders(installationId: string, integrationId?: number) {
+    const queryParams = new URLSearchParams();
+    queryParams.append('installationId', installationId);
+    if (integrationId) queryParams.append('integrationId', String(integrationId));
+
+    return this.request<{ success: boolean; imported: number; updated: number; total: number }>(
+      `/kaufland/sync-orders?${queryParams.toString()}`
+    );
+  }
+
   // Bol.com Integration
   async syncBolOrders(installationId: string, integrationId?: number) {
     const queryParams = new URLSearchParams();
