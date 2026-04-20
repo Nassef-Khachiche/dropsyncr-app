@@ -2,6 +2,7 @@ import express from 'express';
 import {
   syncBolOrders,
   getBolShippingLabel,
+  getBolDeliveryOptions,
   updateBolShipment,
   getBolReturns,
   handleBolReturn,
@@ -18,6 +19,7 @@ router.get('/sync-orders', syncBolOrders);
 
 // Shipping labels
 router.get('/shipping-label', getBolShippingLabel);
+router.get('/delivery-options', getBolDeliveryOptions);
 
 // Shipment updates
 router.put('/shipment', updateBolShipment);

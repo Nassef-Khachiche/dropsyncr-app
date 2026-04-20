@@ -6,12 +6,23 @@ import {
 } from '../utils/shippingAutomation.js';
 
 const normalizeOrderShippingState = (order) => {
-  const normalizedOrderStatus = String(order?.orderStatus || '').trim().toLowerCase();
   const normalizedStatus = String(order?.status || '').trim().toLowerCase();
+  const normalizedOrderStatus = String(order?.orderStatus || '').trim().toLowerCase();
+  const normalizedOrderStatusCode = String(order?.orderStatusCode || '').trim().toUpperCase();
 
   const shippedStates = ['verzonden', 'verstuurd', 'shipped', 'delivered', 'afgeleverd'];
+  const shippedStatusCodes = ['SHIPPED', 'DELIVERED'];
+  const hasInternalStatus = Boolean(normalizedStatus);
 
-  if (shippedStates.includes(normalizedOrderStatus) || shippedStates.includes(normalizedStatus)) {
+  if (hasInternalStatus) {
+    return shippedStates.includes(normalizedStatus) ? 'verzonden' : 'openstaand';
+  }
+
+  if (shippedStatusCodes.includes(normalizedOrderStatusCode)) {
+    return 'verzonden';
+  }
+
+  if (shippedStates.includes(normalizedOrderStatus)) {
     return 'verzonden';
   }
 
@@ -491,6 +502,7 @@ export const updateOrder = async (req, res) => {
         installationId: true,
         orderStatus: true,
         status: true,
+        orderStatusCode: true,
       },
     });
 

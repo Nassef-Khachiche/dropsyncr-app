@@ -346,7 +346,7 @@ export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
         shippingMethod: resolvedShippingMethod,
         ...(selectedMethod.carrierType === 'wegrow' ? { wegrowCarrier: selectedWeGrowCarrier } : {}),
         packages: packagesToPrint.map(p => ({
-          id: p.orderNumber,
+          id: p.orderId,
           orderId: p.orderId,
           orderNumber: p.orderNumber,
           customerName: p.customerName,
@@ -366,6 +366,7 @@ export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
         return {
           ...pkg,
           labelGenerated: true,
+          trackingCode: String(label?.trackingCode || pkg.trackingCode || '').trim(),
           labelUrl: label?.labelUrl || pkg.labelUrl,
           labelCarrier: selectedMethod.carrierType === 'wegrow' && selectedWeGrowCarrierName
             ? `WeGrow (${selectedWeGrowCarrierName})`

@@ -6,7 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Checkbox } from './ui/checkbox';
 import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 import * as XLSX from 'xlsx';
 import { 
@@ -33,7 +32,6 @@ import {
   ChevronLeft,
   ChevronDown,
   ChevronRight,
-  Trash2,
   MapPin,
   Calendar,
   ShoppingCart,
@@ -76,6 +74,17 @@ interface CarrierContract {
   carrierType: string;
   contractName: string;
   active: boolean;
+}
+
+interface BolDeliveryOption {
+  shippingLabelOfferId?: string;
+  transporterCode?: string;
+  recommended?: boolean;
+  handoverDetails?: {
+    earliestHandoverDateTime?: string;
+    latestHandoverDateTime?: string;
+    collectionMethod?: string;
+  };
 }
 
 const VVB_CONTRACT_ID = 'vvb';
@@ -176,43 +185,71 @@ const toValidDate = (value: any): Date | null => {
 const resolveDropOffDateRange = (order: any) => {
   const orderPayload = order?.orderPayload || {};
   const shipmentDetails = orderPayload?.shipmentDetails || order?.shipmentDetails || {};
+  const isVvbOrder = Boolean(order?.isVVB) || String(order?.shippingMethod || '').trim().toLowerCase() === 'bol.com';
 
-  const earliestCandidates = [
+  const resolveMinDate = (values: any[]) => {
+    const parsed = values.map((candidate) => toValidDate(candidate)).filter(Boolean) as Date[];
+    if (parsed.length === 0) return null;
+    return parsed.reduce((earliest, current) => (
+      current.getTime() < earliest.getTime() ? current : earliest
+    ));
+  };
+
+  const resolveMaxDate = (values: any[]) => {
+    const parsed = values.map((candidate) => toValidDate(candidate)).filter(Boolean) as Date[];
+    if (parsed.length === 0) return null;
+    return parsed.reduce((latest, current) => (
+      current.getTime() > latest.getTime() ? current : latest
+    ));
+  };
+
+  const dropOffEarliestCandidates = [
     order?.earliestDropOffDate,
-    order?.earliestDeliveryDate,
     orderPayload?.earliestDropOffDate,
+    orderPayload?.earliestHandoverDateTime,
+    shipmentDetails?.earliestDropOffDate,
+    shipmentDetails?.earliestHandoverDateTime,
+  ];
+
+  const dropOffLatestCandidates = [
+    order?.latestDropOffDate,
+    orderPayload?.latestDropOffDate,
+    orderPayload?.latestHandoverDateTime,
+    shipmentDetails?.latestDropOffDate,
+    shipmentDetails?.latestHandoverDateTime,
+  ];
+
+  const deliveryEarliestCandidates = [
+    order?.earliestDeliveryDate,
     orderPayload?.earliestDeliveryDate,
     orderPayload?.deliveryPromiseStartDate,
-    shipmentDetails?.earliestDropOffDate,
     shipmentDetails?.earliestDeliveryDate,
     shipmentDetails?.deliveryPromiseStartDate,
-  ].map((candidate) => toValidDate(candidate)).filter(Boolean) as Date[];
+  ];
 
-  const latestCandidates = [
-    order?.latestDropOffDate,
+  const deliveryLatestCandidates = [
     order?.latestDeliveryDate,
     order?.deliveryDate,
-    orderPayload?.latestDropOffDate,
     orderPayload?.latestDeliveryDate,
     orderPayload?.deliveryDate,
     orderPayload?.deliveryPromiseEndDate,
-    shipmentDetails?.latestDropOffDate,
     shipmentDetails?.latestDeliveryDate,
     shipmentDetails?.deliveryDate,
     shipmentDetails?.deliveryPromiseEndDate,
-  ].map((candidate) => toValidDate(candidate)).filter(Boolean) as Date[];
+  ];
 
-  const earliestDropOffDate = earliestCandidates.length > 0
-    ? earliestCandidates.reduce((earliest, current) => (
-      current.getTime() < earliest.getTime() ? current : earliest
-    ))
-    : null;
+  const dropOffEarliestDate = resolveMinDate(dropOffEarliestCandidates);
+  const dropOffLatestDate = resolveMaxDate(dropOffLatestCandidates);
+  const deliveryEarliestDate = resolveMinDate(deliveryEarliestCandidates);
+  const deliveryLatestDate = resolveMaxDate(deliveryLatestCandidates);
 
-  const latestDropOffDate = latestCandidates.length > 0
-    ? latestCandidates.reduce((latest, current) => (
-      current.getTime() > latest.getTime() ? current : latest
-    ))
-    : null;
+  const earliestDropOffDate = isVvbOrder
+    ? (dropOffEarliestDate || deliveryEarliestDate)
+    : (deliveryEarliestDate || dropOffEarliestDate);
+
+  const latestDropOffDate = isVvbOrder
+    ? (dropOffLatestDate || deliveryLatestDate)
+    : (deliveryLatestDate || dropOffLatestDate);
 
   return {
     earliestDropOffDate,
@@ -266,6 +303,21 @@ const buildOrderLabelPackage = (order: any) => {
   };
 };
 
+const formatBolDeliveryOptionDateTime = (value?: string) => {
+  if (!value) return '-';
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '-';
+
+  return parsed.toLocaleString('nl-NL', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
 export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
   const ORDERS_PER_PAGE = 50;
 
@@ -301,9 +353,9 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
     trackingCode?: string | null;
     trackingUrl?: string | null;
   } | null>(null);
-  const [selectedOrderIds, setSelectedOrderIds] = useState<number[]>([]);
-  const [deletingOrderIds, setDeletingOrderIds] = useState<number[]>([]);
-  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bolDeliveryOptions, setBolDeliveryOptions] = useState<BolDeliveryOption[]>([]);
+  const [selectedBolDeliveryOptionId, setSelectedBolDeliveryOptionId] = useState<string>('');
+  const [loadingBolDeliveryOptions, setLoadingBolDeliveryOptions] = useState(false);
   const [shippingMethodDrafts, setShippingMethodDrafts] = useState<Record<number, string>>({});
   const [savingShippingMethodOrderId, setSavingShippingMethodOrderId] = useState<number | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -342,6 +394,59 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
 
     loadCarrierContracts(activeProfile);
   }, [activeProfile, allowedIntegrationInstallationIds]);
+
+  useEffect(() => {
+    const loadBolDeliveryOptions = async () => {
+      if (!showLabelDialog || selectedContractId !== VVB_CONTRACT_ID || !labelOrder) {
+        setBolDeliveryOptions([]);
+        setSelectedBolDeliveryOptionId('');
+        setLoadingBolDeliveryOptions(false);
+        return;
+      }
+
+      const installationId = String(
+        labelOrder.installation?.id
+        ?? labelOrder.installationId
+        ?? ''
+      ).trim();
+      const bolOrderId = String(labelOrder.orderNumber || '').trim();
+      const integrationId = labelOrder.integrationId
+        ?? labelOrder.integration?.id
+        ?? undefined;
+
+      if (!installationId || !bolOrderId) {
+        setBolDeliveryOptions([]);
+        setSelectedBolDeliveryOptionId('');
+        return;
+      }
+
+      try {
+        setLoadingBolDeliveryOptions(true);
+        const optionsResult = await api.getBolDeliveryOptions(installationId, bolOrderId, integrationId);
+        const options = Array.isArray(optionsResult.deliveryOptions) ? optionsResult.deliveryOptions : [];
+
+        setBolDeliveryOptions(options);
+
+        const defaultOption = options.find((option: BolDeliveryOption) => option?.recommended)
+          || optionsResult.selectedDeliveryOption
+          || options[0]
+          || null;
+
+        setSelectedBolDeliveryOptionId(String(defaultOption?.shippingLabelOfferId || '').trim());
+      } catch (error) {
+        console.error('Failed to load Bol delivery options:', error);
+        setBolDeliveryOptions([]);
+        setSelectedBolDeliveryOptionId('');
+        toast.error('Kon Bol delivery options niet laden', {
+          description: error instanceof Error ? error.message : 'Probeer het opnieuw',
+        });
+      } finally {
+        setLoadingBolDeliveryOptions(false);
+      }
+    };
+
+    loadBolDeliveryOptions();
+  }, [showLabelDialog, selectedContractId, labelOrder]);
 
   const loadOrders = async () => {
     try {
@@ -461,7 +566,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
   };
 
   const normalizeOrderStatus = (order: any): 'openstaand' | 'verzonden' => {
-    const rawStatus = String(order?.orderStatus || order?.status || '').toLowerCase();
+    const rawStatus = String(order?.status || order?.orderStatus || '').toLowerCase();
 
     const openStatuses = [
       'openstaand',
@@ -647,7 +752,19 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
           return;
         }
 
-        const bolLabelResult = await api.getBolShippingLabel(installationId, bolOrderId, integrationId);
+        const preferredDeliveryOptionId = String(selectedBolDeliveryOptionId || '').trim();
+
+        if (!preferredDeliveryOptionId) {
+          toast.error('Selecteer eerst een Bol delivery option');
+          return;
+        }
+
+        const bolLabelResult = await api.getBolShippingLabel(
+          installationId,
+          bolOrderId,
+          integrationId,
+          preferredDeliveryOptionId,
+        );
         const deliveryOptionValidation = bolLabelResult?.deliveryOptionValidation || null;
         const labelUrl = extractFirstStringMatch(bolLabelResult, isLikelyUrl);
         const pdfBase64 = extractFirstStringMatch(bolLabelResult, isLikelyPdfBase64);
@@ -874,133 +991,6 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
     setExpandedOrder(expandedOrder === orderNumber ? null : orderNumber);
   };
 
-  const filteredOrderIds = filteredOrders
-    .map((order) => order.id)
-    .filter((id: unknown): id is number => typeof id === 'number');
-  const selectedFilteredCount = filteredOrderIds.filter((id) => selectedOrderIds.includes(id)).length;
-  const allFilteredSelected = filteredOrderIds.length > 0 && selectedFilteredCount === filteredOrderIds.length;
-
-  useEffect(() => {
-    const allowedIds = new Set(filteredOrderIds);
-    setSelectedOrderIds((prevSelected) => {
-      const nextSelected = prevSelected.filter((id) => allowedIds.has(id));
-      return nextSelected.length === prevSelected.length ? prevSelected : nextSelected;
-    });
-  }, [filteredOrders]);
-
-  const toggleSelectAllFiltered = (checked: boolean) => {
-    if (!checked) {
-      setSelectedOrderIds([]);
-      return;
-    }
-    setSelectedOrderIds(filteredOrderIds);
-  };
-
-  const toggleSelectOrder = (orderId: number, checked: boolean) => {
-    setSelectedOrderIds((prevSelected) => {
-      if (checked) {
-        if (prevSelected.includes(orderId)) return prevSelected;
-        return [...prevSelected, orderId];
-      }
-      return prevSelected.filter((id) => id !== orderId);
-    });
-  };
-
-  const handleDeleteOrder = async (order: any) => {
-    if (!order?.id) {
-      toast.error('Deze order kan niet worden verwijderd');
-      return;
-    }
-
-    const confirmed = window.confirm(`Weet je zeker dat je order ${order.orderNumber} wilt verwijderen?`);
-    if (!confirmed) return;
-
-    try {
-      setDeletingOrderIds((prev) => [...prev, order.id]);
-      await api.deleteOrder(order.id);
-
-      setOrders((prevOrders) => prevOrders.filter((entry) => entry.id !== order.id));
-      setSelectedOrderIds((prevSelected) => prevSelected.filter((id) => id !== order.id));
-
-      if (expandedOrder === order.orderNumber) {
-        setExpandedOrder(null);
-      }
-
-      toast.success('Order verwijderd');
-    } catch (error) {
-      console.error('Failed to delete order:', error);
-      toast.error('Kon order niet verwijderen', {
-        description: error instanceof Error ? error.message : 'Probeer het opnieuw',
-      });
-    } finally {
-      setDeletingOrderIds((prev) => prev.filter((id) => id !== order.id));
-    }
-  };
-
-  const handleDeleteSelected = async () => {
-    const selectedOrders = filteredOrders.filter((order) =>
-      typeof order.id === 'number' && selectedOrderIds.includes(order.id)
-    );
-
-    if (selectedOrders.length === 0) {
-      toast.error('Selecteer minimaal 1 order');
-      return;
-    }
-
-    const confirmed = window.confirm(`Weet je zeker dat je ${selectedOrders.length} geselecteerde orders wilt verwijderen?`);
-    if (!confirmed) return;
-
-    try {
-      setBulkDeleting(true);
-
-      const results = await Promise.allSettled(
-        selectedOrders.map((order) => api.deleteOrder(order.id))
-      );
-
-      const successfulIds: number[] = [];
-      let failedCount = 0;
-
-      results.forEach((result, index) => {
-        const orderId = selectedOrders[index]?.id;
-        if (result.status === 'fulfilled' && typeof orderId === 'number') {
-          successfulIds.push(orderId);
-        } else {
-          failedCount++;
-        }
-      });
-
-      if (successfulIds.length > 0) {
-        const removedIdSet = new Set(successfulIds);
-        setOrders((prevOrders) => prevOrders.filter((order) => !removedIdSet.has(order.id)));
-        setSelectedOrderIds((prevSelected) => prevSelected.filter((id) => !removedIdSet.has(id)));
-
-        if (expandedOrder) {
-          const expandedStillExists = orders.some(
-            (order) => order.orderNumber === expandedOrder && !removedIdSet.has(order.id)
-          );
-          if (!expandedStillExists) {
-            setExpandedOrder(null);
-          }
-        }
-      }
-
-      if (successfulIds.length > 0) {
-        toast.success(`${successfulIds.length} order${successfulIds.length === 1 ? '' : 's'} verwijderd`);
-      }
-
-      if (failedCount > 0) {
-        toast.error(`${failedCount} order${failedCount === 1 ? '' : 's'} konden niet worden verwijderd`);
-      }
-    } catch (error) {
-      console.error('Failed to delete selected orders:', error);
-      toast.error('Kon geselecteerde orders niet verwijderen', {
-        description: error instanceof Error ? error.message : 'Probeer het opnieuw',
-      });
-    } finally {
-      setBulkDeleting(false);
-    }
-  };
-
   const exportToExcel = () => {
     // Prepare data for export
     const exportData = filteredOrders.map(order => ({
@@ -1224,6 +1214,9 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
   const selectedContract = carrierContracts.find((contract) => String(contract.id) === selectedContractId);
   const isWeGrowContractSelected = selectedContract?.carrierType === 'wegrow';
   const isVvbContractSelected = selectedContractId === VVB_CONTRACT_ID;
+  const selectedBolDeliveryOption = bolDeliveryOptions.find(
+    (option) => String(option?.shippingLabelOfferId || '').trim() === selectedBolDeliveryOptionId
+  ) || null;
   const hasNativeVvbContract = carrierContracts.some((contract) => {
     const normalizedId = String(contract.id || '').trim().toLowerCase();
     const normalizedName = String(contract.contractName || '').trim().toLowerCase();
@@ -1257,16 +1250,6 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2 border-red-200 text-red-600 hover:bg-red-50"
-                onClick={handleDeleteSelected}
-                disabled={selectedFilteredCount === 0 || bulkDeleting}
-              >
-                {bulkDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                Verwijder geselecteerd {selectedFilteredCount > 0 ? `(${selectedFilteredCount})` : ''}
-              </Button>
               <Button 
                 variant="outline" 
                 size="sm" 
@@ -1332,13 +1315,6 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
             <Table>
               <TableHeader>
                 <TableRow className="bg-slate-50/50">
-                  <TableHead className="w-12">
-                    <Checkbox
-                      checked={allFilteredSelected}
-                      onCheckedChange={(checked: boolean | 'indeterminate') => toggleSelectAllFiltered(checked === true)}
-                      aria-label="Selecteer alle orders"
-                    />
-                  </TableHead>
                   <TableHead className="w-12"></TableHead>
                   <TableHead>Ordernummer</TableHead>
                   <TableHead>Klantnaam</TableHead>
@@ -1355,151 +1331,227 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={12} className="text-center py-8">
+                    <TableCell colSpan={11} className="text-center py-8">
                       <Loader2 className="h-6 w-6 animate-spin text-indigo-600 mx-auto" />
                     </TableCell>
                   </TableRow>
                 ) : filteredOrders.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={12} className="text-center py-8 text-slate-500">
+                    <TableCell colSpan={11} className="text-center py-8 text-slate-500">
                       Geen orders gevonden
                     </TableCell>
                   </TableRow>
                 ) : (
                   filteredOrders.map((order) => (
-                  <Fragment key={order.orderNumber}>
-                    <TableRow 
-                      className="hover:bg-slate-50/50 cursor-pointer"
-                      onClick={() => toggleOrderDetails(order.orderNumber)}
-                    >
-                      <TableCell onClick={(event) => event.stopPropagation()}>
-                        <Checkbox
-                          checked={typeof order.id === 'number' && selectedOrderIds.includes(order.id)}
-                          onCheckedChange={(checked: boolean | 'indeterminate') => {
-                            if (typeof order.id === 'number') {
-                              toggleSelectOrder(order.id, checked === true);
-                            }
-                          }}
-                          aria-label={`Selecteer order ${order.orderNumber}`}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        {expandedOrder === order.orderNumber ? (
-                          <ChevronDown className="w-4 h-4 text-slate-400" />
-                        ) : (
-                          <ChevronRight className="w-4 h-4 text-slate-400" />
-                        )}
-                      </TableCell>
-                      <TableCell className="font-mono text-sm">{order.orderNumber}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          {order.orderItems?.[0]?.productImage && (
-                            <div className="w-10 h-10 bg-slate-100 rounded-lg overflow-hidden flex-shrink-0">
-                              <img 
-                                src={order.orderItems[0].productImage} 
-                                alt={order.orderItems[0].productName}
-                                className="w-full h-full object-cover"
-                              />
-                            </div>
+                    <Fragment key={order.orderNumber}>
+                      <TableRow 
+                        className="hover:bg-slate-50/50 cursor-pointer"
+                        onClick={() => toggleOrderDetails(order.orderNumber)}
+                      >
+                        <TableCell>
+                          {expandedOrder === order.orderNumber ? (
+                            <ChevronDown className="w-4 h-4 text-slate-400" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4 text-slate-400" />
                           )}
-                          <span>{order.customerName}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {(() => {
-                          const countryDisplay = getCountryDisplay(order.country);
-                          return (
-                            <span className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-700">
-                              {countryDisplay.flagUrl ? (
-                                <img src={countryDisplay.flagUrl} alt={countryDisplay.code} className="h-3 w-4 rounded-[2px]" loading="lazy" />
-                              ) : (
-                                <span>🌍</span>
-                              )}
-                              <span>{countryDisplay.code}</span>
-                            </span>
-                          );
-                        })()}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="border-indigo-200 text-indigo-700 bg-indigo-50">
-                          {order.storeName}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-center">
-                          <div className="text-sm text-slate-900">{order.itemCount}</div>
-                          <div className="text-xs text-slate-500">€ {order.orderValue?.toFixed(2) || '0.00'}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-sm text-slate-600">
-                        {order.deliveryDate ? new Date(order.deliveryDate).toLocaleDateString('nl-NL') : '-'}
-                      </TableCell>
-                      <TableCell>
-                        <span className="font-mono text-sm text-slate-900">{order.supplierTracking || order?.tracking?.trackingCode || '-'}</span>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {(() => {
-                          const shippingSelection = getOrderShippingContractId(order);
-                          const shippingMeta = resolveShippingSelectionMeta(shippingSelection);
-                          return (
-                            <div className="flex items-center justify-center">
-                              {shippingMeta.logo && (
-                                <div className="w-9 h-9 p-1.5 flex items-center justify-center">
-                                  <img src={shippingMeta.logo} alt={shippingMeta.label} className="w-full h-full object-contain" />
-                                </div>
-                              )}
-                              {!shippingMeta.logo && !shippingMeta.icon && <span className="text-xs text-slate-400">-</span>}
-                              {!shippingMeta.logo && shippingMeta.icon && renderShippingSelectionIcon(shippingMeta, 'w-9 h-9', false)}
-                            </div>
-                          );
-                        })()}
-                      </TableCell>
-                      <TableCell>
-                        {getOrderStatusBadge(order.status || 'onderweg-ffm')}
-                      </TableCell>
-                      <TableCell className="text-right" onClick={(event) => event.stopPropagation()}>
-                        <div className="flex items-center justify-end">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="border border-slate-200 shadow-sm hover:bg-slate-100 hover:shadow cursor-pointer"
-                                aria-label="Meer acties"
-                                title="Meer acties"
-                              >
-                                <MoreHorizontal className="w-4 h-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="border-slate-200 shadow-lg">
-                              <DropdownMenuItem
-                                className="cursor-pointer"
-                                onSelect={() => handleOpenLabelDialog(order)}
-                              >
-                                <Package className="w-4 h-4" />
-                                Label genereren
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                className="cursor-pointer"
-                                variant="destructive"
-                                disabled={bulkDeleting || (typeof order.id === 'number' && deletingOrderIds.includes(order.id))}
-                                onSelect={() => handleDeleteOrder(order)}
-                              >
-                                {typeof order.id === 'number' && deletingOrderIds.includes(order.id)
-                                  ? <Loader2 className="w-4 h-4 animate-spin" />
-                                  : <Trash2 className="w-4 h-4" />}
-                                Verwijderen
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </TableCell>
-                    </TableRow>
+                        </TableCell>
+                        <TableCell className="font-mono text-sm">{order.orderNumber}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            {order.orderItems?.[0]?.productImage && (
+                              <div className="w-10 h-10 bg-slate-100 rounded-lg overflow-hidden flex-shrink-0">
+                                <img 
+                                  src={order.orderItems[0].productImage} 
+                                  alt={order.orderItems[0].productName}
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                            )}
+                            <span>{order.customerName}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {(() => {
+                            const countryDisplay = getCountryDisplay(order.country);
+                            return (
+                              <span className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-700">
+                                {countryDisplay.flagUrl ? (
+                                  <img src={countryDisplay.flagUrl} alt={countryDisplay.code} className="h-3 w-4 rounded-[2px]" loading="lazy" />
+                                ) : (
+                                  <span>🌍</span>
+                                )}
+                                <span>{countryDisplay.code}</span>
+                              </span>
+                            );
+                          })()}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="border-indigo-200 text-indigo-700 bg-indigo-50">
+                            {order.storeName}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-center">
+                            <div className="text-sm text-slate-900">{order.itemCount}</div>
+                            <div className="text-xs text-slate-500">€ {order.orderValue?.toFixed(2) || '0.00'}</div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm text-slate-600">
+                          {order.deliveryDate ? new Date(order.deliveryDate).toLocaleDateString('nl-NL') : '-'}
+                        </TableCell>
+                        <TableCell>
+                          <span className="font-mono text-sm text-slate-900">{order.supplierTracking || order?.tracking?.trackingCode || '-'}</span>
+                        </TableCell>
+                        <TableCell className="text-center" onClick={(event) => event.stopPropagation()}>
+                          {(() => {
+                            const shippingSelection = getOrderShippingContractId(order);
+                            const shippingMeta = resolveShippingSelectionMeta(shippingSelection);
+                            const isDisabled = normalizeOrderStatus(order) === 'verzonden' || savingShippingMethodOrderId === order.id;
+
+                            return (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-auto rounded-xl p-1.5 transition-all duration-200 hover:bg-slate-100 hover:shadow-sm hover:scale-[1.04]"
+                                    disabled={isDisabled}
+                                    aria-label="Wijzig verzendmethode"
+                                    title={isDisabled ? shippingMeta.label : `Verzendmethode: ${shippingMeta.label}. Klik om te wijzigen`}
+                                  >
+                                    <div className="relative flex items-center justify-center">
+                                      {shippingMeta.logo ? (
+                                        <div className="w-9 h-9 p-1.5 flex items-center justify-center">
+                                          <img src={shippingMeta.logo} alt={shippingMeta.label} className="w-full h-full object-contain" />
+                                        </div>
+                                      ) : (
+                                        <div className="w-9 h-9 flex items-center justify-center">
+                                          {shippingMeta.icon
+                                            ? renderShippingSelectionIcon(shippingMeta, 'w-9 h-9', false)
+                                            : <span className="text-xs text-slate-400">-</span>}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="center" className="border-slate-200 shadow-lg min-w-[240px]">
+                                  {carrierContracts
+                                    .filter((contract) => String(contract.carrierType || '').toLowerCase() !== 'wegrow')
+                                    .map((contract) => {
+                                      const contractValue = String(contract.id);
+                                      const contractMeta = resolveShippingSelectionMeta(contractValue);
+
+                                      return (
+                                        <DropdownMenuItem
+                                          key={`contract-${contractValue}`}
+                                          className="cursor-pointer"
+                                          onSelect={async () => {
+                                            if (typeof order.id !== 'number') return;
+                                            handleShippingMethodDraftChange(order.id, contractValue);
+                                            await handleSaveShippingMethod(order, contractValue);
+                                          }}
+                                        >
+                                          <div className="flex items-center gap-2">
+                                            {renderShippingSelectionIcon(contractMeta)}
+                                            <span>{contractMeta.label}</span>
+                                          </div>
+                                        </DropdownMenuItem>
+                                      );
+                                    })}
+
+                                  {shippingMethodDropdownOptions.map((option) => {
+                                    const optionMeta = resolveShippingSelectionMeta(option.value);
+
+                                    return (
+                                      <DropdownMenuItem
+                                        key={`dropdown-${option.value}`}
+                                        className="cursor-pointer"
+                                        onSelect={async () => {
+                                          if (typeof order.id !== 'number') return;
+                                          handleShippingMethodDraftChange(order.id, option.value);
+                                          await handleSaveShippingMethod(order, option.value);
+                                        }}
+                                      >
+                                        <div className="flex items-center gap-2">
+                                          {renderShippingSelectionIcon(optionMeta)}
+                                          <span>{optionMeta.label}</span>
+                                        </div>
+                                      </DropdownMenuItem>
+                                    );
+                                  })}
+
+                                  {(() => {
+                                    const currentSelection = getOrderShippingContractId(order);
+                                    if (!currentSelection) return null;
+
+                                    const hasContractOption = carrierContracts.some(
+                                      (contract) => String(contract.id) === currentSelection
+                                    );
+                                    const hasManualOption = isManualShippingOverride(currentSelection);
+                                    const hasDropdownOption = shippingMethodDropdownOptions.some(
+                                      (option) => option.value === currentSelection
+                                    );
+
+                                    if (hasContractOption || hasManualOption || hasDropdownOption) return null;
+
+                                    const fallbackMeta = resolveShippingSelectionMeta(currentSelection);
+
+                                    return (
+                                      <DropdownMenuItem
+                                        className="cursor-pointer"
+                                        onSelect={async () => {
+                                          if (typeof order.id !== 'number') return;
+                                          handleShippingMethodDraftChange(order.id, currentSelection);
+                                          await handleSaveShippingMethod(order, currentSelection);
+                                        }}
+                                      >
+                                        <div className="flex items-center gap-2">
+                                          {renderShippingSelectionIcon(fallbackMeta)}
+                                          <span>{fallbackMeta.label}</span>
+                                        </div>
+                                      </DropdownMenuItem>
+                                    );
+                                  })()}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            );
+                          })()}
+                        </TableCell>
+                        <TableCell>
+                          {getOrderStatusBadge(order.status || 'onderweg-ffm')}
+                        </TableCell>
+                        <TableCell className="text-right" onClick={(event) => event.stopPropagation()}>
+                          <div className="flex items-center justify-end">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="border border-slate-200 shadow-sm hover:bg-slate-100 hover:shadow cursor-pointer"
+                                  aria-label="Meer acties"
+                                  title="Meer acties"
+                                >
+                                  <MoreHorizontal className="w-4 h-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="border-slate-200 shadow-lg">
+                                <DropdownMenuItem
+                                  className="cursor-pointer"
+                                  onSelect={() => handleOpenLabelDialog(order)}
+                                >
+                                  <Package className="w-4 h-4" />
+                                  Label genereren
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </TableCell>
+                      </TableRow>
                     
                     {/* Expanded Details Row */}
                     {expandedOrder === order.orderNumber && (
                       <TableRow className="bg-gradient-to-r from-slate-50/80 to-indigo-50/30">
-                        <TableCell colSpan={12} className="p-6">
+                        <TableCell colSpan={11} className="p-6">
                           <div className="flex gap-6">
                             {/* Left Column - Basic Info */}
                             <div className="flex-1 space-y-6">
@@ -1924,6 +1976,105 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
               </div>
             )}
 
+            {isVvbContractSelected && (
+              <div className="space-y-3 rounded-xl border border-sky-200 bg-gradient-to-br from-sky-50 to-indigo-50/60 p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-white border border-sky-200 p-1.5 flex items-center justify-center shadow-sm">
+                    <img src={bolLogo} alt="Bol.com" className="w-full h-full object-contain" />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-slate-900">Bol delivery option</label>
+                    <p className="text-xs text-slate-600">Kies welke Bol handover optie gebruikt moet worden voor dit VVB-label.</p>
+                  </div>
+                </div>
+
+                {loadingBolDeliveryOptions ? (
+                  <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white/80 px-3 py-3 text-sm text-slate-500">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Delivery options laden...
+                  </div>
+                ) : bolDeliveryOptions.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-slate-300 bg-white/70 px-3 py-3 text-sm text-slate-500">
+                    Geen Bol delivery options gevonden voor deze order
+                  </div>
+                ) : (
+                  <Select value={selectedBolDeliveryOptionId} onValueChange={setSelectedBolDeliveryOptionId}>
+                    <SelectTrigger className="h-12 border-sky-200 bg-white shadow-sm data-[placeholder]:text-slate-500">
+                      <SelectValue placeholder="Kies een delivery option">
+                        {selectedBolDeliveryOption ? (() => {
+                          const transporter = String(selectedBolDeliveryOption?.transporterCode || 'Onbekend');
+
+                          return (
+                            <div className="flex min-w-0 items-center gap-2 text-left">
+                              <Truck className="w-4 h-4 text-sky-700 shrink-0" />
+                              <span className="truncate text-sm font-medium text-slate-900">{transporter}</span>
+                              {selectedBolDeliveryOption?.recommended && (
+                                <span className="inline-flex shrink-0 items-center ms-3 px-3 py-1 rounded-full text-sm font-medium leading-none text-white transition-all bg-gradient-to-r from-emerald-500 to-teal-500 shadow-md">
+                                  Aanbevolen
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })() : null}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent className="border-slate-200 shadow-lg max-h-80">
+                      {bolDeliveryOptions.map((option, index) => {
+                        const optionId = String(option?.shippingLabelOfferId || '').trim() || `option-${index}`;
+                        const earliest = formatBolDeliveryOptionDateTime(option?.handoverDetails?.earliestHandoverDateTime);
+                        const latest = formatBolDeliveryOptionDateTime(option?.handoverDetails?.latestHandoverDateTime);
+                        const transporter = String(option?.transporterCode || 'Onbekend');
+                        const collectionMethod = String(option?.handoverDetails?.collectionMethod || '-');
+
+                        return (
+                          <SelectItem key={`${optionId}-${index}`} value={optionId}>
+                            <div className="flex min-w-0 items-start gap-3 py-1.5">
+                              <div className="w-9 h-9 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center shrink-0">
+                                <Truck className="w-4 h-4 text-sky-700" />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-sm font-medium text-slate-900">{transporter}</span>
+                                  {option?.recommended && (
+                                    <Badge className="rounded-full border-0 bg-gradient-to-r from-indigo-500 to-purple-500 px-4 py-2 text-sm font-medium text-white shadow-md transition-all hover:shadow-lg">
+                                      Aanbevolen
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="mt-1 text-xs text-slate-600">
+                                  {earliest} {'->'} {latest}
+                                </div>
+                                <div className="mt-1 text-xs text-slate-500">
+                                  Inlevermethode: {collectionMethod}
+                                </div>
+                              </div>
+                            </div>
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                )}
+
+                {selectedBolDeliveryOption && !loadingBolDeliveryOptions && (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 rounded-lg border border-sky-200 bg-white/80 p-3">
+                    <div>
+                      <div className="text-[11px] uppercase tracking-wide text-slate-500">Vervoerder</div>
+                      <div className="text-sm text-slate-900 font-medium">{String(selectedBolDeliveryOption?.transporterCode || 'Onbekend')}</div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] uppercase tracking-wide text-slate-500">Venster</div>
+                      <div className="text-sm text-slate-900">{formatBolDeliveryOptionDateTime(selectedBolDeliveryOption?.handoverDetails?.earliestHandoverDateTime)} {'->'} {formatBolDeliveryOptionDateTime(selectedBolDeliveryOption?.handoverDetails?.latestHandoverDateTime)}</div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] uppercase tracking-wide text-slate-500">Inlevermethode</div>
+                      <div className="text-sm text-slate-900">{String(selectedBolDeliveryOption?.handoverDetails?.collectionMethod || '-')}</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {labelPreviewUrl && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -1990,7 +2141,12 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
             </Button>
             <Button
               onClick={handleGenerateLabel}
-              disabled={!selectedContractId || (isWeGrowContractSelected && !selectedWeGrowCarrier) || generatingLabel}
+              disabled={
+                !selectedContractId
+                || (isWeGrowContractSelected && !selectedWeGrowCarrier)
+                || (isVvbContractSelected && (!selectedBolDeliveryOptionId || loadingBolDeliveryOptions || bolDeliveryOptions.length === 0))
+                || generatingLabel
+              }
               className="gap-2 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600"
             >
               {generatingLabel && <Loader2 className="w-4 h-4 animate-spin" />}

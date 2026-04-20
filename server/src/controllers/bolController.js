@@ -316,7 +316,11 @@ const extractBolOrderItemsForLabel = (payload) => {
   }));
 };
 
-const fetchBolDeliveryOptionHandoverWindow = async (credentials, orderItems = []) => {
+const fetchBolDeliveryOptionHandoverWindow = async (
+  credentials,
+  orderItems = [],
+  preferredShippingLabelOfferId = null,
+) => {
   const normalizedOrderItems = Array.isArray(orderItems) ? orderItems : [];
   if (normalizedOrderItems.length === 0) {
     return {
@@ -338,7 +342,12 @@ const fetchBolDeliveryOptionHandoverWindow = async (credentials, orderItems = []
     ? deliveryOptionsPayload.deliveryOptions
     : [];
 
-  const selectedDeliveryOption = deliveryOptions.find((option) => option?.recommended)
+  const normalizedPreferredShippingLabelOfferId = String(preferredShippingLabelOfferId || '').trim();
+
+  const selectedDeliveryOption = (normalizedPreferredShippingLabelOfferId
+    ? deliveryOptions.find((option) => String(option?.shippingLabelOfferId || '').trim() === normalizedPreferredShippingLabelOfferId)
+    : null)
+    || deliveryOptions.find((option) => option?.recommended)
     || deliveryOptions[0]
     || null;
 
@@ -505,12 +514,122 @@ const isUnauthorizedBolError = (error) => {
 };
 
 async function getBolLabelWithFallback(credentials, orderId) {
+  const preferredShippingLabelOfferId = null;
+  return getBolLabelWithFallbackInternal(credentials, orderId, { preferredShippingLabelOfferId });
+}
+
+async function getBolLabelWithFallbackInternal(
+  credentials,
+  orderId,
+  {
+    preferredShippingLabelOfferId = null,
+  } = {},
+) {
   const normalizedOrderId = String(orderId || '').trim();
   if (!normalizedOrderId) {
     throw new Error('Order ID is required to get Bol shipping label');
   }
 
   const errors = [];
+  const normalizedPreferredShippingLabelOfferId = String(preferredShippingLabelOfferId || '').trim();
+
+  if (normalizedPreferredShippingLabelOfferId) {
+    let orderItemsPayload = null;
+
+    try {
+      orderItemsPayload = await bolApiRequest(credentials, `/orders/${encodeURIComponent(normalizedOrderId)}/order-items`);
+    } catch (error) {
+      errors.push({ endpoint: `/orders/${normalizedOrderId}/order-items`, error });
+    }
+
+    if (!orderItemsPayload) {
+      try {
+        const matchingListedOrder = await findOrderInFbrOrderPages(credentials, normalizedOrderId, 8);
+
+        if (matchingListedOrder) {
+          orderItemsPayload = {
+            orderItems: Array.isArray(matchingListedOrder.orderItems)
+              ? matchingListedOrder.orderItems
+              : [],
+          };
+        }
+      } catch (error) {
+        errors.push({ endpoint: '/orders?status=ALL&page=*', error });
+      }
+    }
+
+    if (orderItemsPayload) {
+      const orderItems = extractBolOrderItemsForLabel(orderItemsPayload);
+
+      if (orderItems.length > 0) {
+        try {
+          const handoverWindow = await fetchBolDeliveryOptionHandoverWindow(
+            credentials,
+            orderItems,
+            normalizedPreferredShippingLabelOfferId,
+          );
+
+          const selectedDeliveryOption = handoverWindow.selectedDeliveryOption;
+          const shippingLabelOfferId = String(selectedDeliveryOption?.shippingLabelOfferId || '').trim();
+
+          if (!shippingLabelOfferId) {
+            throw new Error(`Geen Bol delivery option gevonden voor shippingLabelOfferId ${normalizedPreferredShippingLabelOfferId}`);
+          }
+
+          const createLabelPayload = await bolApiRequest(
+            credentials,
+            '/shipping-labels',
+            'POST',
+            {
+              orderItems,
+              shippingLabelOfferId,
+            },
+          );
+
+          let createdShippingLabelId = String(createLabelPayload?.entityId || '').trim();
+          if (!createdShippingLabelId) {
+            createdShippingLabelId = extractFirstLinkId(createLabelPayload, '/shipping-labels') || '';
+          }
+
+          if (!createdShippingLabelId && createLabelPayload?.processStatusId) {
+            const processStatusResolvedId = await resolveShippingLabelIdFromProcessStatus(
+              credentials,
+              createLabelPayload.processStatusId,
+            );
+            if (processStatusResolvedId) {
+              createdShippingLabelId = processStatusResolvedId;
+            }
+          }
+
+          if (createdShippingLabelId) {
+            const labelEndpoint = `/shipping-labels/${encodeURIComponent(createdShippingLabelId)}`;
+            const response = await fetchBolShippingLabelById(credentials, createdShippingLabelId);
+            const earliestHandoverDateTime = handoverWindow?.earliestHandoverDateTime || null;
+            const latestHandoverDateTime = handoverWindow?.latestHandoverDateTime || null;
+            const deliveryOptionValidation = validateBolDeliveryOptionAttachment({
+              selectedDeliveryOption,
+              labelData: response,
+              earliestHandoverDateTime,
+              latestHandoverDateTime,
+            });
+
+            return {
+              labelData: {
+                ...response,
+                earliestHandoverDateTime,
+                latestHandoverDateTime,
+                deliveryOptionValidation,
+              },
+              endpoint: labelEndpoint,
+            };
+          }
+        } catch (error) {
+          errors.push({ endpoint: '/shipping-labels/delivery-options|/shipping-labels', error });
+        }
+      }
+    }
+  }
+
   const directEndpoints = [
     `/shipments?order-id=${normalizedOrderId}`,
     `/orders/${normalizedOrderId}/shipment-label`,
@@ -582,7 +701,11 @@ async function getBolLabelWithFallback(credentials, orderId) {
 
     if (orderItems.length > 0) {
       try {
-        handoverWindow = await fetchBolDeliveryOptionHandoverWindow(credentials, orderItems);
+        handoverWindow = await fetchBolDeliveryOptionHandoverWindow(
+          credentials,
+          orderItems,
+          normalizedPreferredShippingLabelOfferId || null,
+        );
         const selectedDeliveryOption = handoverWindow.selectedDeliveryOption;
 
         const shippingLabelOfferId = String(selectedDeliveryOption?.shippingLabelOfferId || '').trim();
@@ -1970,7 +2093,7 @@ export const syncBolOrders = async (req, res) => {
  */
 export const getBolShippingLabel = async (req, res) => {
   try {
-    const { installationId, orderId, integrationId } = req.query;
+    const { installationId, orderId, integrationId, shippingLabelOfferId } = req.query;
 
     if (!installationId || !orderId) {
       return res.status(400).json({ error: 'Installation ID and Order ID are required' });
@@ -2055,7 +2178,9 @@ export const getBolShippingLabel = async (req, res) => {
     for (const candidate of integrationCandidates) {
       try {
         attemptedIntegrationIds.push(candidate.integration.id);
-        const fallbackResult = await getBolLabelWithFallback(candidate.credentials, orderId);
+        const fallbackResult = await getBolLabelWithFallbackInternal(candidate.credentials, orderId, {
+          preferredShippingLabelOfferId: String(shippingLabelOfferId || '').trim() || null,
+        });
         labelData = fallbackResult.labelData;
         successfulIntegrationId = candidate.integration.id;
         break;
@@ -2108,6 +2233,65 @@ export const getBolShippingLabel = async (req, res) => {
     res.status(statusCode).json({ 
       error: 'Failed to get shipping label from Bol.com',
       details: errorDetails 
+    });
+  }
+};
+
+export const getBolDeliveryOptions = async (req, res) => {
+  try {
+    const { installationId, orderId, integrationId } = req.query;
+
+    if (!installationId || !orderId) {
+      return res.status(400).json({ error: 'Installation ID and Order ID are required' });
+    }
+
+    const { credentials } = await getBolIntegration(installationId, integrationId);
+    const normalizedOrderId = String(orderId || '').trim();
+
+    let orderItemsPayload = null;
+    try {
+      orderItemsPayload = await bolApiRequest(credentials, `/orders/${encodeURIComponent(normalizedOrderId)}/order-items`);
+    } catch {
+      // Fallback below
+    }
+
+    if (!orderItemsPayload) {
+      const matchingListedOrder = await findOrderInFbrOrderPages(credentials, normalizedOrderId, 8);
+      if (matchingListedOrder) {
+        orderItemsPayload = {
+          orderItems: Array.isArray(matchingListedOrder.orderItems)
+            ? matchingListedOrder.orderItems
+            : [],
+        };
+      }
+    }
+
+    if (!orderItemsPayload) {
+      return res.status(404).json({ error: 'Order items not found for this Bol order' });
+    }
+
+    const orderItems = extractBolOrderItemsForLabel(orderItemsPayload);
+    if (orderItems.length === 0) {
+      return res.status(404).json({ error: 'No order items available to resolve delivery options' });
+    }
+
+    const handoverWindow = await fetchBolDeliveryOptionHandoverWindow(credentials, orderItems);
+    const deliveryOptions = Array.isArray(handoverWindow.deliveryOptionsPayload?.deliveryOptions)
+      ? handoverWindow.deliveryOptionsPayload.deliveryOptions
+      : [];
+
+    res.json({
+      success: true,
+      orderItems,
+      deliveryOptions,
+      selectedDeliveryOption: handoverWindow.selectedDeliveryOption,
+    });
+  } catch (error) {
+    console.error('Get Bol delivery options error:', error);
+    const errorDetails = error?.message || 'Unknown error';
+    res.status(500).json({
+      error: 'Failed to get Bol delivery options',
+      details: errorDetails,
     });
   }
 };

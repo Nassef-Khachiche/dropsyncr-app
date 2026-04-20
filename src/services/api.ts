@@ -556,7 +556,28 @@ class ApiService {
     );
   }
 
-  async getBolShippingLabel(installationId: string, orderId: string, integrationId?: number | string) {
+  async getBolShippingLabel(
+    installationId: string,
+    orderId: string,
+    integrationId?: number | string,
+    shippingLabelOfferId?: string,
+  ) {
+    const queryParams = new URLSearchParams();
+    queryParams.append('installationId', installationId);
+    queryParams.append('orderId', orderId);
+    if (integrationId !== undefined && integrationId !== null && String(integrationId).trim()) {
+      queryParams.append('integrationId', String(integrationId));
+    }
+    if (shippingLabelOfferId !== undefined && shippingLabelOfferId !== null && String(shippingLabelOfferId).trim()) {
+      queryParams.append('shippingLabelOfferId', String(shippingLabelOfferId));
+    }
+
+    return this.request<any>(
+      `/bol/shipping-label?${queryParams.toString()}`
+    );
+  }
+
+  async getBolDeliveryOptions(installationId: string, orderId: string, integrationId?: number | string) {
     const queryParams = new URLSearchParams();
     queryParams.append('installationId', installationId);
     queryParams.append('orderId', orderId);
@@ -564,9 +585,12 @@ class ApiService {
       queryParams.append('integrationId', String(integrationId));
     }
 
-    return this.request<any>(
-      `/bol/shipping-label?${queryParams.toString()}`
-    );
+    return this.request<{
+      success: boolean;
+      orderItems: Array<{ orderItemId: string; quantity: number }>;
+      deliveryOptions: Array<any>;
+      selectedDeliveryOption: any | null;
+    }>(`/bol/delivery-options?${queryParams.toString()}`);
   }
 
   async updateBolShipment(installationId: string, data: any) {

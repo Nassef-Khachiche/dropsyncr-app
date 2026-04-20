@@ -132,12 +132,12 @@ const getWeGrowAuthConfig = (rawCredentials = {}) => {
 };
 
 const WEGROW_SERVICE_OPTIONS = {
-  'dhl-nl': { label: 'DHL NL', defaultServiceCode: null },
-  'dhl-for-you-envelop': { label: 'DHL For You - Envelop', defaultServiceCode: null },
-  'dhl-for-you-brievenbuspakje': { label: 'DHL For You Brievenbuspakje', defaultServiceCode: null },
-  'dhl-for-you': { label: 'DHL For You', defaultServiceCode: null },
-  'postnl-nederland-brievenbuspakketje-0-2kg': { label: 'PostNL Brievenbuspakketje 0-2kg', defaultServiceCode: null },
-  'postnl-belgie-standaard-0-23kg': { label: 'PostNL België Standaard 0-23kg', defaultServiceCode: null },
+  'dhl-nl': { label: 'DHL NL', defaultServiceCode: null, fallbackServiceKeys: ['dhl'] },
+  'dhl-for-you-envelop': { label: 'DHL For You - Envelop', defaultServiceCode: null, fallbackServiceKeys: ['dhl'] },
+  'dhl-for-you-brievenbuspakje': { label: 'DHL For You Brievenbuspakje', defaultServiceCode: null, fallbackServiceKeys: ['dhl'] },
+  'dhl-for-you': { label: 'DHL For You', defaultServiceCode: null, fallbackServiceKeys: ['dhl'] },
+  'postnl-nederland-brievenbuspakketje-0-2kg': { label: 'PostNL Brievenbuspakketje 0-2kg', defaultServiceCode: null, fallbackServiceKeys: ['postnl'] },
+  'postnl-belgie-standaard-0-23kg': { label: 'PostNL België Standaard 0-23kg', defaultServiceCode: null, fallbackServiceKeys: ['postnl'] },
 };
 
 const normalizeWeGrowServiceCodeMap = (rawServiceCodeMap) => {
@@ -1392,9 +1392,13 @@ export const generateCarrierLabels = async (req, res) => {
       const credentials = normalizeWeGrowCredentials(parseCredentialsSafely(carrier.credentials));
       const { apiKey } = getWeGrowAuthConfig(credentials);
       const normalizedSelectedShippingMethod = String(selectedShippingMethod || '').trim().toLowerCase();
-      const selectedWeGrowCarrier = String(wegrowCarrier || '').trim().toLowerCase()
+      const explicitSelectedWeGrowCarrier = String(wegrowCarrier || '').trim().toLowerCase();
+      const selectedWeGrowCarrier = explicitSelectedWeGrowCarrier
         || (normalizedSelectedShippingMethod.startsWith('wegrow-')
           ? normalizedSelectedShippingMethod.replace('wegrow-', '').trim()
+          : '')
+        || (Object.prototype.hasOwnProperty.call(WEGROW_SERVICE_OPTIONS, normalizedSelectedShippingMethod)
+          ? normalizedSelectedShippingMethod
           : '');
 
       const serviceCodeMapFromCredentials = normalizeWeGrowServiceCodeMap(
@@ -1412,10 +1416,22 @@ export const generateCarrierLabels = async (req, res) => {
         'postnl-belgie-standaard-0-23kg': credentials.postnlBelgieStandaard023kgServiceCode,
       };
       const selectedServiceOption = selectedWeGrowCarrier ? WEGROW_SERVICE_OPTIONS[selectedWeGrowCarrier] : null;
+      const optionFallbackServiceCode = selectedServiceOption
+        ? (selectedServiceOption.fallbackServiceKeys || []).find((key) => {
+          const normalizedKey = String(key || '').trim();
+          if (!normalizedKey) return false;
+          const candidate = serviceCodeByCarrier[normalizedKey];
+          return Boolean(String(candidate || '').trim());
+        })
+        : null;
+      const optionFallbackServiceCodeValue = optionFallbackServiceCode
+        ? String(serviceCodeByCarrier[optionFallbackServiceCode]).trim()
+        : '';
       const selectedCarrierServiceCode = selectedWeGrowCarrier
         ? (
           serviceCodeMapFromCredentials[selectedWeGrowCarrier]
           || (serviceCodeByCarrier[selectedWeGrowCarrier] ? String(serviceCodeByCarrier[selectedWeGrowCarrier]).trim() : '')
+          || optionFallbackServiceCodeValue
           || selectedServiceOption?.defaultServiceCode
           || ''
         )
