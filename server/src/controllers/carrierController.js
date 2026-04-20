@@ -1436,7 +1436,10 @@ export const generateCarrierLabels = async (req, res) => {
           || ''
         )
         : '';
-      const serviceCode = selectedCarrierServiceCode || credentials.serviceCode;
+      const genericServiceCode = String(credentials.serviceCode || '').trim();
+      const serviceCode = selectedWeGrowCarrier
+        ? selectedCarrierServiceCode
+        : genericServiceCode;
 
       if (!apiKey) {
         return res.status(400).json({
@@ -1456,7 +1459,7 @@ export const generateCarrierLabels = async (req, res) => {
         return res.status(400).json({
           error: 'WeGrow service code ontbreekt',
           details: selectedWeGrowCarrier
-            ? `Geen service code gevonden voor WeGrow optie ${selectedServiceOption?.label || selectedWeGrowCarrier.toUpperCase()}`
+            ? `Geen service code gevonden voor WeGrow optie ${selectedServiceOption?.label || selectedWeGrowCarrier.toUpperCase()}. Stel een specifieke mapping in voor deze optie of configureer de carrier fallback voor ${selectedServiceOption?.fallbackServiceKeys?.join(', ') || selectedWeGrowCarrier}.`
             : 'Stel een algemene WeGrow service code in of kies een WeGrow vervoerder met service code mapping.',
         });
       }
