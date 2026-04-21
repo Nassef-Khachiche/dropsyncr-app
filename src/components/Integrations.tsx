@@ -37,6 +37,7 @@ import { Alert, AlertDescription } from './ui/alert';
 import { toast } from 'sonner';
 import { api } from '../services/api';
 import bolLogo from '../assets/bol-logo.png';
+import kauflandLogo from '../assets/kaufland-logo.png';
 
 interface IntegrationsProps {
   activeProfile: string;
@@ -66,6 +67,14 @@ const availablePlatforms = [
     logo: bolLogo,
     color: 'from-blue-500 to-blue-600',
     bgColor: 'from-blue-50 to-blue-100/50',
+  },
+  {
+    id: 'kaufland',
+    name: 'Kaufland',
+    description: 'Koppel je Kaufland winkel voor geautomatiseerde orderverwerking',
+    logo: kauflandLogo,
+    color: 'from-red-500 to-red-600',
+    bgColor: 'from-red-50 to-red-100/50',
   },
 ];
 
@@ -298,8 +307,8 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
     if (!activeProfile) return;
 
     const store = connectedStores.find(s => s.id === storeId);
-    if (!store || store.platform !== 'bol.com') {
-      toast.error('Alleen Bol.com sync wordt momenteel ondersteund');
+    if (!store || (store.platform !== 'bol.com' && store.platform !== 'kaufland')) {
+      toast.error('Sync wordt niet ondersteund voor dit platform');
       return;
     }
 
@@ -314,7 +323,9 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
 
     try {
       setSyncing(true);
-      const result = await api.syncBolOrders(syncInstallationId, storeId);
+      const result = store.platform === 'kaufland'
+        ? await api.syncKauflandOrders(syncInstallationId, storeId)
+        : await api.syncBolOrders(syncInstallationId, storeId);
       
       toast.success('Orders gesynchroniseerd!', {
         description: `${result.imported} nieuwe orders, ${result.updated} bijgewerkt`
@@ -448,7 +459,7 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
                         >
                           <Settings className="w-3.5 h-3.5" />
                         </Button>
-                        {store.platform === 'bol.com' && (
+                        {(store.platform === 'bol.com' || store.platform === 'kaufland') && (
                           <Button 
                             variant="outline" 
                             size="sm" 
@@ -572,7 +583,7 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 {selectedPlatform && (
-                  <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${selectedPlatform.color} p-2 flex items-center justify-center`}>
+                  <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${selectedPlatform.bgColor} p-1.5 flex items-center justify-center border border-slate-200`}>
                     <img src={selectedPlatform.logo} alt={selectedPlatform.name} className="w-full h-full object-contain" />
                   </div>
                 )}
