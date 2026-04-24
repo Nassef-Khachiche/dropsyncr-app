@@ -36,8 +36,10 @@ model Installation {
   integrations Integration[]
   automationRules AutomationRule[]
   orders       Order[]
+  returns      Return[]
   products     Product[]
   users        UserInstallation[]
+  warehouseAddress WarehouseAddress?
 }
 
 model AutomationRule {
@@ -281,4 +283,67 @@ model Analytics {
 
   @@unique([installationId, date])
   @@index([installationId, date])
+}
+model Return {
+  id                   Int           @id @default(autoincrement())
+  installationId       Int
+  returnNumber         String        @unique
+  rmaId                String?
+  orderNumber          String
+  customerName         String
+  customerEmail        String?
+  storeName            String
+  ffmClientName        String
+  platform             String        @default("manual")
+  type                 String        @default("own_stock")
+  status               String        @default("registered")
+  registrationDate     DateTime      @default(now())
+  carrier              String?
+  trackingCode         String?
+  address              String?       @db.VarChar(500)
+  returnReason         String?
+  returnReasonNote     String?       @db.Text
+  qrCodeUrl            String?       @db.LongText
+  inspectionStatus     String?
+  inspectionCount      Int?
+  processedAt          DateTime?
+  returnBoxStatus      String?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  installation         Installation  @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  items                ReturnItem[]
+
+  @@index([installationId])
+  @@index([status])
+  @@index([ffmClientName])
+}
+
+model ReturnItem {
+  id          Int     @id @default(autoincrement())
+  returnId    Int
+  productName String  @db.Text
+  ean         String?
+  rmaId       String?
+  quantity    Int     @default(1)
+  price       Float   @db.Float
+  imageUrl    String?
+  return      Return  @relation(fields: [returnId], references: [id], onDelete: Cascade)
+
+  @@index([returnId])
+}
+
+model WarehouseAddress {
+  id             Int          @id @default(autoincrement())
+  installationId Int          @unique
+  name           String?
+  email          String?
+  phone          String?
+  street         String?
+  houseNumber    String?
+  postalCode     String?
+  city           String?
+  country        String       @default("NL")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  installation   Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
 }

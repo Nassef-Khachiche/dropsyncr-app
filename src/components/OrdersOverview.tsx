@@ -39,7 +39,9 @@ import {
   Package,
   Truck,
   ImageIcon,
-  Weight
+  Weight,
+  RotateCcw,
+  ArrowLeftRight,
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
@@ -55,6 +57,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
 
@@ -74,6 +77,7 @@ interface CarrierContract {
   carrierType: string;
   contractName: string;
   active: boolean;
+  credentials?: Record<string, any>;
 }
 
 interface BolDeliveryOption {
@@ -340,6 +344,8 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
   const [allowedIntegrationStoreNames, setAllowedIntegrationStoreNames] = useState<string[]>([]);
   const [allowedIntegrationInstallationIds, setAllowedIntegrationInstallationIds] = useState<number[]>([]);
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
+
+  // --- Normal label dialog state ---
   const [showLabelDialog, setShowLabelDialog] = useState(false);
   const [labelOrder, setLabelOrder] = useState<any | null>(null);
   const [carrierContracts, setCarrierContracts] = useState<CarrierContract[]>([]);
@@ -356,6 +362,26 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
   const [bolDeliveryOptions, setBolDeliveryOptions] = useState<BolDeliveryOption[]>([]);
   const [selectedBolDeliveryOptionId, setSelectedBolDeliveryOptionId] = useState<string>('');
   const [loadingBolDeliveryOptions, setLoadingBolDeliveryOptions] = useState(false);
+
+  // --- Return label dialog state ---
+  const [showReturnLabelDialog, setShowReturnLabelDialog] = useState(false);
+  const [returnLabelOrder, setReturnLabelOrder] = useState<any | null>(null);
+  const [selectedReturnContractId, setSelectedReturnContractId] = useState<string>('');
+  const [selectedReturnWeGrowCarrier, setSelectedReturnWeGrowCarrier] = useState<string>('');
+  const [generatingReturnLabel, setGeneratingReturnLabel] = useState(false);
+  const [returnLabelPreviewUrl, setReturnLabelPreviewUrl] = useState<string>('');
+  const [generatedReturnLabelMeta, setGeneratedReturnLabelMeta] = useState<{
+    shipmentId?: string | null;
+    trackingCode?: string | null;
+    trackingUrl?: string | null;
+  } | null>(null);
+  const [warehouseAddress, setWarehouseAddress] = useState<any | null>(null);
+
+  // Carriers that have supportsReturns === true
+  const returnCarrierContracts = carrierContracts.filter(
+    (contract) => contract.credentials?.supportsReturns === true
+  );
+
   const [shippingMethodDrafts, setShippingMethodDrafts] = useState<Record<number, string>>({});
   const [savingShippingMethodOrderId, setSavingShippingMethodOrderId] = useState<number | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -394,6 +420,19 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
 
     loadCarrierContracts(activeProfile);
   }, [activeProfile, allowedIntegrationInstallationIds]);
+
+  useEffect(() => {
+    const loadWarehouse = async () => {
+      if (!activeProfile || activeProfile === 'all') return;
+      try {
+        const data = await api.getWarehouseAddress(activeProfile);
+        setWarehouseAddress(data || null);
+      } catch {
+        setWarehouseAddress(null);
+      }
+    };
+    loadWarehouse();
+  }, [activeProfile]);
 
   useEffect(() => {
     const loadBolDeliveryOptions = async () => {
@@ -515,6 +554,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
           carrierType: carrier.carrierType,
           contractName: carrier.contractName,
           active: carrier.active,
+          credentials: carrier.credentials || {},
         }));
       setCarrierContracts(filtered);
     } catch (error) {
@@ -550,6 +590,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
           carrierType: carrier.carrierType,
           contractName: carrier.contractName,
           active: carrier.active,
+          credentials: carrier.credentials || {},
         }));
 
       const uniqueById = Array.from(
@@ -633,6 +674,144 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
       trackingUrl: order?.tracking?.trackingUrl || null,
     });
     setShowLabelDialog(true);
+  };
+
+  // --- Return label dialog handlers ---
+  const handleOpenReturnLabelDialog = (order: any) => {
+    setReturnLabelOrder(order);
+    setSelectedReturnContractId('');
+    setSelectedReturnWeGrowCarrier('');
+    setReturnLabelPreviewUrl('');
+    setGeneratedReturnLabelMeta(null);
+    setShowReturnLabelDialog(true);
+  };
+
+  const handleGenerateReturnLabel = async () => {
+    if (!returnLabelOrder || !selectedReturnContractId) return;
+
+    const selectedContract = returnCarrierContracts.find(
+      (contract) => String(contract.id) === selectedReturnContractId
+    );
+    if (!selectedContract) {
+      toast.error('Selecteer een geldig contract');
+      return;
+    }
+
+    const selectedShippingMethod = selectedReturnContractId;
+
+    // Build return package: sender = customer, receiver = warehouse (from DB or carrier credentials)
+    const basePackage = buildOrderLabelPackage(returnLabelOrder);
+    const credentials = selectedContract.credentials || {};
+
+    // Warehouse address: prefer DB, fall back to carrier credentials
+    const warehouseName = warehouseAddress?.name || credentials.senderName || credentials.senderName1 || 'Warehouse';
+    const warehouseStreet = warehouseAddress
+      ? [warehouseAddress.street, warehouseAddress.houseNumber].filter(Boolean).join(' ')
+      : (credentials.senderStreet || '');
+    const warehouseZip = warehouseAddress?.postalCode || credentials.senderZipCode || credentials.senderPostalCode || '';
+    const warehouseCity = warehouseAddress?.city || credentials.senderCity || '';
+    const warehouseCountry = warehouseAddress?.country || credentials.senderCountry || 'NL';
+    const warehouseEmail = warehouseAddress?.email || credentials.senderEmail || null;
+    const warehousePhone = warehouseAddress?.phone || credentials.senderPhone || null;
+
+    // Parse street from combined address if street field is empty
+    const resolveCustomerStreet = () => {
+      if (basePackage.street) return basePackage.street;
+      const addr = String(basePackage.address || '').trim();
+      if (!addr) return '';
+      // Take everything before the first comma as the street
+      const parts = addr.split(',');
+      return parts[0].trim();
+    };
+
+    const resolveCustomerZip = () => {
+      if (basePackage.zipCode) return basePackage.zipCode;
+      const addr = String(basePackage.address || '').trim();
+      const match = addr.match(/([A-Z0-9]{4,10})\s*,?\s*([A-Za-zÀ-ÿ\s]+)$/);
+      return match ? match[1].trim() : '';
+    };
+
+    const resolveCustomerCity = () => {
+      if (basePackage.city) return basePackage.city;
+      const addr = String(basePackage.address || '').trim();
+      const parts = addr.split(',');
+      if (parts.length >= 2) return parts[parts.length - 1].trim();
+      return '';
+    };
+
+    const returnPackage = {
+      ...basePackage,
+      isReturn: true,
+      // Sender = customer
+      senderName: basePackage.customerName,
+      senderAddress: basePackage.address,
+      senderStreet: resolveCustomerStreet(),
+      senderZipCode: resolveCustomerZip(),
+      senderCity: resolveCustomerCity(),
+      senderCountry: basePackage.country,
+      senderEmail: basePackage.email,
+      senderPhone: basePackage.phone,
+      // Receiver = warehouse
+      customerName: warehouseName,
+      street: warehouseStreet,
+      zipCode: warehouseZip,
+      city: warehouseCity,
+      country: warehouseCountry,
+      email: warehouseEmail,
+      phone: warehousePhone,
+      address: [warehouseStreet, warehouseZip, warehouseCity].filter(Boolean).join(', '),
+    };
+
+    try {
+      setGeneratingReturnLabel(true);
+      const result = await api.generateCarrierLabels(Number(selectedReturnContractId), {
+        shippingMethod: selectedShippingMethod,
+        packages: [returnPackage],
+      });
+
+      const label = (result.labels || [])[0];
+      if (label?.labelUrl) {
+        setReturnLabelPreviewUrl(label.labelUrl);
+      }
+      setGeneratedReturnLabelMeta({
+        shipmentId: label?.shipmentId || null,
+        trackingCode: label?.trackingCode || null,
+        trackingUrl: label?.trackingUrl || null,
+      });
+
+      toast.success('Retourlabel succesvol gegenereerd');
+
+      // Create return record in DB
+      try {
+        const installationId = String(
+          returnLabelOrder.installation?.id ?? returnLabelOrder.installationId ?? activeProfile
+        ).trim();
+        await api.createReturn({
+          installationId: parseInt(installationId, 10),
+          orderNumber: returnLabelOrder.orderNumber,
+          customerName: returnLabelOrder.customerName,
+          customerEmail: returnLabelOrder.customerEmail || null,
+          storeName: returnLabelOrder.storeName,
+          ffmClientName: returnLabelOrder.storeName,
+          type: 'unknown',
+          platform: returnLabelOrder.platform || 'manual',
+          trackingCode: label?.trackingCode || null,
+          carrier: selectedContract.carrierType || null,
+          status: 'registered',
+          labelUrl: label?.labelUrl || null,
+          items: [],
+        });
+      } catch (returnError) {
+        console.error('Failed to create return record:', returnError);
+      }
+    } catch (error) {
+      console.error('Failed to generate return label:', error);
+      toast.error('Kon retourlabel niet genereren', {
+        description: error instanceof Error ? error.message : 'Probeer het opnieuw',
+      });
+    } finally {
+      setGeneratingReturnLabel(false);
+    }
   };
 
   const getOrderShippingContractId = (order: any) => {
@@ -992,7 +1171,6 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
   };
 
   const exportToExcel = () => {
-    // Prepare data for export
     const exportData = filteredOrders.map(order => ({
       'Ordernummer': order.orderNumber,
       'Klantnaam': order.customerName,
@@ -1010,38 +1188,19 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
       'Zendingstatus': order.shippingStatus || ''
     }));
 
-    // Create worksheet
     const ws = XLSX.utils.json_to_sheet(exportData);
-    
-    // Set column widths
     const colWidths = [
-      { wch: 15 }, // Ordernummer
-      { wch: 20 }, // Klantnaam
-      { wch: 8  }, // Land
-      { wch: 15 }, // Store
-      { wch: 12 }, // Platform
-      { wch: 12 }, // Aantal items
-      { wch: 12 }, // Orderwaarde
-      { wch: 15 }, // Besteldatum
-      { wch: 15 }, // Leverdatum
-      { wch: 40 }, // Adres
-      { wch: 20 }, // Trackingnummer
-      { wch: 20 }, // Status
-      { wch: 15 }, // Orderstatus
-      { wch: 25 }  // Zendingstatus
+      { wch: 15 }, { wch: 20 }, { wch: 8  }, { wch: 15 }, { wch: 12 },
+      { wch: 12 }, { wch: 12 }, { wch: 15 }, { wch: 15 }, { wch: 40 },
+      { wch: 20 }, { wch: 20 }, { wch: 15 }, { wch: 25 }
     ];
     ws['!cols'] = colWidths;
 
-    // Create workbook
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Orders');
 
-    // Generate filename with current date
     const date = new Date().toISOString().split('T')[0];
-    const filename = `orders_export_${date}.xlsx`;
-
-    // Save file
-    XLSX.writeFile(wb, filename);
+    XLSX.writeFile(wb, `orders_export_${date}.xlsx`);
   };
 
   const getStatusBadge = (status: string) => {
@@ -1234,6 +1393,12 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
           active: true,
         },
       ];
+
+  const selectedReturnContract = returnCarrierContracts.find(
+    (contract) => String(contract.id) === selectedReturnContractId
+  );
+  const isReturnWeGrowSelected = selectedReturnContract?.carrierType === 'wegrow';
+
   const startOrderIndex = totalOrders === 0 ? 0 : ((currentPage - 1) * ORDERS_PER_PAGE) + 1;
   const endOrderIndex = Math.min(currentPage * ORDERS_PER_PAGE, totalOrders);
 
@@ -1542,292 +1707,276 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                                   <Package className="w-4 h-4" />
                                   Label genereren
                                 </DropdownMenuItem>
+                                {returnCarrierContracts.length > 0 && (
+                                  <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      className="cursor-pointer text-violet-700 focus:text-violet-700 focus:bg-violet-50"
+                                      onSelect={() => handleOpenReturnLabelDialog(order)}
+                                    >
+                                      <RotateCcw className="w-4 h-4" />
+                                      Retourlabel genereren
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </div>
                         </TableCell>
                       </TableRow>
                     
-                    {/* Expanded Details Row */}
-                    {expandedOrder === order.orderNumber && (
-                      <TableRow className="bg-gradient-to-r from-slate-50/80 to-indigo-50/30">
-                        <TableCell colSpan={11} className="p-6">
-                          <div className="flex gap-6">
-                            {/* Left Column - Basic Info */}
-                            <div className="flex-1 space-y-6">
-                              {/* Header with Store and Status */}
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                  <Badge variant="outline" className="border-indigo-200 text-indigo-700 bg-indigo-50">
-                                    {order.storeName}
-                                  </Badge>
-                                  <span className="text-slate-600">{order.orderNumber}</span>
-                                </div>
-                              </div>
-
-                              {/* Grid with details */}
-                              <div className="grid grid-cols-2 gap-6">
-                                {/* Ontvanger */}
-                                <div className="space-y-1">
-                                  <div className="flex items-center gap-2 text-sm text-slate-500">
-                                    <MapPin className="w-4 h-4" />
-                                    <span>Ontvanger</span>
+                      {/* Expanded Details Row */}
+                      {expandedOrder === order.orderNumber && (
+                        <TableRow className="bg-gradient-to-r from-slate-50/80 to-indigo-50/30">
+                          <TableCell colSpan={11} className="p-6">
+                            <div className="flex gap-6">
+                              {/* Left Column - Basic Info */}
+                              <div className="flex-1 space-y-6">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-3">
+                                    <Badge variant="outline" className="border-indigo-200 text-indigo-700 bg-indigo-50">
+                                      {order.storeName}
+                                    </Badge>
+                                    <span className="text-slate-600">{order.orderNumber}</span>
                                   </div>
-                                  <p className="text-sm text-slate-900">{order.customerName}</p>
                                 </div>
 
-                                {/* Adres */}
-                                <div className="space-y-1">
-                                  <div className="flex items-center gap-2 text-sm text-slate-500">
-                                    <MapPin className="w-4 h-4" />
-                                    <span>Adres</span>
+                                <div className="grid grid-cols-2 gap-6">
+                                  <div className="space-y-1">
+                                    <div className="flex items-center gap-2 text-sm text-slate-500">
+                                      <MapPin className="w-4 h-4" />
+                                      <span>Ontvanger</span>
+                                    </div>
+                                    <p className="text-sm text-slate-900">{order.customerName}</p>
                                   </div>
-                                  <p className="text-sm text-slate-900">{order.address}</p>
-                                </div>
 
-                                {/* Besteldatum */}
-                                <div className="space-y-1">
-                                  <div className="flex items-center gap-2 text-sm text-slate-500">
-                                    <Calendar className="w-4 h-4" />
-                                    <span>Besteldatum</span>
+                                  <div className="space-y-1">
+                                    <div className="flex items-center gap-2 text-sm text-slate-500">
+                                      <MapPin className="w-4 h-4" />
+                                      <span>Adres</span>
+                                    </div>
+                                    <p className="text-sm text-slate-900">{order.address}</p>
                                   </div>
-                                  <p className="text-sm text-slate-900">
-                                    {order.orderDate ? new Date(order.orderDate).toLocaleDateString('nl-NL') : '-'}
-                                  </p>
-                                </div>
 
-                                {/* Vroegste inleverdatum */}
-                                <div className="space-y-1">
-                                  <div className="flex items-center gap-2 text-sm text-slate-500">
-                                    <Calendar className="w-4 h-4" />
-                                    <span>Vroegste inleverdatum</span>
+                                  <div className="space-y-1">
+                                    <div className="flex items-center gap-2 text-sm text-slate-500">
+                                      <Calendar className="w-4 h-4" />
+                                      <span>Besteldatum</span>
+                                    </div>
+                                    <p className="text-sm text-slate-900">
+                                      {order.orderDate ? new Date(order.orderDate).toLocaleDateString('nl-NL') : '-'}
+                                    </p>
                                   </div>
-                                  <p className="text-sm text-slate-900">
-                                    {resolveDropOffDateRange(order).earliestDropOffDate
-                                      ? resolveDropOffDateRange(order).earliestDropOffDate?.toLocaleDateString('nl-NL')
-                                      : '-'}
-                                  </p>
-                                </div>
 
-                                {/* Platform */}
-                                <div className="space-y-1">
-                                  <div className="flex items-center gap-2 text-sm text-slate-500">
-                                    <ShoppingCart className="w-4 h-4" />
-                                    <span>Platform</span>
+                                  <div className="space-y-1">
+                                    <div className="flex items-center gap-2 text-sm text-slate-500">
+                                      <Calendar className="w-4 h-4" />
+                                      <span>Vroegste inleverdatum</span>
+                                    </div>
+                                    <p className="text-sm text-slate-900">
+                                      {resolveDropOffDateRange(order).earliestDropOffDate
+                                        ? resolveDropOffDateRange(order).earliestDropOffDate?.toLocaleDateString('nl-NL')
+                                        : '-'}
+                                    </p>
                                   </div>
-                                  <Badge variant="outline" className="border-blue-200 text-blue-700 bg-blue-50">
-                                    {order.platform}
-                                  </Badge>
-                                </div>
 
-                                {/* Uiterste inleverdatum */}
-                                <div className="space-y-1">
-                                  <div className="flex items-center gap-2 text-sm text-slate-500">
-                                    <Calendar className="w-4 h-4" />
-                                    <span>Uiterste inleverdatum</span>
+                                  <div className="space-y-1">
+                                    <div className="flex items-center gap-2 text-sm text-slate-500">
+                                      <ShoppingCart className="w-4 h-4" />
+                                      <span>Platform</span>
+                                    </div>
+                                    <Badge variant="outline" className="border-blue-200 text-blue-700 bg-blue-50">
+                                      {order.platform}
+                                    </Badge>
                                   </div>
-                                  <p className="text-sm text-slate-900">
-                                    {resolveDropOffDateRange(order).latestDropOffDate
-                                      ? resolveDropOffDateRange(order).latestDropOffDate?.toLocaleDateString('nl-NL')
-                                      : '-'}
-                                  </p>
-                                </div>
 
-                                {/* Orderstatus */}
-                                <div className="space-y-1">
-                                  <div className="flex items-center gap-2 text-sm text-slate-500">
-                                    <Package className="w-4 h-4" />
-                                    <span>Orderstatus</span>
+                                  <div className="space-y-1">
+                                    <div className="flex items-center gap-2 text-sm text-slate-500">
+                                      <Calendar className="w-4 h-4" />
+                                      <span>Uiterste inleverdatum</span>
+                                    </div>
+                                    <p className="text-sm text-slate-900">
+                                      {resolveDropOffDateRange(order).latestDropOffDate
+                                        ? resolveDropOffDateRange(order).latestDropOffDate?.toLocaleDateString('nl-NL')
+                                        : '-'}
+                                    </p>
                                   </div>
-                                  <div>{getStatusBadge(normalizeOrderStatus(order))}</div>
-                                </div>
 
-                                {/* Orderwaarde */}
-                                <div className="space-y-1">
-                                  <div className="flex items-center gap-2 text-sm text-slate-500">
-                                    <Euro className="w-4 h-4" />
-                                    <span>Orderwaarde</span>
+                                  <div className="space-y-1">
+                                    <div className="flex items-center gap-2 text-sm text-slate-500">
+                                      <Package className="w-4 h-4" />
+                                      <span>Orderstatus</span>
+                                    </div>
+                                    <div>{getStatusBadge(normalizeOrderStatus(order))}</div>
                                   </div>
-                                  <p className="text-sm text-slate-900">€ {order.orderValue?.toFixed(2) || '0.00'}</p>
-                                </div>
 
-                                {/* Handmatige verzendmethode */}
-                                <div className="space-y-2 col-span-2">
-                                  <div className="flex items-center gap-2 text-sm text-slate-500">
-                                    <Package className="w-4 h-4" />
-                                    <span>Verzendmethode (handmatig)</span>
+                                  <div className="space-y-1">
+                                    <div className="flex items-center gap-2 text-sm text-slate-500">
+                                      <Euro className="w-4 h-4" />
+                                      <span>Orderwaarde</span>
+                                    </div>
+                                    <p className="text-sm text-slate-900">€ {order.orderValue?.toFixed(2) || '0.00'}</p>
                                   </div>
-                                  <p className="text-sm text-slate-700">
-                                    Huidig: {resolveShippingSelectionMeta(String(order.shippingMethod || '')).label}
-                                  </p>
-                                  {(() => {
-                                    const currentShippingMeta = resolveShippingSelectionMeta(getOrderShippingContractId(order));
-                                    if (!currentShippingMeta.logo && !currentShippingMeta.icon) return null;
 
-                                    return (
-                                      <div className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white p-3">
-                                        {renderShippingSelectionIcon(currentShippingMeta)}
-                                        <span className="text-xs text-slate-700">{currentShippingMeta.label}</span>
-                                      </div>
-                                    );
-                                  })()}
-                                  <Select
-                                    value={getOrderShippingContractId(order)}
-                                    onValueChange={async (value: string) => {
-                                      if (typeof order.id !== 'number') return;
-                                      handleShippingMethodDraftChange(order.id, value);
-                                      await handleSaveShippingMethod(order, value);
-                                    }}
-                                    disabled={
-                                      normalizeOrderStatus(order) === 'verzonden'
-                                      || savingShippingMethodOrderId === order.id
-                                    }
-                                  >
-                                    <SelectTrigger className="w-full border-slate-200 shadow-sm">
-                                      <SelectValue placeholder="Selecteer verzendmethode">
-                                        {(() => {
-                                          const selectionMeta = resolveShippingSelectionMeta(getOrderShippingContractId(order));
+                                  <div className="space-y-2 col-span-2">
+                                    <div className="flex items-center gap-2 text-sm text-slate-500">
+                                      <Package className="w-4 h-4" />
+                                      <span>Verzendmethode (handmatig)</span>
+                                    </div>
+                                    <p className="text-sm text-slate-700">
+                                      Huidig: {resolveShippingSelectionMeta(String(order.shippingMethod || '')).label}
+                                    </p>
+                                    {(() => {
+                                      const currentShippingMeta = resolveShippingSelectionMeta(getOrderShippingContractId(order));
+                                      if (!currentShippingMeta.logo && !currentShippingMeta.icon) return null;
 
+                                      return (
+                                        <div className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white p-3">
+                                          {renderShippingSelectionIcon(currentShippingMeta)}
+                                          <span className="text-xs text-slate-700">{currentShippingMeta.label}</span>
+                                        </div>
+                                      );
+                                    })()}
+                                    <Select
+                                      value={getOrderShippingContractId(order)}
+                                      onValueChange={async (value: string) => {
+                                        if (typeof order.id !== 'number') return;
+                                        handleShippingMethodDraftChange(order.id, value);
+                                        await handleSaveShippingMethod(order, value);
+                                      }}
+                                      disabled={
+                                        normalizeOrderStatus(order) === 'verzonden'
+                                        || savingShippingMethodOrderId === order.id
+                                      }
+                                    >
+                                      <SelectTrigger className="w-full border-slate-200 shadow-sm">
+                                        <SelectValue placeholder="Selecteer verzendmethode">
+                                          {(() => {
+                                            const selectionMeta = resolveShippingSelectionMeta(getOrderShippingContractId(order));
+                                            return (
+                                              <div className="flex items-center gap-2 min-w-0">
+                                                {renderShippingSelectionIcon(selectionMeta)}
+                                                <span className="truncate">{selectionMeta.label}</span>
+                                              </div>
+                                            );
+                                          })()}
+                                        </SelectValue>
+                                      </SelectTrigger>
+                                      <SelectContent className="border-slate-200 shadow-lg">
+                                        {carrierContracts
+                                          .filter((contract) => String(contract.carrierType || '').toLowerCase() !== 'wegrow')
+                                          .map((contract) => {
+                                          const contractValue = String(contract.id);
+                                          const contractMeta = resolveShippingSelectionMeta(contractValue);
                                           return (
-                                            <div className="flex items-center gap-2 min-w-0">
-                                              {renderShippingSelectionIcon(selectionMeta)}
-                                              <span className="truncate">{selectionMeta.label}</span>
-                                            </div>
+                                            <SelectItem key={`contract-${contractValue}`} value={contractValue}>
+                                              <div className="flex items-center gap-2">
+                                                {renderShippingSelectionIcon(contractMeta)}
+                                                <span>{contractMeta.label}</span>
+                                              </div>
+                                            </SelectItem>
+                                          );
+                                        })}
+                                        {shippingMethodDropdownOptions.map((option) => {
+                                          const optionMeta = resolveShippingSelectionMeta(option.value);
+                                          return (
+                                            <SelectItem key={`dropdown-${option.value}`} value={option.value}>
+                                              <div className="flex items-center gap-2">
+                                                {renderShippingSelectionIcon(optionMeta)}
+                                                <span>{optionMeta.label}</span>
+                                              </div>
+                                            </SelectItem>
+                                          );
+                                        })}
+                                        {(() => {
+                                          const currentSelection = getOrderShippingContractId(order);
+                                          if (!currentSelection) return null;
+                                          const hasContractOption = carrierContracts.some((contract) => String(contract.id) === currentSelection);
+                                          const hasManualOption = isManualShippingOverride(currentSelection);
+                                          const hasDropdownOption = shippingMethodDropdownOptions.some((option) => option.value === currentSelection);
+                                          if (hasContractOption || hasManualOption || hasDropdownOption) return null;
+                                          const fallbackMeta = resolveShippingSelectionMeta(currentSelection);
+                                          return (
+                                            <SelectItem value={currentSelection}>
+                                              <div className="flex items-center gap-2">
+                                                {renderShippingSelectionIcon(fallbackMeta)}
+                                                <span>{fallbackMeta.label}</span>
+                                              </div>
+                                            </SelectItem>
                                           );
                                         })()}
-                                      </SelectValue>
-                                    </SelectTrigger>
-                                    <SelectContent className="border-slate-200 shadow-lg">
-                                      {carrierContracts
-                                        .filter((contract) => String(contract.carrierType || '').toLowerCase() !== 'wegrow')
-                                        .map((contract) => {
-                                        const contractValue = String(contract.id);
-                                        const contractMeta = resolveShippingSelectionMeta(contractValue);
-
-                                        return (
-                                          <SelectItem key={`contract-${contractValue}`} value={contractValue}>
-                                            <div className="flex items-center gap-2">
-                                              {renderShippingSelectionIcon(contractMeta)}
-                                              <span>{contractMeta.label}</span>
-                                            </div>
-                                          </SelectItem>
-                                        );
-                                      })}
-
-                                      {shippingMethodDropdownOptions.map((option) => {
-                                        const optionMeta = resolveShippingSelectionMeta(option.value);
-
-                                        return (
-                                          <SelectItem key={`dropdown-${option.value}`} value={option.value}>
-                                            <div className="flex items-center gap-2">
-                                              {renderShippingSelectionIcon(optionMeta)}
-                                              <span>{optionMeta.label}</span>
-                                            </div>
-                                          </SelectItem>
-                                        );
-                                      })}
-
-                                      {(() => {
-                                        const currentSelection = getOrderShippingContractId(order);
-                                        if (!currentSelection) return null;
-
-                                        const hasContractOption = carrierContracts.some(
-                                          (contract) => String(contract.id) === currentSelection
-                                        );
-                                        const hasManualOption = isManualShippingOverride(currentSelection);
-                                        const hasDropdownOption = shippingMethodDropdownOptions.some(
-                                          (option) => option.value === currentSelection
-                                        );
-
-                                        if (hasContractOption || hasManualOption || hasDropdownOption) return null;
-
-                                        const fallbackMeta = resolveShippingSelectionMeta(currentSelection);
-
-                                        return (
-                                          <SelectItem value={currentSelection}>
-                                            <div className="flex items-center gap-2">
-                                              {renderShippingSelectionIcon(fallbackMeta)}
-                                              <span>{fallbackMeta.label}</span>
-                                            </div>
-                                          </SelectItem>
-                                        );
-                                      })()}
-                                    </SelectContent>
-                                  </Select>
-                                  {savingShippingMethodOrderId === order.id && (
-                                    <div className="flex items-center gap-2 text-xs text-slate-500">
-                                      <Loader2 className="w-3 h-3 animate-spin" />
-                                      Opslaan...
-                                    </div>
-                                  )}
+                                      </SelectContent>
+                                    </Select>
+                                    {savingShippingMethodOrderId === order.id && (
+                                      <div className="flex items-center gap-2 text-xs text-slate-500">
+                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                        Opslaan...
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
-
                               </div>
-                            </div>
 
-                            {/* Right Column - Product Info */}
-                            {order.orderItems && order.orderItems.length > 0 && (
-                              <div className="w-80 p-5 bg-white rounded-xl border border-slate-200 shadow-sm space-y-4">
-                                {order.orderItems.map((item: any, idx: number) => (
-                                  <div key={idx} className="space-y-3">
-                                    <div className="aspect-square w-full bg-slate-100 rounded-lg overflow-hidden flex items-center justify-center">
-                                      {(item.productImage || order.productImage) ? (
-                                        <img 
-                                          src={item.productImage || order.productImage}
-                                          alt={item.productName || order.productName || 'Product afbeelding'}
-                                          className="w-full h-full object-cover"
-                                        />
-                                      ) : (
-                                        <ImageIcon className="w-10 h-10 text-slate-400" />
-                                      )}
-                                    </div>
-                                    
-                                    <div className="space-y-3">
-                                      <p className="text-sm text-slate-900 line-clamp-2">{item.productName}</p>
-                                      
-                                      <div className="space-y-2 pt-2 border-t border-slate-200">
-                                        {item.ean && (
-                                          <div className="flex justify-between text-sm">
-                                            <span className="text-slate-500">EAN</span>
-                                            <span className="text-slate-900 font-mono">{item.ean}</span>
-                                          </div>
-                                        )}
-                                        {item.sku && (
-                                          <div className="flex justify-between items-center gap-3 text-sm">
-                                            <span className="text-slate-500">SKU</span>
-                                            <span
-                                              className="text-slate-900 font-mono max-w-[170px] truncate text-right"
-                                              title={item.sku}
-                                            >
-                                              {item.sku}
-                                            </span>
-                                          </div>
-                                        )}
-                                        <div className="flex justify-between text-sm">
-                                          <span className="text-slate-500">Aantal besteld</span>
-                                          <span className="text-slate-900">{item.quantity || order.itemCount}</span>
-                                        </div>
-                                        <div className="flex justify-between text-sm">
-                                          <span className="text-slate-500">Prijs</span>
-                                          <span className="text-slate-900">€ {item.price?.toFixed(2) || '0.00'}</span>
-                                        </div>
-                                        {item.weight && (
-                                          <div className="flex justify-between text-sm">
-                                            <span className="text-slate-500">Gewicht</span>
-                                            <span className="text-slate-900">{item.weight}</span>
-                                          </div>
+                              {/* Right Column - Product Info */}
+                              {order.orderItems && order.orderItems.length > 0 && (
+                                <div className="w-80 p-5 bg-white rounded-xl border border-slate-200 shadow-sm space-y-4">
+                                  {order.orderItems.map((item: any, idx: number) => (
+                                    <div key={idx} className="space-y-3">
+                                      <div className="aspect-square w-full bg-slate-100 rounded-lg overflow-hidden flex items-center justify-center">
+                                        {(item.productImage || order.productImage) ? (
+                                          <img 
+                                            src={item.productImage || order.productImage}
+                                            alt={item.productName || order.productName || 'Product afbeelding'}
+                                            className="w-full h-full object-cover"
+                                          />
+                                        ) : (
+                                          <ImageIcon className="w-10 h-10 text-slate-400" />
                                         )}
                                       </div>
+                                      
+                                      <div className="space-y-3">
+                                        <p className="text-sm text-slate-900 line-clamp-2">{item.productName}</p>
+                                        
+                                        <div className="space-y-2 pt-2 border-t border-slate-200">
+                                          {item.ean && (
+                                            <div className="flex justify-between text-sm">
+                                              <span className="text-slate-500">EAN</span>
+                                              <span className="text-slate-900 font-mono">{item.ean}</span>
+                                            </div>
+                                          )}
+                                          {item.sku && (
+                                            <div className="flex justify-between items-center gap-3 text-sm">
+                                              <span className="text-slate-500">SKU</span>
+                                              <span className="text-slate-900 font-mono max-w-[170px] truncate text-right" title={item.sku}>
+                                                {item.sku}
+                                              </span>
+                                            </div>
+                                          )}
+                                          <div className="flex justify-between text-sm">
+                                            <span className="text-slate-500">Aantal besteld</span>
+                                            <span className="text-slate-900">{item.quantity || order.itemCount}</span>
+                                          </div>
+                                          <div className="flex justify-between text-sm">
+                                            <span className="text-slate-500">Prijs</span>
+                                            <span className="text-slate-900">€ {item.price?.toFixed(2) || '0.00'}</span>
+                                          </div>
+                                          {item.weight && (
+                                            <div className="flex justify-between text-sm">
+                                              <span className="text-slate-500">Gewicht</span>
+                                              <span className="text-slate-900">{item.weight}</span>
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
                                     </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </Fragment>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </Fragment>
                   ))
                 )}
               </TableBody>
@@ -1880,6 +2029,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
         </CardContent>
       </Card>
 
+      {/* ===== NORMAL LABEL DIALOG ===== */}
       <Dialog
         open={showLabelDialog}
         onOpenChange={(open: boolean) => {
@@ -2003,7 +2153,6 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                       <SelectValue placeholder="Kies een delivery option">
                         {selectedBolDeliveryOption ? (() => {
                           const transporter = String(selectedBolDeliveryOption?.transporterCode || 'Onbekend');
-
                           return (
                             <div className="flex min-w-0 items-center gap-2 text-left">
                               <Truck className="w-4 h-4 text-sky-700 shrink-0" />
@@ -2095,13 +2244,8 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                   </div>
                 </div>
                 <div className="border border-slate-200 rounded-lg overflow-hidden">
-                  <iframe
-                    title="Label preview"
-                    src={labelPreviewUrl}
-                    className="w-full h-full min-h-[760px]"
-                  />
+                  <iframe title="Label preview" src={labelPreviewUrl} className="w-full h-full min-h-[760px]" />
                 </div>
-
                 {generatedLabelMeta && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 border border-slate-200 rounded-lg p-3 bg-slate-50/60">
                     <div>
@@ -2115,12 +2259,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                     {generatedLabelMeta.trackingUrl && (
                       <div className="md:col-span-2">
                         <div className="text-xs text-slate-500">Tracking URL</div>
-                        <a
-                          href={generatedLabelMeta.trackingUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-sm text-indigo-600 hover:text-indigo-700 break-all"
-                        >
+                        <a href={generatedLabelMeta.trackingUrl} target="_blank" rel="noreferrer" className="text-sm text-indigo-600 hover:text-indigo-700 break-all">
                           {generatedLabelMeta.trackingUrl}
                         </a>
                       </div>
@@ -2132,11 +2271,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
           </div>
 
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowLabelDialog(false)}
-              className="border-slate-200"
-            >
+            <Button variant="outline" onClick={() => setShowLabelDialog(false)} className="border-slate-200">
               Sluiten
             </Button>
             <Button
@@ -2151,6 +2286,219 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
             >
               {generatingLabel && <Loader2 className="w-4 h-4 animate-spin" />}
               {isVvbContractSelected ? 'Bol label genereren' : 'Label genereren'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== RETURN LABEL DIALOG ===== */}
+      <Dialog
+        open={showReturnLabelDialog}
+        onOpenChange={(open: boolean) => {
+          setShowReturnLabelDialog(open);
+          if (!open) {
+            setSelectedReturnContractId('');
+            setSelectedReturnWeGrowCarrier('');
+            setReturnLabelPreviewUrl('');
+            setGeneratedReturnLabelMeta(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-5xl min-h-[600px] h-[90vh] max-h-[90vh] flex flex-col overflow-hidden">
+          <DialogHeader>
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center">
+                <RotateCcw className="w-4 h-4 text-violet-600" />
+              </div>
+              <div>
+                <DialogTitle>Retourlabel genereren</DialogTitle>
+                <DialogDescription>
+                  Retourlabel voor {returnLabelOrder?.orderNumber || 'de order'} — klant verzendt terug naar warehouse.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-4 flex-1 overflow-auto">
+
+            {/* Address summary */}
+            {returnLabelOrder && (
+              <div className="rounded-xl border border-violet-200 bg-gradient-to-br from-violet-50 to-purple-50/40 p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <ArrowLeftRight className="w-4 h-4 text-violet-500" />
+                  <span className="text-sm text-violet-800">Adressen omgedraaid voor retour</span>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="rounded-lg bg-white border border-violet-100 p-3 space-y-1">
+                    <div className="text-xs text-slate-500 uppercase tracking-wide">Zender (klant)</div>
+                    <div className="text-sm text-slate-900">{returnLabelOrder.customerName}</div>
+                    <div className="text-xs text-slate-600">{returnLabelOrder.address || '-'}</div>
+                    <div className="text-xs text-slate-500">{returnLabelOrder.country || 'NL'}</div>
+                  </div>
+                  <div className="rounded-lg bg-white border border-violet-100 p-3 space-y-1">
+                    <div className="text-xs text-slate-500 uppercase tracking-wide">Ontvanger (warehouse)</div>
+                    {selectedReturnContract?.credentials?.senderName || selectedReturnContract?.credentials?.senderName1 ? (
+                      <>
+                        <div className="text-sm text-slate-900">
+                          {selectedReturnContract.credentials.senderName || selectedReturnContract.credentials.senderName1}
+                        </div>
+                        <div className="text-xs text-slate-600">
+                          {[
+                            selectedReturnContract.credentials.senderStreet,
+                            selectedReturnContract.credentials.senderZipCode || selectedReturnContract.credentials.senderPostalCode,
+                            selectedReturnContract.credentials.senderCity,
+                          ].filter(Boolean).join(', ') || '-'}
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          {selectedReturnContract.credentials.senderCountry || 'NL'}
+                        </div>
+                      </>
+                    ) : warehouseAddress ? (
+                      <>
+                        <div className="text-sm text-slate-900">{warehouseAddress.name || '-'}</div>
+                        <div className="text-xs text-slate-600">
+                          {[warehouseAddress.street, warehouseAddress.houseNumber].filter(Boolean).join(' ')}
+                          {warehouseAddress.postalCode || warehouseAddress.city ? `, ${[warehouseAddress.postalCode, warehouseAddress.city].filter(Boolean).join(' ')}` : ''}
+                        </div>
+                        <div className="text-xs text-slate-500">{warehouseAddress.country || 'NL'}</div>
+                      </>
+                    ) : (
+                      <div className="text-xs text-slate-400 italic">
+                        {selectedReturnContractId
+                          ? 'Geen warehouse adres ingesteld'
+                          : 'Selecteer eerst een contract'}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Contract selection */}
+            <div className="space-y-2">
+              <label className="text-sm text-slate-700">Contract (alleen met retourlabels ingeschakeld)</label>
+              {loadingCarriers ? (
+                <div className="text-sm text-slate-500">Contracten laden...</div>
+              ) : returnCarrierContracts.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-violet-200 bg-violet-50/40 p-4 text-sm text-slate-500">
+                  Geen contracten met retourlabels ingeschakeld. Ga naar{' '}
+                  <span className="text-violet-600">Vervoerders → Instellingen</span>{' '}
+                  en zet "Retourlabels inschakelen" aan bij DPD of WeGrow.
+                </div>
+              ) : (
+                <RadioGroup
+                  value={selectedReturnContractId}
+                  onValueChange={(value: string) => {
+                    setSelectedReturnContractId(value);
+                    const contract = returnCarrierContracts.find((entry) => String(entry.id) === value);
+                    if (contract?.carrierType !== 'wegrow') {
+                      setSelectedReturnWeGrowCarrier('');
+                    }
+                  }}
+                  className="grid grid-cols-1 md:grid-cols-2 gap-3"
+                >
+                  {returnCarrierContracts.map((contract) => {
+                    const logo = carrierLogoMap[contract.carrierType] || null;
+                    const isSelected = selectedReturnContractId === String(contract.id);
+
+                    return (
+                      <label
+                        key={contract.id}
+                        htmlFor={`return-contract-${contract.id}`}
+                        className={`flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
+                          isSelected
+                            ? 'border-violet-300 bg-violet-50 ring-1 ring-violet-200'
+                            : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/70'
+                        }`}
+                      >
+                        <RadioGroupItem
+                          id={`return-contract-${contract.id}`}
+                          value={String(contract.id)}
+                          className="mt-0.5"
+                        />
+                        {logo && (
+                          <div className="w-8 h-8 rounded-md bg-white border border-slate-200 p-1 flex items-center justify-center">
+                            <img src={logo} alt={contract.carrierType} className="w-full h-full object-contain" />
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <div className="text-sm text-slate-900 truncate">{contract.contractName}</div>
+                          <div className={`text-xs uppercase ${isSelected ? 'text-violet-700' : 'text-slate-500'}`}>
+                            {contract.carrierType}
+                          </div>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </RadioGroup>
+              )}
+            </div>
+
+            {/* WeGrow sub-carrier selection */}
+
+
+            {/* Return label preview */}
+            {returnLabelPreviewUrl && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-slate-700">Retourlabel preview</span>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" className="border-slate-200 shadow-sm" asChild>
+                      <a href={returnLabelPreviewUrl} target="_blank" rel="noreferrer">
+                        <Eye className="w-4 h-4 mr-1.5" />
+                        Volledige preview
+                      </a>
+                    </Button>
+                    <Button variant="outline" size="sm" className="border-slate-200 shadow-sm" asChild>
+                      <a href={returnLabelPreviewUrl} download>
+                        <Download className="w-4 h-4 mr-1.5" />
+                        Download label
+                      </a>
+                    </Button>
+                  </div>
+                </div>
+                <div className="border border-slate-200 rounded-lg overflow-hidden">
+                  <iframe title="Retourlabel preview" src={returnLabelPreviewUrl} className="w-full h-full min-h-[500px]" />
+                </div>
+                {generatedReturnLabelMeta && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 border border-slate-200 rounded-lg p-3 bg-slate-50/60">
+                    <div>
+                      <div className="text-xs text-slate-500">Shipment ID</div>
+                      <div className="text-sm text-slate-900 font-mono break-all">{generatedReturnLabelMeta.shipmentId || '-'}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-slate-500">Tracking</div>
+                      <div className="text-sm text-slate-900 font-mono break-all">{generatedReturnLabelMeta.trackingCode || '-'}</div>
+                    </div>
+                    {generatedReturnLabelMeta.trackingUrl && (
+                      <div className="md:col-span-2">
+                        <div className="text-xs text-slate-500">Tracking URL</div>
+                        <a href={generatedReturnLabelMeta.trackingUrl} target="_blank" rel="noreferrer" className="text-sm text-indigo-600 hover:text-indigo-700 break-all">
+                          {generatedReturnLabelMeta.trackingUrl}
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowReturnLabelDialog(false)} className="border-slate-200">
+              Sluiten
+            </Button>
+            <Button
+              onClick={handleGenerateReturnLabel}
+              disabled={
+                !selectedReturnContractId
+                || generatingReturnLabel
+              }
+              className="gap-2 bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700"
+            >
+              {generatingReturnLabel && <Loader2 className="w-4 h-4 animate-spin" />}
+              <RotateCcw className="w-4 h-4" />
+              Retourlabel genereren
             </Button>
           </DialogFooter>
         </DialogContent>

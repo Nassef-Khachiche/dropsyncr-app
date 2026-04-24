@@ -18,6 +18,8 @@ import { useAuth } from './contexts/AuthContext';
 import { useLanguage } from './contexts/LanguageContext';
 import { InventoryManagement } from './components/InventoryManagement';
 import { InventoryAnalysis } from './components/InventoryAnalysis';
+import { Settings } from './components/Settings';
+import { Retouren } from './components/Retouren';
 import { Loader2 } from 'lucide-react';
 import { Toaster } from 'sonner';
 
@@ -27,7 +29,6 @@ export default function App() {
   const [activeProfile, setActiveProfile] = useState<string | null>(null);
   const [activeView, setActiveView] = useState('orders');
 
-  // Listen for auth logout events (from API service)
   React.useEffect(() => {
     const handleLogout = () => {
       logout();
@@ -45,6 +46,8 @@ export default function App() {
         return <TrackingManager activeProfile={activeProfile} />;
       case 'labels':
         return <LabelPrinting activeProfile={activeProfile} />;
+      case 'returns':
+        return <Retouren activeProfile={activeProfile} />;
       case 'integrations':
         return <Integrations activeProfile={activeProfile} />;
       case 'carriers':
@@ -59,16 +62,34 @@ export default function App() {
         return <KLKAnalytics activeProfile={activeProfile} />;
       case 'fulfillment-analytics':
         return <FulfillmentAnalytics activeProfile={activeProfile} />;
-      default:
-        return <OrdersOverview activeProfile={activeProfile} />;
-        case 'inventory-management':
+      case 'inventory-management':
         return <InventoryManagement activeProfile={activeProfile} />;
       case 'inventory-analysis':
         return <InventoryAnalysis activeProfile={activeProfile} />;
+        case 'settings':
+        return <Settings activeProfile={activeProfile} />;
+      case 'settings':
+        return (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-2xl bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent mb-2">
+                Instellingen
+              </h2>
+              <p className="text-slate-600">Beheer je platforminstellingen</p>
+            </div>
+            <div className="flex items-center justify-center py-24 text-slate-400">
+              <div className="text-center space-y-3">
+                <Settings className="w-12 h-12 mx-auto text-slate-300" />
+                <p className="text-sm">Instellingen pagina komt binnenkort</p>
+              </div>
+            </div>
+          </div>
+        );
+      default:
+        return <OrdersOverview activeProfile={activeProfile} />;
     }
   };
 
-  // Show loading spinner while checking authentication
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 via-white to-indigo-50/30">
@@ -80,22 +101,17 @@ export default function App() {
     );
   }
 
-  // Show login page if not authenticated
   if (!isAuthenticated) {
     return <Login />;
   }
 
-  // Show main app if authenticated
   return (
     <div className="flex min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/30">
       <GlobalTextTranslator />
       <Toaster richColors position="top-right" />
-      {/* Sidebar */}
       <AppSidebar activeView={activeView} onViewChange={setActiveView} />
       
-      {/* Main Content Area */}
       <div className="flex-1 flex flex-col">
-        {/* Header */}
         <header className="bg-white/80 backdrop-blur-xl border-b border-slate-200/60 sticky top-0 z-40 shadow-sm">
           <div className="px-8 py-5 flex items-center justify-end">
             <div className="flex items-center gap-3">
@@ -108,7 +124,6 @@ export default function App() {
           </div>
         </header>
 
-        {/* Main Content */}
         <main className="flex-1 p-8 overflow-auto">
           <div className="mx-auto">
             {renderView()}

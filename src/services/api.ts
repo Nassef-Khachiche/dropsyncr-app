@@ -48,7 +48,6 @@ class ApiService {
   ): Promise<T> {
     const token = localStorage.getItem('token');
     
-    // Check if token exists
     if (!token && endpoint !== '/auth/login') {
       throw new Error('No authentication token found. Please log in again.');
     }
@@ -58,7 +57,6 @@ class ApiService {
       ...options.headers,
     };
 
-    // Debug: Log token presence for auth endpoints
     if (endpoint.includes('/auth/') || endpoint.includes('/installations') || endpoint.includes('/dashboard')) {
       console.log(`[API] Request to ${endpoint}, token present: ${!!token}, token length: ${token?.length || 0}`);
     }
@@ -74,7 +72,6 @@ class ApiService {
       const errorDetails = formatApiErrorPart(error.details);
       const endpointWithStatus = `${endpoint} (HTTP ${response.status})`;
       
-      // Debug: Log 401 errors with full details
       if (response.status === 401) {
         const hadToken = !!localStorage.getItem('token');
         console.error(`[API] 401 Unauthorized on ${endpoint}`);
@@ -84,33 +81,25 @@ class ApiService {
         if (error.code) console.error(`[API] error code: ${error.code}`);
       }
       
-      // If token is invalid or expired, clear it and redirect to login
-      // But only if we actually had a token (to avoid clearing on initial load)
       if (response.status === 401) {
         const hadToken = !!localStorage.getItem('token');
         if (hadToken) {
-          // Don't clear token immediately - might be a temporary issue
-          // Only clear if it's explicitly an invalid/expired token error
           if (errorMessage.includes('Invalid token') || errorMessage.includes('Token expired') || errorMessage.includes('expired') || errorMessage.includes('No token provided')) {
             localStorage.removeItem('token');
             localStorage.removeItem('user');
-            // Trigger a custom event to notify the app to redirect to login
             window.dispatchEvent(new CustomEvent('auth:logout'));
             throw new Error('Your session has expired. Please log in again.');
           } else {
-            // Other 401 errors - might be a backend issue, include details
             const fullMessage = errorDetails 
               ? `${errorMessage}: ${errorDetails}`
               : errorMessage || 'Authentication failed. Please try again.';
             throw new Error(fullMessage);
           }
         } else {
-          // No token was present, just throw a regular error
           throw new Error('Authentication required. Please log in.');
         }
       }
       
-      // For other errors, prefer details if available (more specific), otherwise use main error message
       const fullMessage = errorDetails
         ? `${errorMessage}: ${errorDetails}`
         : `${errorMessage} at ${endpointWithStatus}`;
@@ -545,7 +534,7 @@ class ApiService {
     }>(`/integrations/${id}/credentials`);
   }
 
-// Kaufland Integration
+  // Kaufland Integration
   async syncKauflandOrders(installationId: string, integrationId?: number) {
     const queryParams = new URLSearchParams();
     queryParams.append('installationId', installationId);
@@ -627,7 +616,57 @@ class ApiService {
       }
     );
   }
+
+  // Returns
+  async getReturns(params?: {
+    installationId?: string;
+    status?: string;
+    search?: string;
+  }) {
+    const queryParams = new URLSearchParams();
+    if (params?.installationId) queryParams.append('installationId', params.installationId);
+    if (params?.status) queryParams.append('status', params.status);
+    if (params?.search) queryParams.append('search', params.search);
+
+    return this.request<{ returns: any[] }>(
+      `/returns?${queryParams.toString()}`
+    );
+  }
+
+  async getReturn(id: number) {
+    return this.request<any>(`/returns/${id}`);
+  }
+
+  async createReturn(data: any) {
+    return this.request<any>('/returns', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateReturn(id: number, data: any) {
+    return this.request<any>(`/returns/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteReturn(id: number) {
+    return this.request<{ message: string }>(`/returns/${id}`, {
+      method: 'DELETE',
+    });
+  }
+  
+  async getWarehouseAddress(installationId: string) {
+  return this.request<any>(`/warehouse?installationId=${installationId}`);
+}
+
+async upsertWarehouseAddress(data: any) {
+  return this.request<any>('/warehouse', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
 }
 
 export const api = new ApiService();
-

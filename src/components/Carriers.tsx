@@ -30,7 +30,8 @@ import {
   Package,
   Eye,
   EyeOff,
-  Loader2
+  Loader2,
+  RotateCcw,
 } from 'lucide-react';
 import { Alert, AlertDescription } from './ui/alert';
 import { toast } from 'sonner';
@@ -61,6 +62,13 @@ interface CarrierField {
   required?: boolean;
 }
 
+interface CarrierCheckbox {
+  name: string;
+  label: string;
+  description?: string;
+  section?: 'returns';
+}
+
 interface CarrierOption {
   id: string;
   name: string;
@@ -68,10 +76,12 @@ interface CarrierOption {
   color: string;
   bgColor: string;
   fields: CarrierField[];
+  /** @deprecated use checkboxes instead */
   hasCheckbox?: {
     name: string;
     label: string;
   };
+  checkboxes?: CarrierCheckbox[];
 }
 
 const availableCarriers: CarrierOption[] = [
@@ -102,7 +112,18 @@ const availableCarriers: CarrierOption[] = [
       { name: 'depotNumber', label: 'Depotnummer', type: 'text', placeholder: 'Voer je depotnummer in' },
       { name: 'endpointUrl', label: 'Endpoint URL (optioneel)', type: 'text', placeholder: 'Bijv. https://wsshipper.dpd.nl/soap/services/ShipmentService/V3_5/', required: false },
     ],
-    hasCheckbox: { name: 'strictEndpoint', label: 'Gebruik alleen deze endpoint URL (geen fallback)' },
+    checkboxes: [
+      {
+        name: 'strictEndpoint',
+        label: 'Gebruik alleen deze endpoint URL (geen fallback)',
+      },
+      {
+        name: 'supportsReturns',
+        label: 'Retourlabels inschakelen',
+        description: 'Maakt het mogelijk om via dit contract retourlabels aan te maken (klantadres als zender, warehouse als ontvanger)',
+        section: 'returns',
+      },
+    ],
   },
   {
     id: 'wegrow',
@@ -121,10 +142,22 @@ const availableCarriers: CarrierOption[] = [
       { name: 'dhlForYouServiceCode', label: 'DHL For You Service Code', type: 'text', placeholder: 'Specifieke WeGrow service code voor DHL For You', required: false },
       { name: 'postnlNederlandBrievenbuspakketje02kgServiceCode', label: 'PostNL Brievenbuspakketje 0-2kg Service Code', type: 'text', placeholder: 'Specifieke WeGrow service code voor PostNL Brievenbuspakketje 0-2kg', required: false },
       { name: 'postnlBelgieStandaard023kgServiceCode', label: 'PostNL België Standaard 0-23kg Service Code', type: 'text', placeholder: 'Specifieke WeGrow service code voor PostNL België Standaard 0-23kg', required: false },
+      { name: 'returnServiceCode', label: 'Return Service Code', type: 'text',  placeholder: 'Bijv. wegrow_direct_return', required: false },
       { name: 'baseUrl', label: 'Base URL', type: 'text', placeholder: 'Bijv. https://api-sandbox.wegrow.eu', required: false },
       { name: 'apiVersion', label: 'API Version', type: 'text', placeholder: 'Bijv. v1', required: false },
     ],
-    hasCheckbox: { name: 'sandbox', label: 'Sandbox' }
+    checkboxes: [
+      {
+        name: 'sandbox',
+        label: 'Sandbox',
+      },
+      {
+        name: 'supportsReturns',
+        label: 'Retourlabels inschakelen',
+        description: 'Maakt het mogelijk om via dit contract retourlabels aan te maken (klantadres als zender, warehouse als ontvanger)',
+        section: 'returns',
+      },
+    ],
   },
 ];
 
@@ -390,7 +423,21 @@ export function Carriers({ activeProfile }: CarriersProps) {
       .slice(0, 2) as [string, any][];
   };
 
+  // Resolve all checkboxes for the selected carrier (supports both legacy hasCheckbox and new checkboxes array)
+  const getCarrierCheckboxes = (carrierData: CarrierOption): CarrierCheckbox[] => {
+    if (carrierData.checkboxes && carrierData.checkboxes.length > 0) {
+      return carrierData.checkboxes;
+    }
+    if (carrierData.hasCheckbox) {
+      return [{ name: carrierData.hasCheckbox.name, label: carrierData.hasCheckbox.label }];
+    }
+    return [];
+  };
+
   const selectedCarrierData = availableCarriers.find(c => c.id === selectedCarrier);
+  const selectedCarrierCheckboxes = selectedCarrierData ? getCarrierCheckboxes(selectedCarrierData) : [];
+  const regularCheckboxes = selectedCarrierCheckboxes.filter(cb => cb.section !== 'returns');
+  const returnCheckboxes = selectedCarrierCheckboxes.filter(cb => cb.section === 'returns');
 
   return (
     <div className="space-y-6">
@@ -429,6 +476,7 @@ export function Carriers({ activeProfile }: CarriersProps) {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {contracts.map((contract) => {
               const carrier = availableCarriers.find(c => c.id === contract.carrier);
+              const supportsReturns = contract.credentials?.supportsReturns === true;
               return (
                 <Card key={contract.id} className="border-slate-200 shadow-sm hover:shadow-md transition-shadow">
                   <CardContent className="p-6">
@@ -451,6 +499,15 @@ export function Carriers({ activeProfile }: CarriersProps) {
                           <span className="font-mono text-slate-900 text-xs">{maskCredentialValue(key, value)}</span>
                         </div>
                       ))}
+
+                      {/* Returns badge */}
+                      {supportsReturns && (
+                        <div className="flex items-center gap-1.5 pt-1">
+                          <RotateCcw className="w-3 h-3 text-violet-500" />
+                          <span className="text-xs text-violet-600">Retourlabels ingeschakeld</span>
+                        </div>
+                      )}
+
                       <div className="flex items-center justify-between pt-2 border-t border-slate-100">
                         <span className="text-sm text-slate-600">Status:</span>
                         <div className="flex items-center gap-2">
@@ -542,9 +599,9 @@ export function Carriers({ activeProfile }: CarriersProps) {
         </CardContent>
       </Card>
 
-      {/* Add Contract Dialog */}
+      {/* Add / Edit Contract Dialog */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingContract ? 'Contract Instellingen' : 'Contract Toevoegen'}</DialogTitle>
             <DialogDescription>
@@ -609,20 +666,48 @@ export function Carriers({ activeProfile }: CarriersProps) {
                   </div>
                 ))}
 
-                {/* Checkbox if exists */}
-                {selectedCarrierData.hasCheckbox && (
-                  <div className="flex items-center space-x-2 py-2">
-                    <Checkbox 
-                      id={selectedCarrierData.hasCheckbox.name}
-                      checked={formData[selectedCarrierData.hasCheckbox.name] || false}
-                      onCheckedChange={(checked: boolean | 'indeterminate') => handleInputChange(selectedCarrierData.hasCheckbox!.name, checked === true)}
+                {/* Regular checkboxes (sandbox, strictEndpoint, etc.) */}
+                {regularCheckboxes.map((checkbox) => (
+                  <div key={checkbox.name} className="flex items-center space-x-2 py-2">
+                    <Checkbox
+                      id={checkbox.name}
+                      checked={formData[checkbox.name] || false}
+                      onCheckedChange={(checked: boolean | 'indeterminate') =>
+                        handleInputChange(checkbox.name, checked === true)
+                      }
                     />
-                    <Label 
-                      htmlFor={selectedCarrierData.hasCheckbox.name}
-                      className="text-sm cursor-pointer"
-                    >
-                      {selectedCarrierData.hasCheckbox.label}
+                    <Label htmlFor={checkbox.name} className="text-sm cursor-pointer">
+                      {checkbox.label}
                     </Label>
+                  </div>
+                ))}
+
+                {/* Returns section */}
+                {returnCheckboxes.length > 0 && (
+                  <div className="rounded-xl border border-violet-200 bg-gradient-to-br from-violet-50 to-purple-50/60 p-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <RotateCcw className="w-4 h-4 text-violet-500" />
+                      <span className="text-sm text-violet-800">Retouropties</span>
+                    </div>
+                    {returnCheckboxes.map((checkbox) => (
+                      <div key={checkbox.name} className="space-y-1">
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id={checkbox.name}
+                            checked={formData[checkbox.name] || false}
+                            onCheckedChange={(checked: boolean | 'indeterminate') =>
+                              handleInputChange(checkbox.name, checked === true)
+                            }
+                          />
+                          <Label htmlFor={checkbox.name} className="text-sm cursor-pointer text-slate-800">
+                            {checkbox.label}
+                          </Label>
+                        </div>
+                        {checkbox.description && (
+                          <p className="text-xs text-slate-500 pl-6">{checkbox.description}</p>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 )}
 

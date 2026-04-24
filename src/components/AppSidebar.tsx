@@ -12,13 +12,16 @@ import {
   Shield,
   Workflow,
   Warehouse,
-  BarChart3
+  BarChart3,
+  Settings,
+  RotateCcw,
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from './ui/utils';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import logo from '../assets/dropsyncr-logo.png';
+
 
 interface AppSidebarProps {
   activeView: string;
@@ -33,21 +36,14 @@ interface MenuItem {
   children?: MenuItem[];
 }
 
-const menuItems: { sectionKey: 'orderManagement' | 'system' | 'warehouseManagement' | 'analytics' | 'administrativeSection'; items: MenuItem[] }[] = [
+const menuItems: { sectionKey: 'orderManagement' | 'warehouseManagement' | 'analytics' | 'system' | 'administrativeSection'; items: MenuItem[] }[] = [
   {
     sectionKey: 'orderManagement',
     items: [
       { id: 'orders', labelKey: 'orders', icon: ShoppingCart },
       { id: 'tracking', labelKey: 'tracking', icon: QrCode },
       { id: 'labels', labelKey: 'labels', icon: FileText },
-      { id: 'integrations', labelKey: 'integrations', icon: Plug },
-      { id: 'carriers', labelKey: 'carriers', icon: Truck },
-    ],
-  },
-  {
-    sectionKey: 'system',
-    items: [
-      { id: 'automation-rules', labelKey: 'automationRules', icon: Workflow },
+      { id: 'returns', labelKey: 'returns', icon: RotateCcw },
     ],
   },
   {
@@ -55,6 +51,7 @@ const menuItems: { sectionKey: 'orderManagement' | 'system' | 'warehouseManageme
     items: [
       { id: 'inventory-management', labelKey: 'inventoryManagement', icon: Warehouse },
       { id: 'inventory-analysis', labelKey: 'inventoryAnalysis', icon: BarChart3 },
+      { id: 'carriers', labelKey: 'carriers', icon: Truck },
     ],
   },
   {
@@ -63,6 +60,14 @@ const menuItems: { sectionKey: 'orderManagement' | 'system' | 'warehouseManageme
       { id: 'dashboard', labelKey: 'dashboard', icon: BarChart2 },
       { id: 'klk-analytics', labelKey: 'klkAnalytics', icon: TrendingUp, adminOnly: true },
       { id: 'fulfillment-analytics', labelKey: 'fulfillmentAnalytics', icon: Package, adminOnly: true },
+    ],
+  },
+  {
+    sectionKey: 'system',
+    items: [
+      { id: 'integrations', labelKey: 'integrations', icon: Plug },
+      { id: 'automation-rules', labelKey: 'automationRules', icon: Workflow },
+      { id: 'settings', labelKey: 'settings', icon: Settings },
     ],
   },
   {
@@ -88,18 +93,15 @@ export function AppSidebar({ activeView, onViewChange }: AppSidebarProps) {
     user?.email === 'admin@dropsyncr.com';
 
   const filteredMenuItems = menuItems.map(group => {
-    // Verberg administratieve sectie voor niet-admins
     if (group.sectionKey === 'administrativeSection' && !isGlobalAdmin) {
       return null;
     }
 
-    // Filter adminOnly items binnen een sectie
     const filteredItems = group.items.filter(item => {
       if (item.adminOnly && !isGlobalAdmin) return false;
       return true;
     });
 
-    // Als er geen items meer over zijn, verberg de hele sectie
     if (filteredItems.length === 0) return null;
 
     return { ...group, items: filteredItems };
