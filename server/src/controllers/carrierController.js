@@ -70,6 +70,7 @@ const normalizeWeGrowCredentials = (rawCredentials = {}) => {
   if (credentials.baseUrl !== undefined) credentials.baseUrl = trimMaybe(credentials.baseUrl);
   if (credentials.apiVersion !== undefined) credentials.apiVersion = trimMaybe(credentials.apiVersion);
   if (credentials.serviceCode !== undefined) credentials.serviceCode = trimMaybe(credentials.serviceCode);
+  if (credentials.returnServiceCode !== undefined) credentials.returnServiceCode = trimMaybe(credentials.returnServiceCode);
   if (credentials.serviceCodes !== undefined) {
     credentials.serviceCodes = normalizeWeGrowServiceCodeMap(credentials.serviceCodes);
   }
@@ -203,9 +204,7 @@ const persistNormalizedCredentialsIfChanged = async (carrierId, previousCredenti
     });
   } catch (error) {
     if (error?.code === 'P2000') {
-      console.warn('Skipping normalized credential persistence due to column length limit', {
-        carrierId,
-      });
+      console.warn('Skipping normalized credential persistence due to column length limit', { carrierId });
       return;
     }
     throw error;
@@ -216,13 +215,9 @@ export const getCarriers = async (req, res) => {
   try {
     const { installationId } = req.query;
 
-    // Verify access
     if (!req.user.isGlobalAdmin) {
       const hasAccess = await prisma.userInstallation.findFirst({
-        where: {
-          userId: req.user.id,
-          installationId: parseInt(installationId),
-        },
+        where: { userId: req.user.id, installationId: parseInt(installationId) },
       });
       if (!hasAccess) {
         return res.status(403).json({ error: 'Access denied to this installation' });
@@ -230,20 +225,14 @@ export const getCarriers = async (req, res) => {
     }
 
     const carriers = await prisma.carrier.findMany({
-      where: {
-        installationId: parseInt(installationId),
-      },
+      where: { installationId: parseInt(installationId) },
       orderBy: { createdAt: 'desc' },
     });
 
-    // Parse credentials JSON
     const carriersWithParsedCredentials = carriers.map((carrier) => {
       const parsedCredentials = parseCredentialsSafely(carrier.credentials);
       const normalizedCredentials = normalizeCarrierCredentials(carrier.carrierType, parsedCredentials);
-      return {
-        ...carrier,
-        credentials: normalizedCredentials,
-      };
+      return { ...carrier, credentials: normalizedCredentials };
     });
 
     res.json(carriersWithParsedCredentials);
@@ -258,13 +247,9 @@ export const createCarrier = async (req, res) => {
     const { installationId, carrierType, contractName, active, credentials } = req.body;
     const normalizedCredentials = normalizeCarrierCredentials(carrierType, credentials || {});
 
-    // Verify access
     if (!req.user.isGlobalAdmin) {
       const hasAccess = await prisma.userInstallation.findFirst({
-        where: {
-          userId: req.user.id,
-          installationId: parseInt(installationId),
-        },
+        where: { userId: req.user.id, installationId: parseInt(installationId) },
       });
       if (!hasAccess) {
         return res.status(403).json({ error: 'Access denied to this installation' });
@@ -281,10 +266,7 @@ export const createCarrier = async (req, res) => {
       },
     });
 
-    res.status(201).json({
-      ...carrier,
-      credentials: JSON.parse(carrier.credentials),
-    });
+    res.status(201).json({ ...carrier, credentials: JSON.parse(carrier.credentials) });
   } catch (error) {
     console.error('Create carrier error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -318,10 +300,7 @@ export const updateCarrier = async (req, res) => {
       data: updateData,
     });
 
-    res.json({
-      ...carrier,
-      credentials: JSON.parse(carrier.credentials),
-    });
+    res.json({ ...carrier, credentials: JSON.parse(carrier.credentials) });
   } catch (error) {
     console.error('Update carrier error:', error);
     if (error.code === 'P2025') {
@@ -335,9 +314,7 @@ export const deleteCarrier = async (req, res) => {
   try {
     const { id } = req.params;
 
-    await prisma.carrier.delete({
-      where: { id: parseInt(id) },
-    });
+    await prisma.carrier.delete({ where: { id: parseInt(id) } });
 
     res.json({ message: 'Carrier deleted successfully' });
   } catch (error) {
@@ -353,21 +330,15 @@ export const testCarrierConnection = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const carrier = await prisma.carrier.findUnique({
-      where: { id: parseInt(id) },
-    });
+    const carrier = await prisma.carrier.findUnique({ where: { id: parseInt(id) } });
 
     if (!carrier) {
       return res.status(404).json({ error: 'Carrier not found' });
     }
 
-    // Verify access
     if (!req.user.isGlobalAdmin) {
       const hasAccess = await prisma.userInstallation.findFirst({
-        where: {
-          userId: req.user.id,
-          installationId: carrier.installationId,
-        },
+        where: { userId: req.user.id, installationId: carrier.installationId },
       });
       if (!hasAccess) {
         return res.status(403).json({ error: 'Access denied to this installation' });
@@ -414,66 +385,35 @@ export const testCarrierConnection = async (req, res) => {
       const useSandbox = isTruthyValue(wegrowCredentials.sandbox) || String(wegrowCredentials.environment || '').toLowerCase() === 'sandbox';
       const baseUrl = (wegrowCredentials.baseUrl || process.env.WEGROW_BASE_URL || (useSandbox ? sandboxDefault : productionDefault)).replace(/\/+$/, '');
 
-      const probeEndpoints = [
-        `${baseUrl}/shipments?limit=1`,
-        `${baseUrl}/shipments`,
-      ];
+      const probeEndpoints = [`${baseUrl}/shipments?limit=1`, `${baseUrl}/shipments`];
 
       for (const endpoint of probeEndpoints) {
         const response = await fetch(endpoint, {
           method: 'GET',
-          headers: {
-            Accept: 'application/json',
-            ...weGrowAuthHeaders,
-            'x-version': apiVersion,
-          },
+          headers: { Accept: 'application/json', ...weGrowAuthHeaders, 'x-version': apiVersion },
         });
 
         const rawBody = await response.text();
         let parsedBody = null;
-        try {
-          parsedBody = rawBody ? JSON.parse(rawBody) : null;
-        } catch {
-          parsedBody = null;
-        }
+        try { parsedBody = rawBody ? JSON.parse(rawBody) : null; } catch { parsedBody = null; }
 
         const detail = parsedBody?.detail || parsedBody?.error || rawBody || null;
 
         if (response.status === 401 || response.status === 403) {
-          return res.json({
-            success: false,
-            message: 'WeGrow authenticatie mislukt',
-            details: detail || 'Unauthorized',
-          });
+          return res.json({ success: false, message: 'WeGrow authenticatie mislukt', details: detail || 'Unauthorized' });
         }
-
         if (response.ok) {
-          return res.json({
-            success: true,
-            message: 'WeGrow authenticatie succesvol',
-          });
+          return res.json({ success: true, message: 'WeGrow authenticatie succesvol' });
         }
-
         if (response.status >= 400 && response.status < 500) {
-          return res.json({
-            success: true,
-            message: `WeGrow authenticatie succesvol (HTTP ${response.status})`,
-            details: detail,
-          });
+          return res.json({ success: true, message: `WeGrow authenticatie succesvol (HTTP ${response.status})`, details: detail });
         }
       }
 
-      return res.json({
-        success: false,
-        message: 'WeGrow verbindingstest mislukt',
-        details: 'Geen geldig antwoord van WeGrow ontvangen',
-      });
+      return res.json({ success: false, message: 'WeGrow verbindingstest mislukt', details: 'Geen geldig antwoord van WeGrow ontvangen' });
     }
 
-    return res.json({
-      success: false,
-      message: 'Carrier type wordt momenteel niet ondersteund',
-    });
+    return res.json({ success: false, message: 'Carrier type wordt momenteel niet ondersteund' });
   } catch (error) {
     console.error('Test carrier error:', error);
     res.status(500).json({ success: false, error: 'Failed to test carrier' });
@@ -485,29 +425,16 @@ export const generateCarrierLabels = async (req, res) => {
     const { id } = req.params;
     const { packages = [], shippingMethod, wegrowCarrier } = req.body;
 
-    const carrier = await prisma.carrier.findUnique({
-      where: { id: parseInt(id) },
-    });
+    const carrier = await prisma.carrier.findUnique({ where: { id: parseInt(id) } });
 
-    if (!carrier) {
-      return res.status(404).json({ error: 'Carrier not found' });
-    }
+    if (!carrier) return res.status(404).json({ error: 'Carrier not found' });
+    if (!carrier.active) return res.status(400).json({ error: 'Carrier contract is inactive' });
 
-    if (!carrier.active) {
-      return res.status(400).json({ error: 'Carrier contract is inactive' });
-    }
-
-    // Verify access
     if (!req.user.isGlobalAdmin) {
       const hasAccess = await prisma.userInstallation.findFirst({
-        where: {
-          userId: req.user.id,
-          installationId: carrier.installationId,
-        },
+        where: { userId: req.user.id, installationId: carrier.installationId },
       });
-      if (!hasAccess) {
-        return res.status(403).json({ error: 'Access denied to this installation' });
-      }
+      if (!hasAccess) return res.status(403).json({ error: 'Access denied to this installation' });
     }
 
     if (!['dhl', 'dpd', 'wegrow'].includes(carrier.carrierType)) {
@@ -516,19 +443,11 @@ export const generateCarrierLabels = async (req, res) => {
 
     const selectedShippingMethod = String(shippingMethod || carrier.id || '').trim() || null;
 
-    const forwardedProto = String(req.get('x-forwarded-proto') || '')
-      .split(',')[0]
-      .trim()
-      .toLowerCase();
-    const forwardedHost = String(req.get('x-forwarded-host') || '')
-      .split(',')[0]
-      .trim();
+    const forwardedProto = String(req.get('x-forwarded-proto') || '').split(',')[0].trim().toLowerCase();
+    const forwardedHost = String(req.get('x-forwarded-host') || '').split(',')[0].trim();
     const requestHost = forwardedHost || String(req.get('host') || '').trim();
     const protocol =
-      req.secure ||
-      forwardedProto === 'https' ||
-      process.env.FORCE_LABEL_HTTPS === 'true' ||
-      process.env.NODE_ENV === 'production'
+      req.secure || forwardedProto === 'https' || process.env.FORCE_LABEL_HTTPS === 'true' || process.env.NODE_ENV === 'production'
         ? 'https'
         : req.protocol;
 
@@ -556,15 +475,12 @@ export const generateCarrierLabels = async (req, res) => {
         return buildPublicLabelUrl(fileName);
       }
 
-      if (normalized.startsWith('/labels/')) {
-        return `${protocol}://${requestHost}${normalized}`;
-      }
+      if (normalized.startsWith('/labels/')) return `${protocol}://${requestHost}${normalized}`;
 
       if (normalized.startsWith('http://') || normalized.startsWith('https://')) {
         try {
           const parsedUrl = new URL(normalized);
           const sameHost = parsedUrl.host.toLowerCase() === requestHost.toLowerCase();
-
           if (sameHost && protocol === 'https' && parsedUrl.protocol === 'http:') {
             parsedUrl.protocol = 'https:';
             return parsedUrl.toString();
@@ -572,7 +488,6 @@ export const generateCarrierLabels = async (req, res) => {
         } catch {
           return normalized.length <= 191 ? normalized : null;
         }
-
         return normalized.length <= 191 ? normalized : null;
       }
 
@@ -585,110 +500,82 @@ export const generateCarrierLabels = async (req, res) => {
 
       const orderNumbersFromPackages = Array.from(
         new Set(
-          packageList
-            .map((pkg) => {
-              const explicitOrderNumber = String(pkg?.orderNumber || '').trim();
-              if (explicitOrderNumber) return explicitOrderNumber;
-
-              const packageId = pkg?.id;
-              if (typeof packageId === 'string') {
-                const normalizedPackageId = packageId.trim();
-                if (normalizedPackageId) return normalizedPackageId;
-              }
-
-              return null;
-            })
-            .filter(Boolean)
+          packageList.map((pkg) => {
+            const explicitOrderNumber = String(pkg?.orderNumber || '').trim();
+            if (explicitOrderNumber) return explicitOrderNumber;
+            const packageId = pkg?.id;
+            if (typeof packageId === 'string') {
+              const normalizedPackageId = packageId.trim();
+              if (normalizedPackageId) return normalizedPackageId;
+            }
+            return null;
+          }).filter(Boolean)
         )
       );
 
       const ordersByOrderNumber = new Map();
       if (orderNumbersFromPackages.length > 0) {
         const matchingOrders = await prisma.order.findMany({
-          where: {
-            installationId: carrier.installationId,
-            orderNumber: { in: orderNumbersFromPackages },
-          },
-          select: {
-            id: true,
-            orderNumber: true,
-          },
+          where: { installationId: carrier.installationId, orderNumber: { in: orderNumbersFromPackages } },
+          select: { id: true, orderNumber: true },
         });
-
-        matchingOrders.forEach((order) => {
-          ordersByOrderNumber.set(order.orderNumber, order.id);
-        });
+        matchingOrders.forEach((order) => { ordersByOrderNumber.set(order.orderNumber, order.id); });
       }
 
       const resolvedPackages = [];
       for (let index = 0; index < packageList.length; index += 1) {
         const pkg = packageList[index] || {};
         const parsedOrderId = Number(pkg.orderId);
-
-        let orderId = Number.isInteger(parsedOrderId) && parsedOrderId > 0
-          ? parsedOrderId
-          : null;
-
+        let orderId = Number.isInteger(parsedOrderId) && parsedOrderId > 0 ? parsedOrderId : null;
         if (!orderId) {
           const orderNumberKey = String(pkg.orderNumber || pkg.id || '').trim();
           if (orderNumberKey && ordersByOrderNumber.has(orderNumberKey)) {
             orderId = ordersByOrderNumber.get(orderNumberKey);
           }
         }
-
         if (!orderId) continue;
-
-        resolvedPackages.push({
-          orderId,
-          generatedLabel: generatedLabels[index] || null,
-        });
+        resolvedPackages.push({ orderId, generatedLabel: generatedLabels[index] || null });
       }
 
       if (resolvedPackages.length === 0) return;
 
       const shippingMethodColumnRows = await prisma.$queryRaw`
-        SELECT COLUMN_NAME
-        FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME = 'Order'
-          AND COLUMN_NAME = 'shippingMethod'
-        LIMIT 1
+        SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'Order' AND COLUMN_NAME = 'shippingMethod' LIMIT 1
       `;
       const hasShippingMethodColumn = Array.isArray(shippingMethodColumnRows) && shippingMethodColumnRows.length > 0;
+
+      // Check if this is a return shipment - don't mark order as shipped
+      const isReturnBatch = (packages || []).some((pkg) => pkg.isReturn === true);
 
       const operations = [
         ...resolvedPackages.map(({ orderId, generatedLabel }) => {
           const generatedTrackingCode = String(generatedLabel?.trackingCode || '').trim();
 
-          if (hasShippingMethodColumn) {
+          // Skip status update for return shipments
+          if (isReturnBatch) {
             return prisma.$executeRaw`
-              UPDATE \`Order\`
-              SET
-                shippingMethod = ${selectedShippingMethod},
-                orderStatus = 'verzonden',
-                status = 'verzonden',
-                orderStatusCode = 'SHIPPED',
-                supplierTracking = ${generatedTrackingCode || null},
-                updatedAt = NOW()
+              UPDATE \`Order\` SET updatedAt = NOW()
               WHERE id = ${orderId} AND installationId = ${carrier.installationId}
             `;
           }
 
+          if (hasShippingMethodColumn) {
+            return prisma.$executeRaw`
+              UPDATE \`Order\` SET shippingMethod = ${selectedShippingMethod}, orderStatus = 'verzonden',
+              status = 'verzonden', orderStatusCode = 'SHIPPED', supplierTracking = ${generatedTrackingCode || null}, updatedAt = NOW()
+              WHERE id = ${orderId} AND installationId = ${carrier.installationId}
+            `;
+          }
           return prisma.$executeRaw`
-            UPDATE \`Order\`
-            SET
-              orderStatus = 'verzonden',
-              status = 'verzonden',
-              orderStatusCode = 'SHIPPED',
-              supplierTracking = ${generatedTrackingCode || null},
-              updatedAt = NOW()
+            UPDATE \`Order\` SET orderStatus = 'verzonden', status = 'verzonden', orderStatusCode = 'SHIPPED',
+            supplierTracking = ${generatedTrackingCode || null}, updatedAt = NOW()
             WHERE id = ${orderId} AND installationId = ${carrier.installationId}
           `;
         }),
       ];
 
       const persistedLabelUrlsByOrderId = new Map();
-
       await Promise.all(
         resolvedPackages.map(async ({ orderId, generatedLabel }) => {
           const persistedLabelUrl = await resolveStoredLabelUrl(generatedLabel?.labelUrl, orderId);
@@ -701,49 +588,24 @@ export const generateCarrierLabels = async (req, res) => {
         const generatedTrackingCode = String(generatedLabel?.trackingCode || '').trim();
         const trackingUrl = String(generatedLabel?.trackingUrl || '').trim();
 
-        if (persistedLabelUrl && generatedLabel) {
-          generatedLabel.labelUrl = persistedLabelUrl;
-        }
+        if (persistedLabelUrl && generatedLabel) generatedLabel.labelUrl = persistedLabelUrl;
 
         if (generatedTrackingCode) {
           operations.push(
             prisma.tracking.upsert({
               where: { orderId },
-              update: {
-                trackingCode: generatedTrackingCode,
-                supplier: carrier.carrierType,
-                source: 'label_generation',
-                status: 'linked',
-              },
-              create: {
-                orderId,
-                trackingCode: generatedTrackingCode,
-                supplier: carrier.carrierType,
-                source: 'label_generation',
-                status: 'linked',
-              },
+              update: { trackingCode: generatedTrackingCode, supplier: carrier.carrierType, source: 'label_generation', status: 'linked' },
+              create: { orderId, trackingCode: generatedTrackingCode, supplier: carrier.carrierType, source: 'label_generation', status: 'linked' },
             })
           );
-
-          if (trackingUrl && generatedLabel) {
-            generatedLabel.trackingUrl = trackingUrl;
-          }
+          if (trackingUrl && generatedLabel) generatedLabel.trackingUrl = trackingUrl;
         }
 
         operations.push(
           prisma.label.upsert({
             where: { orderId },
-            update: {
-              carrierId: carrier.id,
-              labelUrl: persistedLabelUrl,
-              status: 'generated',
-            },
-            create: {
-              orderId,
-              carrierId: carrier.id,
-              labelUrl: persistedLabelUrl,
-              status: 'generated',
-            },
+            update: { carrierId: carrier.id, labelUrl: persistedLabelUrl, status: 'generated' },
+            create: { orderId, carrierId: carrier.id, labelUrl: persistedLabelUrl, status: 'generated' },
           })
         );
       });
@@ -756,27 +618,17 @@ export const generateCarrierLabels = async (req, res) => {
       let street = parts.length > 1 ? parts.slice(0, -1).join(', ') : parts[0] || '';
       let zipCode = '';
       let city = '';
-
       const last = parts[parts.length - 1] || '';
       const match = last.match(/(\d{4}\s?[A-Z]{2})\s+(.+)/i);
-      if (match) {
-        zipCode = match[1].replace(/\s+/g, '');
-        city = match[2].trim();
-      }
-
+      if (match) { zipCode = match[1].replace(/\s+/g, ''); city = match[2].trim(); }
       return { street, zipCode, city };
     };
 
     const normalizePostalCode = (postalCode, country = 'NL') => {
       const raw = String(postalCode || '').trim();
       if (!raw) return '';
-
       const countryCode = String(country || 'NL').trim().toUpperCase();
-      if (countryCode === 'NL') {
-        const compact = raw.replace(/\s+/g, '').toUpperCase();
-        return compact;
-      }
-
+      if (countryCode === 'NL') return raw.replace(/\s+/g, '').toUpperCase();
       return raw.replace(/\s+/g, ' ').trim().toUpperCase();
     };
 
@@ -788,52 +640,35 @@ export const generateCarrierLabels = async (req, res) => {
       let city = String(pkg.city || address.city || '').trim();
       let street = String(pkg.street || '').trim();
 
-      const addressParts = addressText
-        .split(',')
-        .map((part) => String(part || '').trim())
-        .filter(Boolean);
+      const addressParts = addressText.split(',').map((part) => String(part || '').trim()).filter(Boolean);
 
       if (!street) {
         const postalIndex = addressParts.findIndex((part) => /\d{4}\s?[A-Z]{2}/i.test(part));
-        if (postalIndex > 0) {
-          street = String(addressParts.slice(0, postalIndex).join(', ') || '').trim();
-        }
+        if (postalIndex > 0) street = String(addressParts.slice(0, postalIndex).join(', ') || '').trim();
       }
-
-      if (!street) {
-        street = String(addressParts[0] || address.street || pkg.address || '').trim();
-      }
+      if (!street) street = String(addressParts[0] || address.street || pkg.address || '').trim();
 
       if (!zipCode && country === 'NL') {
         const nlPostalSegment = addressParts.find((part) => /\d{4}\s?[A-Z]{2}/i.test(part));
         if (nlPostalSegment) {
           const postalMatch = nlPostalSegment.match(/(\d{4}\s?[A-Z]{2})/i);
-          if (postalMatch?.[1]) {
-            zipCode = normalizePostalCode(postalMatch[1], country);
-          }
+          if (postalMatch?.[1]) zipCode = normalizePostalCode(postalMatch[1], country);
         }
       }
 
       if (!city) {
         const nlPostalIndex = addressParts.findIndex((part) => /\d{4}\s?[A-Z]{2}/i.test(part));
-        if (nlPostalIndex >= 0 && addressParts[nlPostalIndex + 1]) {
-          city = String(addressParts[nlPostalIndex + 1] || '').trim();
-        }
+        if (nlPostalIndex >= 0 && addressParts[nlPostalIndex + 1]) city = String(addressParts[nlPostalIndex + 1] || '').trim();
       }
 
       if ((!zipCode || !city) && addressText) {
         const escapedCountry = country.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const withoutTrailingCountry = addressText
-          .replace(new RegExp(`,?\\s*${escapedCountry}\\s*$`, 'i'), '')
-          .trim();
-
+        const withoutTrailingCountry = addressText.replace(new RegExp(`,?\\s*${escapedCountry}\\s*$`, 'i'), '').trim();
         const nlMatch = withoutTrailingCountry.match(/(\d{4}\s?[A-Z]{2})\s+([^,]+)$/i);
         const intlMatch = withoutTrailingCountry.match(/(\d{4,6})\s+([^,]+)$/i);
         const intlPrefixedMatch = withoutTrailingCountry.match(/(?:[A-Z]{1,3}-)?(\d{4,6})\s+([^,]+)$/i);
         const cityThenZipMatch = withoutTrailingCountry.match(/([^,]+)\s+(?:[A-Z]{1,3}-)?(\d{4,6})$/i);
-        const fallbackMatch = country === 'NL'
-          ? (nlMatch || intlPrefixedMatch)
-          : (nlMatch || intlPrefixedMatch || intlMatch);
+        const fallbackMatch = country === 'NL' ? (nlMatch || intlPrefixedMatch) : (nlMatch || intlPrefixedMatch || intlMatch);
 
         if (fallbackMatch) {
           if (!zipCode) zipCode = normalizePostalCode(fallbackMatch[1], country);
@@ -844,61 +679,36 @@ export const generateCarrierLabels = async (req, res) => {
         }
 
         if (!city) {
-          const tailSegment = withoutTrailingCountry
-            .split(',')
-            .map((part) => part.trim())
-            .filter(Boolean)
-            .pop();
+          const tailSegment = withoutTrailingCountry.split(',').map((part) => part.trim()).filter(Boolean).pop();
           if (tailSegment && /[A-Za-zÀ-ÿ]/.test(tailSegment)) {
-            city = tailSegment
-              .replace(/(?:[A-Z]{1,3}-)?\d{4,6}/g, '')
-              .trim();
+            city = tailSegment.replace(/(?:[A-Z]{1,3}-)?\d{4,6}/g, '').trim();
           }
         }
 
         if (!zipCode) {
           const broadZipMatch = withoutTrailingCountry.match(/(?:^|[\s,.-])(?:[A-Z]{1,3}-)?(\d{4,6})(?=$|[\s,.-])/i);
-          if (broadZipMatch?.[1]) {
-            zipCode = normalizePostalCode(broadZipMatch[1], country);
-          }
+          if (broadZipMatch?.[1]) zipCode = normalizePostalCode(broadZipMatch[1], country);
         }
 
         if (!zipCode && country === 'NL') {
           const nlZipMatch = withoutTrailingCountry.match(/(?:^|[\s,.-])(\d{4}\s?[A-Z]{2})(?=$|[\s,.-])/i);
-          if (nlZipMatch?.[1]) {
-            zipCode = normalizePostalCode(nlZipMatch[1], country);
-          }
+          if (nlZipMatch?.[1]) zipCode = normalizePostalCode(nlZipMatch[1], country);
         }
       }
 
-      if (!street) {
-        throw new Error('Straat van ontvanger ontbreekt.');
-      }
-
+      if (!street) throw new Error('Straat van ontvanger ontbreekt.');
       if (!city) city = 'Unknown';
-
-      if (!zipCode) {
-        zipCode = country === 'NL' ? '0000AA' : '0000';
-      }
-
+      if (!zipCode) zipCode = country === 'NL' ? '0000AA' : '0000';
       if (country === 'NL' && !/^\d{4}[A-Z]{2}$/.test(zipCode)) {
         throw new Error('Postcode van ontvanger is ongeldig voor NL (verwacht formaat 1234AB).');
       }
 
-      return {
-        street,
-        city,
-        country,
-        zipCode,
-      };
+      return { street, city, country, zipCode };
     };
 
     const escapeXml = (value) => String(value ?? '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&apos;');
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 
     const isTruthy = (value) => isTruthyValue(value);
 
@@ -923,21 +733,14 @@ export const generateCarrierLabels = async (req, res) => {
       const raw = String(value || '').trim();
       const normalizedFallback = String(fallback || '').trim();
       const endpoint = raw || normalizedFallback;
-
-      if (!endpoint) {
-        return '';
-      }
-
-      const withoutTrailingSlash = endpoint.replace(/\/+$/, '');
-      return withoutTrailingSlash;
+      if (!endpoint) return '';
+      return endpoint.replace(/\/+$/, '');
     };
 
     const buildDpdEndpointVariants = (endpoint) => {
       const normalized = normalizeDpdShipmentEndpoint(endpoint, '');
       if (!normalized) return [];
-
       const variants = [normalized];
-
       if (/\/services\/ShipmentService\/V35$/i.test(normalized)) {
         variants.push(normalized.replace(/\/services\/ShipmentService\/V35$/i, '/services/ShipmentService/V3_5'));
         variants.push(normalized.replace(/\/services\/ShipmentService\/V35$/i, '/soap/ShipmentServiceV35'));
@@ -960,219 +763,13 @@ export const generateCarrierLabels = async (req, res) => {
         variants.push(`${normalized}/soap/ShipmentServiceV35`);
         variants.push(`${normalized}/soap/services/ShipmentService/V3_5/`);
       }
-
       return variants;
-    };
-    const getDpdShipmentEndpoint = (credentials) => {
-      const isSandbox = isTruthy(credentials?.sandbox) || String(credentials?.environment || '').toLowerCase() === 'sandbox';
-      const sandboxEndpoint = normalizeDpdShipmentEndpoint(
-        process.env.DPD_SHIPMENT_URL_SANDBOX,
-        DPD_SANDBOX_DEFAULT_ENDPOINTS[0]
-      );
-      const productionEndpoint = normalizeDpdShipmentEndpoint(
-        process.env.DPD_SHIPMENT_URL,
-        DPD_PRODUCTION_DEFAULT_ENDPOINTS[0]
-      );
-      if (credentials?.endpointUrl) {
-        return normalizeDpdShipmentEndpoint(credentials.endpointUrl, isSandbox ? sandboxEndpoint : productionEndpoint);
-      }
-      return isSandbox ? sandboxEndpoint : productionEndpoint;
-    };
-
-    const getDpdEndpointCandidates = (credentials) => {
-      const toUnique = (items) => items.filter((value, index, arr) => value && arr.indexOf(value) === index);
-
-      const isSandbox = isTruthy(credentials?.sandbox) || String(credentials?.environment || '').toLowerCase() === 'sandbox';
-
-      const sandboxConfigured = normalizeDpdShipmentEndpoint(process.env.DPD_SHIPMENT_URL_SANDBOX, DPD_SANDBOX_DEFAULT_ENDPOINTS[0]);
-      const productionConfigured = normalizeDpdShipmentEndpoint(process.env.DPD_SHIPMENT_URL, DPD_PRODUCTION_DEFAULT_ENDPOINTS[0]);
-      const customConfigured = normalizeDpdShipmentEndpoint(credentials?.endpointUrl, '');
-
-      const primaryBaseEndpoints = isSandbox
-        ? [customConfigured, sandboxConfigured, ...DPD_SANDBOX_DEFAULT_ENDPOINTS]
-        : [customConfigured, productionConfigured, ...DPD_PRODUCTION_DEFAULT_ENDPOINTS];
-
-      const fallbackBaseEndpoints = isSandbox
-        ? [productionConfigured, ...DPD_PRODUCTION_DEFAULT_ENDPOINTS]
-        : [sandboxConfigured, ...DPD_SANDBOX_DEFAULT_ENDPOINTS];
-
-      return toUnique([
-        ...primaryBaseEndpoints.flatMap((endpoint) => buildDpdEndpointVariants(endpoint)),
-        ...fallbackBaseEndpoints.flatMap((endpoint) => buildDpdEndpointVariants(endpoint)),
-      ]);
-    };
-
-    const extractSoapFault = (soapResponse = '') => {
-      const candidates = [
-        /<(?:\w+:)?faultstring>([\s\S]*?)<\/(?:\w+:)?faultstring>/i,
-        /<(?:\w+:)?errorMessage>([\s\S]*?)<\/(?:\w+:)?errorMessage>/i,
-        /<(?:\w+:)?message>([\s\S]*?)<\/(?:\w+:)?message>/i,
-        /<(?:\w+:)?Text>([\s\S]*?)<\/(?:\w+:)?Text>/i,
-      ];
-
-      const authErrorCode = soapResponse.match(/<(?:\w+:)?errorCode>([\s\S]*?)<\/(?:\w+:)?errorCode>/i)?.[1]?.replace(/\s+/g, ' ').trim();
-      const authErrorMessage = soapResponse.match(/<(?:\w+:)?errorMessage>([\s\S]*?)<\/(?:\w+:)?errorMessage>/i)?.[1]?.replace(/\s+/g, ' ').trim();
-
-      if (authErrorCode || authErrorMessage) {
-        return [authErrorCode, authErrorMessage].filter(Boolean).join(': ');
-      }
-
-      let message = null;
-      for (const regex of candidates) {
-        const match = soapResponse.match(regex)?.[1];
-        if (match) {
-          message = match;
-          break;
-        }
-      }
-
-      if (!message && /<(?:\w+:)?Fault\b/i.test(soapResponse)) {
-        message = 'SOAP Fault returned by DPD';
-      }
-
-      return message ? message.replace(/\s+/g, ' ').trim() : null;
-    };
-
-    const buildDpdSoapEnvelope = async (credentials, pkg) => {
-      const delisId = String(credentials.delisId || credentials.username || '').trim();
-      const authToken = await getDpdAuthToken(credentials);
-      const sendingDepot = String(credentials.depotNumber || '').trim();
-
-      const recipientName = pkg.customerName || 'Recipient';
-      const recipientCountry = pkg.country || 'NL';
-      const address = parseAddress(pkg.address || '');
-      const zipCode = pkg.zipCode || address.zipCode || '0000AA';
-      const city = pkg.city || address.city || 'Unknown';
-      const street = pkg.street || address.street || pkg.address || 'Unknown';
-
-      const reference1 = pkg.reference1 || pkg.orderNumber || pkg.id || 'Order';
-      const reference2 = pkg.reference2 || pkg.trackingCode || '';
-      const weight = String(pkg.weight || 500);
-      const volume = String(pkg.volume || '000000000');
-
-      const senderName1 = credentials.senderName1 || credentials.contractName || carrier.contractName || 'Dropsyncr';
-      const senderName2 = credentials.senderName2 || '';
-      const senderStreet = credentials.senderStreet || 'Warehouse Street 1';
-      const senderStreet2 = credentials.senderStreet2 || '';
-      const senderCountry = credentials.senderCountry || 'NL';
-      const senderZipCode = credentials.senderZipCode || '1012AB';
-      const senderCity = credentials.senderCity || 'Amsterdam';
-      const senderPhone = credentials.senderPhone || '';
-      const senderEmail = credentials.senderEmail || '';
-
-      return `<?xml version="1.0" encoding="UTF-8"?>
-<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns="http://dpd.com/common/service/types/Authentication/2.0" xmlns:ns1="http://dpd.com/common/service/types/ShipmentService/3.5">
-  <soapenv:Header>
-    <ns:authentication>
-      <delisId>${escapeXml(delisId)}</delisId>
-      <authToken>${escapeXml(authToken)}</authToken>
-      <messageLanguage>nl_NL</messageLanguage>
-    </ns:authentication>
-  </soapenv:Header>
-  <soapenv:Body>
-    <ns1:storeOrders>
-      <printOptions>
-        <printerLanguage>PDF</printerLanguage>
-        <paperFormat>A6</paperFormat>
-      </printOptions>
-      <order>
-        <generalShipmentData>
-          <sendingDepot>${escapeXml(sendingDepot)}</sendingDepot>
-          <product>B2B</product>
-          <sender>
-            <name1>${escapeXml(senderName1)}</name1>
-            <name2>${escapeXml(senderName2)}</name2>
-            <street>${escapeXml(senderStreet)}</street>
-            <street2>${escapeXml(senderStreet2)}</street2>
-            <country>${escapeXml(senderCountry)}</country>
-            <zipCode>${escapeXml(senderZipCode)}</zipCode>
-            <city>${escapeXml(senderCity)}</city>
-            <phone>${escapeXml(senderPhone)}</phone>
-            <email>${escapeXml(senderEmail)}</email>
-          </sender>
-          <recipient>
-            <name1>${escapeXml(recipientName)}</name1>
-            <name2>${escapeXml(pkg.companyName || '')}</name2>
-            <street>${escapeXml(street)}</street>
-            <street2>${escapeXml(pkg.street2 || '')}</street2>
-            <country>${escapeXml(recipientCountry)}</country>
-            <zipCode>${escapeXml(zipCode)}</zipCode>
-            <city>${escapeXml(city)}</city>
-            <contact>${escapeXml(pkg.contact || recipientName)}</contact>
-            <phone>${escapeXml(pkg.phone || '')}</phone>
-            <email>${escapeXml(pkg.email || '')}</email>
-          </recipient>
-        </generalShipmentData>
-        <parcels>
-          <customerReferenceNumber1>${escapeXml(reference1)}</customerReferenceNumber1>
-          <customerReferenceNumber2>${escapeXml(reference2)}</customerReferenceNumber2>
-          <volume>${escapeXml(volume)}</volume>
-          <weight>${escapeXml(weight)}</weight>
-        </parcels>
-        <productAndServiceData>
-          <orderType>consignment</orderType>
-        </productAndServiceData>
-      </order>
-    </ns1:storeOrders>
-  </soapenv:Body>
-</soapenv:Envelope>`;
-    };
-
-    const extractLabelBase64 = (soapResponse) => {
-      const tags = [
-        'labelData',
-        'parcelLabel',
-        'label',
-        'pdfData',
-        'labelPdf',
-        'parcellabelsPDF',
-      ];
-      for (const tag of tags) {
-        const match = soapResponse.match(new RegExp(`<(?:\\w+:)?${tag}>([A-Za-z0-9+/=\\r\\n]+)</(?:\\w+:)?${tag}>`, 'i'));
-        if (match?.[1]) {
-          return match[1].replace(/\s+/g, '');
-        }
-      }
-      return null;
-    };
-
-    const getWeGrowBaseUrl = (credentials) => {
-      const sandboxDefault = process.env.WEGROW_SANDBOX_URL || 'https://api-sandbox.wegrow.eu';
-      const productionDefault = process.env.WEGROW_PRODUCTION_URL || 'https://api.wegrow.eu';
-      const useSandbox = credentials.sandbox === true || credentials.environment === 'sandbox';
-
-      const normalizeBaseUrl = (value) => {
-        const raw = String(value || '').trim();
-        if (!raw) return raw;
-
-        const withoutTrailing = raw.replace(/\/+$/, '');
-        return withoutTrailing
-          .replace(/\/shipments\/labels$/i, '')
-          .replace(/\/shipments$/i, '');
-      };
-
-      if (credentials.baseUrl) {
-        return normalizeBaseUrl(credentials.baseUrl);
-      }
-
-      if (process.env.WEGROW_BASE_URL) {
-        return normalizeBaseUrl(process.env.WEGROW_BASE_URL);
-      }
-
-      return useSandbox ? sandboxDefault : productionDefault;
-    };
-
-    const getLabelMimeType = (format = 'pdf') => {
-      const normalized = String(format).toLowerCase();
-      if (normalized === 'pdf') return 'application/pdf';
-      if (normalized === 'png') return 'image/png';
-      return 'application/octet-stream';
     };
 
     const getDpdAuthToken = async (credentials) => {
-  const endpoint = credentials.sandbox === true
-    ? 'https://wsshippertest.dpd.nl/soap/services/LoginService/V2_0'
-    : 'https://wsshipper.dpd.nl/soap/services/LoginService/V2_0';
+      const endpoint = credentials.sandbox === true
+        ? 'https://wsshippertest.dpd.nl/soap/services/LoginService/V2_0'
+        : 'https://wsshipper.dpd.nl/soap/services/LoginService/V2_0';
 
       const soapBody = `<?xml version="1.0" encoding="UTF-8"?>
     <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
@@ -1188,70 +785,85 @@ export const generateCarrierLabels = async (req, res) => {
 
       const response = await fetch(endpoint, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'text/xml;charset=UTF-8',
-          'SOAPAction': 'getAuth',
-        },
+        headers: { 'Content-Type': 'text/xml;charset=UTF-8', 'SOAPAction': 'getAuth' },
         body: soapBody,
       });
 
       const text = await response.text();
-
-      if (!response.ok) {
-        throw new Error(`DPD Login failed: ${text}`);
-      }
+      if (!response.ok) throw new Error(`DPD Login failed: ${text}`);
 
       const match = text.match(/<authToken>(.*?)<\/authToken>/);
-      if (!match) {
-        throw new Error(`DPD Login did not return token: ${text}`);
-      }
+      if (!match) throw new Error(`DPD Login did not return token: ${text}`);
 
       return match[1];
     };
 
+    const extractLabelBase64 = (soapResponse) => {
+      const tags = ['labelData', 'parcelLabel', 'label', 'pdfData', 'labelPdf', 'parcellabelsPDF'];
+      for (const tag of tags) {
+        const match = soapResponse.match(new RegExp(`<(?:\\w+:)?${tag}>([A-Za-z0-9+/=\\r\\n]+)</(?:\\w+:)?${tag}>`, 'i'));
+        if (match?.[1]) return match[1].replace(/\s+/g, '');
+      }
+      return null;
+    };
+
+    const getWeGrowBaseUrl = (credentials) => {
+      const sandboxDefault = process.env.WEGROW_SANDBOX_URL || 'https://api-sandbox.wegrow.eu';
+      const productionDefault = process.env.WEGROW_PRODUCTION_URL || 'https://api.wegrow.eu';
+      const useSandbox = credentials.sandbox === true || credentials.environment === 'sandbox';
+
+      const normalizeBaseUrl = (value) => {
+        const raw = String(value || '').trim();
+        if (!raw) return raw;
+        return raw.replace(/\/+$/, '').replace(/\/shipments\/labels$/i, '').replace(/\/shipments$/i, '');
+      };
+
+      if (credentials.baseUrl) return normalizeBaseUrl(credentials.baseUrl);
+      if (process.env.WEGROW_BASE_URL) return normalizeBaseUrl(process.env.WEGROW_BASE_URL);
+      return useSandbox ? sandboxDefault : productionDefault;
+    };
+
+    const getLabelMimeType = (format = 'pdf') => {
+      const normalized = String(format).toLowerCase();
+      if (normalized === 'pdf') return 'application/pdf';
+      if (normalized === 'png') return 'image/png';
+      return 'application/octet-stream';
+    };
+
+    // ===== DPD =====
     if (carrier.carrierType === 'dpd') {
-    const credentials = parseCredentialsSafely(carrier.credentials);
+      const credentials = parseCredentialsSafely(carrier.credentials);
+      const delisId = String(credentials.delisId || credentials.username || '').trim();
+      const password = String(credentials.password || '').trim();
+      const depotNumber = String(credentials.depotNumber || '').trim();
+      const isSandbox = credentials.sandbox === true;
 
-    const delisId = String(credentials.delisId || credentials.username || '').trim();
-    const password = String(credentials.password || '').trim();
-    const depotNumber = String(credentials.depotNumber || '').trim();
-    const isSandbox = credentials.sandbox === true;
+      if (!delisId || !password || !depotNumber) {
+        return res.status(400).json({
+          error: 'DPD credentials zijn incompleet',
+          details: 'Vereist: Delis ID, password en depotnummer.',
+        });
+      }
 
-    if (!delisId || !password || !depotNumber) {
-      return res.status(400).json({
-        error: 'DPD credentials zijn incompleet',
-        details: 'Vereist: Delis ID, password en depotnummer.',
-      });
-    }
+      let authToken;
+      try {
+        authToken = await getDpdAuthToken({ delisId, password, sandbox: isSandbox });
+      } catch (loginError) {
+        console.error('DPD LOGIN FAILED:', loginError.message);
+        return res.status(502).json({ error: 'DPD login failed', details: loginError.message });
+      }
 
-    // ✅ STEP 1: LOGIN TO GET AUTH TOKEN
-    let authToken;
-    try {
-      authToken = await getDpdAuthToken({
-        delisId,
-        password,
-        sandbox: isSandbox,
-      });
-    } catch (loginError) {
-      console.error('DPD LOGIN FAILED:', loginError.message);
-      return res.status(502).json({
-        error: 'DPD login failed',
-        details: loginError.message,
-      });
-    }
+      const endpoint = isSandbox
+        ? 'https://wsshippertest.dpd.nl/soap/services/ShipmentService/V3_5'
+        : 'https://wsshipper.dpd.nl/soap/services/ShipmentService/V3_5';
 
-    // ✅ STEP 2: USE CORRECT SHIPMENT ENDPOINT
-    const endpoint = isSandbox
-      ? 'https://wsshippertest.dpd.nl/soap/services/ShipmentService/V3_5'
-      : 'https://wsshipper.dpd.nl/soap/services/ShipmentService/V3_5';
+      const buildSoap = (pkg) => {
+        const rawWeightGrams = Number(pkg.weight || 1000);
+        const weightKgInt = Number.isFinite(rawWeightGrams) && rawWeightGrams > 0
+          ? Math.max(1, Math.round(rawWeightGrams / 1000))
+          : 1;
 
-    const buildSoap = (pkg) => {
-      const rawWeightGrams = Number(pkg.weight || 1000);
-      const weightKgInt = Number.isFinite(rawWeightGrams) && rawWeightGrams > 0
-        ? Math.max(1, Math.round(rawWeightGrams / 1000))
-        : 1;
-
-      return `<?xml version="1.0" encoding="UTF-8"?>
+        return `<?xml version="1.0" encoding="UTF-8"?>
   <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
                     xmlns:auth="http://dpd.com/common/service/types/Authentication/2.0"
                     xmlns:ship="http://dpd.com/common/service/types/ShipmentService/3.5">
@@ -1262,19 +874,16 @@ export const generateCarrierLabels = async (req, res) => {
         <messageLanguage>nl_NL</messageLanguage>
       </auth:authentication>
     </soapenv:Header>
-
     <soapenv:Body>
       <ship:storeOrders>
-		<printOptions>
-		<printerLanguage>PDF</printerLanguage>
-		<paperFormat>A6</paperFormat>
-		</printOptions>
-
+        <printOptions>
+          <printerLanguage>PDF</printerLanguage>
+          <paperFormat>A6</paperFormat>
+        </printOptions>
         <order>
           <generalShipmentData>
             <sendingDepot>${depotNumber}</sendingDepot>
             <product>CL</product>
-
             <sender>
               <name1>Sender Company</name1>
               <street>Warehouse Street 1</street>
@@ -1282,7 +891,6 @@ export const generateCarrierLabels = async (req, res) => {
               <zipCode>1012AB</zipCode>
               <city>Amsterdam</city>
             </sender>
-
             <recipient>
               <name1>${pkg.customerName || 'Recipient'}</name1>
               <street>${pkg.street || pkg.address}</street>
@@ -1291,103 +899,106 @@ export const generateCarrierLabels = async (req, res) => {
               <city>${pkg.city}</city>
             </recipient>
           </generalShipmentData>
-
           <parcels>
             <customerReferenceNumber1>${pkg.orderNumber || pkg.id}</customerReferenceNumber1>
             <weight>${weightKgInt}</weight>
           </parcels>
-
           <productAndServiceData>
             <orderType>consignment</orderType>
           </productAndServiceData>
         </order>
-
       </ship:storeOrders>
     </soapenv:Body>
   </soapenv:Envelope>`;
-    };
+      };
 
-    const extractBetween = (xml, tag) => {
-      const match = xml.match(new RegExp(`<${tag}>(.*?)</${tag}>`, 's'));
-      return match ? match[1].trim() : null;
-    };
+      const extractBetween = (xml, tag) => {
+        const match = xml.match(new RegExp(`<${tag}>(.*?)</${tag}>`, 's'));
+        return match ? match[1].trim() : null;
+      };
 
-    const labels = [];
+      const labels = [];
 
-    for (let i = 0; i < packages.length; i++) {
-      const pkg = packages[i] || {};
-      let recipientAddress;
-      try {
-        recipientAddress = buildDpdRecipientAddress(pkg);
-      } catch (addressError) {
-        return res.status(400).json({
-          error: 'Ongeldig afleveradres voor DPD',
-          details: addressError.message,
+      for (let i = 0; i < packages.length; i++) {
+        const pkg = packages[i] || {};
+        let recipientAddress;
+        try {
+          recipientAddress = buildDpdRecipientAddress(pkg);
+        } catch (addressError) {
+          return res.status(400).json({
+            error: 'Ongeldig afleveradres voor DPD',
+            details: addressError.message,
+            packageId: pkg.id || i,
+          });
+        }
+
+        const soapBody = buildSoap({
+          ...pkg,
+          street: recipientAddress.street,
+          city: recipientAddress.city,
+          country: recipientAddress.country,
+          zipCode: recipientAddress.zipCode,
+        });
+
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'text/xml;charset=UTF-8',
+            'SOAPAction': 'http://dpd.com/common/service/types/ShipmentService/3.5/storeOrders',
+          },
+          body: soapBody,
+        });
+
+        const responseText = await response.text();
+        console.log("DPD STATUS:", response.status);
+        console.log("DPD RESPONSE:", responseText);
+
+        if (!response.ok || responseText.includes('<Fault>')) {
+          return res.status(502).json({ error: 'DPD label request failed', details: responseText.slice(0, 2000) });
+        }
+
+        const labelBase64 =
+          extractLabelBase64(responseText) ||
+          extractBetween(responseText, 'label') ||
+          extractBetween(responseText, 'parcelLabel') ||
+          extractBetween(responseText, 'labelData') ||
+          extractBetween(responseText, 'parcellabelsPDF');
+
+        if (!labelBase64) {
+          return res.status(502).json({ error: 'DPD response did not contain label PDF', details: responseText.slice(0, 2000) });
+        }
+
+        const trackingNumber =
+          extractBetween(responseText, 'parcelLabelNumber') ||
+          extractBetween(responseText, 'trackingNumber');
+
+        labels.push({
           packageId: pkg.id || i,
+          carrierType: 'dpd',
+          shippingMethod: selectedShippingMethod,
+          trackingCode: trackingNumber || `DPD-${Date.now()}-${i}`,
+          labelUrl: `data:application/pdf;base64,${labelBase64}`,
         });
       }
 
-      const soapBody = buildSoap({
-        ...pkg,
-        street: recipientAddress.street,
-        city: recipientAddress.city,
-        country: recipientAddress.country,
-        zipCode: recipientAddress.zipCode,
-      });
+      await persistOrderShippingMethodAndLabels(labels);
 
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'text/xml;charset=UTF-8',
-          'SOAPAction': 'http://dpd.com/common/service/types/ShipmentService/3.5/storeOrders',
-        },
-        body: soapBody,
-      });
-
-      const responseText = await response.text();
-
-      console.log("DPD STATUS:", response.status);
-      console.log("DPD RESPONSE:", responseText);
-
-      if (!response.ok || responseText.includes('<Fault>')) {
-        return res.status(502).json({
-          error: 'DPD label request failed',
-          details: responseText.slice(0, 2000),
-        });
+      // For return shipments without orderId, resolve any remaining base64 labels
+      const isDpdReturn = (packages || []).some((pkg) => pkg.isReturn === true);
+      if (isDpdReturn) {
+        for (let i = 0; i < labels.length; i++) {
+          const label = labels[i];
+          if (label.labelUrl && label.labelUrl.startsWith('data:')) {
+            const resolvedUrl = await resolveStoredLabelUrl(label.labelUrl, `dpd-return-${Date.now()}-${i}`);
+            if (resolvedUrl) labels[i].labelUrl = resolvedUrl;
+          }
+        }
       }
 
-      const labelBase64 =
-        extractLabelBase64(responseText) ||
-        extractBetween(responseText, 'label') ||
-        extractBetween(responseText, 'parcelLabel') ||
-        extractBetween(responseText, 'labelData') ||
-        extractBetween(responseText, 'parcellabelsPDF');
-
-      if (!labelBase64) {
-        return res.status(502).json({
-          error: 'DPD response did not contain label PDF',
-          details: responseText.slice(0, 2000),
-        });
-      }
-
-      const trackingNumber =
-        extractBetween(responseText, 'parcelLabelNumber') ||
-        extractBetween(responseText, 'trackingNumber');
-
-      labels.push({
-        packageId: pkg.id || i,
-        carrierType: 'dpd',
-        shippingMethod: selectedShippingMethod,
-        trackingCode: trackingNumber || `DPD-${Date.now()}-${i}`,
-        labelUrl: `data:application/pdf;base64,${labelBase64}`,
-      });
+      return res.json({ success: true, labels });
     }
 
-    await persistOrderShippingMethodAndLabels(labels);
-
-    return res.json({ success: true, labels });
-  }
-
+    // ===== WEGROW =====
     if (carrier.carrierType === 'wegrow') {
       const credentials = normalizeWeGrowCredentials(parseCredentialsSafely(carrier.credentials));
       const { apiKey } = getWeGrowAuthConfig(credentials);
@@ -1437,9 +1048,14 @@ export const generateCarrierLabels = async (req, res) => {
         )
         : '';
       const genericServiceCode = String(credentials.serviceCode || '').trim();
-      const serviceCode = selectedWeGrowCarrier
-        ? selectedCarrierServiceCode
-        : genericServiceCode;
+
+      // Check if any package is a return shipment
+      const isReturnShipment = (packages || []).some((pkg) => pkg.isReturn === true);
+
+      // For return shipments, use the returnServiceCode if available
+      const returnServiceCode = String(credentials.returnServiceCode || '').trim();
+      const resolvedServiceCode = selectedWeGrowCarrier ? selectedCarrierServiceCode : genericServiceCode;
+      const serviceCode = isReturnShipment && returnServiceCode ? returnServiceCode : resolvedServiceCode;
 
       if (!apiKey) {
         return res.status(400).json({
@@ -1459,8 +1075,8 @@ export const generateCarrierLabels = async (req, res) => {
         return res.status(400).json({
           error: 'WeGrow service code ontbreekt',
           details: selectedWeGrowCarrier
-            ? `Geen service code gevonden voor WeGrow optie ${selectedServiceOption?.label || selectedWeGrowCarrier.toUpperCase()}. Vul een expliciete WeGrow service code in (bijv. wegrow_home of wegrow_standard) voor deze optie.`
-            : 'Stel een algemene WeGrow service code in (bijv. wegrow_home of wegrow_standard), of kies een WeGrow vervoerder met service code mapping.',
+            ? `Geen service code gevonden voor WeGrow optie ${selectedServiceOption?.label || selectedWeGrowCarrier.toUpperCase()}.`
+            : 'Stel een algemene WeGrow service code in, of kies een WeGrow vervoerder met service code mapping.',
         });
       }
 
@@ -1476,75 +1092,51 @@ export const generateCarrierLabels = async (req, res) => {
       const senderPhone = credentials.senderPhone || '+31000000000';
 
       const labels = [];
+
       for (let index = 0; index < (packages || []).length; index += 1) {
         const pkg = packages[index] || {};
+        const isReturnPkg = pkg.isReturn === true;
         const address = parseAddress(pkg.address || '');
         const shipmentDetails = pkg.shipmentDetails || pkg.shippingAddress || {};
         const recipientName = pkg.customerName || shipmentDetails.fullName || shipmentDetails.firstName || 'Recipient';
         const destinationCountry = String(pkg.country || pkg.shippingCountry || shipmentDetails.countryCode || 'NL').trim().toUpperCase() || 'NL';
         let parsedRecipientAddress = null;
         try {
-          parsedRecipientAddress = buildDpdRecipientAddress({
-            ...pkg,
-            country: destinationCountry,
-          });
+          parsedRecipientAddress = buildDpdRecipientAddress({ ...pkg, country: destinationCountry });
         } catch {
           parsedRecipientAddress = null;
         }
         const shipmentStreet = [shipmentDetails.streetName, shipmentDetails.houseNumber, shipmentDetails.houseNumberExtension]
-          .filter(Boolean)
-          .join(' ')
-          .trim();
+          .filter(Boolean).join(' ').trim();
         const destinationStreet = String(
-          pkg.street
-          || pkg.addressLine1
-          || pkg.shippingStreet
-          || shipmentStreet
-          || shipmentDetails.addressLine1
-          || shipmentDetails.street
-          || parsedRecipientAddress?.street
-          || address.street
-          || pkg.address
-          || ''
+          pkg.street || pkg.addressLine1 || pkg.shippingStreet || shipmentStreet ||
+          shipmentDetails.addressLine1 || shipmentDetails.street || parsedRecipientAddress?.street ||
+          address.street || pkg.address || ''
         ).trim();
         const destinationPostalCode = normalizePostalCode(
-          pkg.zipCode
-          || pkg.postalCode
-          || pkg.shippingZipCode
-          || shipmentDetails.zipCode
-          || shipmentDetails.postalCode
-          || parsedRecipientAddress?.zipCode
-          || address.zipCode,
+          pkg.zipCode || pkg.postalCode || pkg.shippingZipCode ||
+          shipmentDetails.zipCode || shipmentDetails.postalCode ||
+          parsedRecipientAddress?.zipCode || address.zipCode,
           destinationCountry
         );
         const destinationCity = String(
-          pkg.city
-          || pkg.town
-          || pkg.shippingCity
-          || shipmentDetails.city
-          || shipmentDetails.town
-          || parsedRecipientAddress?.city
-          || address.city
-          || ''
+          pkg.city || pkg.town || pkg.shippingCity ||
+          shipmentDetails.city || shipmentDetails.town ||
+          parsedRecipientAddress?.city || address.city || ''
         ).trim();
         const hasPlaceholderPostalCode = destinationPostalCode === '0000AA' || destinationPostalCode === '0000';
 
-        if (!destinationStreet || !destinationPostalCode || !destinationCity || hasPlaceholderPostalCode) {
+        // For non-return shipments, validate destination address
+        if (!isReturnPkg && (!destinationStreet || !destinationPostalCode || !destinationCity || hasPlaceholderPostalCode)) {
           return res.status(400).json({
             error: 'WeGrow ontvangeradres is incompleet',
             details: `Order ${String(pkg.orderNumber || pkg.id || index)} mist een geldige straat, postcode of plaats voor labelgeneratie.`,
             packageId: pkg.id || index,
-            address: {
-              street: destinationStreet || null,
-              postalCode: destinationPostalCode || null,
-              city: destinationCity || null,
-              country: destinationCountry,
-              rawAddress: String(pkg.address || '').trim() || null,
-            },
+            address: { street: destinationStreet || null, postalCode: destinationPostalCode || null, city: destinationCity || null, country: destinationCountry, rawAddress: String(pkg.address || '').trim() || null },
           });
         }
 
-        if (destinationCountry === 'NL' && !/^\d{4}[A-Z]{2}$/.test(destinationPostalCode)) {
+        if (!isReturnPkg && destinationCountry === 'NL' && !/^\d{4}[A-Z]{2}$/.test(destinationPostalCode)) {
           return res.status(400).json({
             error: 'WeGrow ontvangerpostcode is ongeldig',
             details: `Order ${String(pkg.orderNumber || pkg.id || index)} heeft geen geldige Nederlandse postcode. Verwacht formaat: 1234AB.`,
@@ -1554,45 +1146,57 @@ export const generateCarrierLabels = async (req, res) => {
         }
 
         const weightValue = Number(pkg.weightKg ?? pkg.weight ?? 1);
+
+        // For return shipments: customer is origin (sender), warehouse is destination (receiver)
+        // senderStreet/senderZipCode/senderCity/senderCountry are set explicitly on returnPackage from frontend
+        const originAddress = isReturnPkg ? {
+          address: {
+            name: pkg.senderName || recipientName,
+            street: String(pkg.senderStreet || '').trim(),
+            postal_code: normalizePostalCode(String(pkg.senderZipCode || '').trim(), String(pkg.senderCountry || 'NL').trim().toUpperCase()),
+            city: String(pkg.senderCity || '').trim(),
+            iso_country: String(pkg.senderCountry || 'NL').trim().toUpperCase(),
+          },
+          contact: {
+            name: pkg.senderName || recipientName,
+            email: pkg.senderEmail || null,
+            mobile: pkg.senderPhone || null,
+          },
+        } : {
+          address: { name: senderName, street: senderStreet, postal_code: senderPostalCode, city: senderCity, iso_country: senderCountry },
+          contact: { name: senderName, email: senderEmail, mobile: senderPhone },
+        };
+
+        // For return: destination = warehouse (street/zipCode/city/country set from warehouseAddress on frontend)
+        const destinationAddressObj = isReturnPkg ? {
+          address: {
+            name: pkg.customerName || senderName,
+            street: String(pkg.street || senderStreet).trim(),
+            postal_code: normalizePostalCode(String(pkg.zipCode || senderPostalCode).trim(), String(pkg.country || senderCountry).trim().toUpperCase()),
+            city: String(pkg.city || senderCity).trim(),
+            iso_country: String(pkg.country || senderCountry).trim().toUpperCase(),
+          },
+          contact: {
+            name: pkg.customerName || senderName,
+            email: pkg.email || senderEmail || null,
+            mobile: pkg.phone || senderPhone || null,
+          },
+        } : {
+          address: { name: recipientName, street: destinationStreet, postal_code: destinationPostalCode, city: destinationCity, iso_country: destinationCountry },
+          contact: { name: recipientName, email: pkg.email || shipmentDetails.email || null, mobile: pkg.phone || shipmentDetails.phoneNumber || null },
+        };
+
         const payload = {
           label_format: credentials.labelFormat || 'pdf',
-          service: {
-            code: serviceCode,
-          },
+          service: { code: serviceCode },
           shipment: {
             references: {
               order_reference: String(pkg.orderNumber || pkg.id || `ORD-${Date.now()}-${index}`),
               receiver_reference: pkg.reference2 ? String(pkg.reference2) : null,
             },
             addresses: {
-              origin: {
-                address: {
-                  name: senderName,
-                  street: senderStreet,
-                  postal_code: senderPostalCode,
-                  city: senderCity,
-                  iso_country: senderCountry,
-                },
-                contact: {
-                  name: senderName,
-                  email: senderEmail,
-                  mobile: senderPhone,
-                },
-              },
-              destination: {
-                address: {
-                  name: recipientName,
-                  street: destinationStreet,
-                  postal_code: destinationPostalCode,
-                  city: destinationCity,
-                  iso_country: destinationCountry,
-                },
-                contact: {
-                  name: recipientName,
-                  email: pkg.email || shipmentDetails.email || null,
-                  mobile: pkg.phone || shipmentDetails.phoneNumber || null,
-                },
-              },
+              origin: originAddress,
+              destination: destinationAddressObj,
             },
             parcels: [
               {
@@ -1614,11 +1218,7 @@ export const generateCarrierLabels = async (req, res) => {
 
         const response = await fetch(`${baseUrl}/shipments/labels`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-key': apiKey,
-            'x-version': apiVersion,
-          },
+          headers: { 'Content-Type': 'application/json', 'x-key': apiKey, 'x-version': apiVersion },
           body: JSON.stringify(payload),
         });
 
@@ -1633,43 +1233,26 @@ export const generateCarrierLabels = async (req, res) => {
             try {
               const diagnosticResponse = await fetch(`${baseUrl}/locations?iso_country=NL&city=Amsterdam&postal_code=1012%20PH&max_results=1`, {
                 method: 'GET',
-                headers: {
-                  'x-key': apiKey,
-                  'x-version': apiVersion,
-                },
+                headers: { 'x-key': apiKey, 'x-version': apiVersion },
               });
-
               const diagnosticBodyText = await diagnosticResponse.text();
               let diagnosticBody = null;
-              try {
-                diagnosticBody = diagnosticBodyText ? JSON.parse(diagnosticBodyText) : null;
-              } catch {
-                diagnosticBody = diagnosticBodyText || null;
-              }
-
+              try { diagnosticBody = diagnosticBodyText ? JSON.parse(diagnosticBodyText) : null; } catch { diagnosticBody = diagnosticBodyText || null; }
               diagnosticDetails = {
                 endpoint: '/locations',
                 statusCode: diagnosticResponse.status,
                 body: typeof diagnosticBody === 'string' ? diagnosticBody.slice(0, 300) : diagnosticBody,
               };
             } catch (diagnosticError) {
-              diagnosticDetails = {
-                endpoint: '/locations',
-                statusCode: null,
-                body: String(diagnosticError?.message || 'Diagnostic request failed'),
-              };
+              diagnosticDetails = { endpoint: '/locations', statusCode: null, body: String(diagnosticError?.message || 'Diagnostic request failed') };
             }
           }
 
-          const diagnosticSummary = diagnosticDetails
-            ? ` | diagnostic ${diagnosticDetails.endpoint} status=${diagnosticDetails.statusCode ?? 'n/a'}`
-            : '';
+          const diagnosticSummary = diagnosticDetails ? ` | diagnostic ${diagnosticDetails.endpoint} status=${diagnosticDetails.statusCode ?? 'n/a'}` : '';
 
           return res.status(502).json({
             error: 'Failed to generate WeGrow label',
-            details: `${normalizedErrorDetail || (likelyAuthIssue
-              ? 'Unauthorized - controleer WeGrow API key (x-key), live endpoint, API version (v1) en service code permissies'
-              : 'Unknown WeGrow error')}${diagnosticSummary}`,
+            details: `${normalizedErrorDetail || (likelyAuthIssue ? 'Unauthorized - controleer WeGrow API key (x-key), live endpoint, API version (v1) en service code permissies' : 'Unknown WeGrow error')}${diagnosticSummary}`,
             statusCode: responseStatus || null,
             baseUrl,
             serviceCode,
@@ -1684,9 +1267,7 @@ export const generateCarrierLabels = async (req, res) => {
         const firstLabel = shippingLabels[0] || paperlessLabel;
 
         if (!firstLabel?.base64_label) {
-          return res.status(502).json({
-            error: 'WeGrow label response did not include a label',
-          });
+          return res.status(502).json({ error: 'WeGrow label response did not include a label' });
         }
 
         const format = firstLabel.format || payload.label_format || 'pdf';
@@ -1705,42 +1286,42 @@ export const generateCarrierLabels = async (req, res) => {
 
       await persistOrderShippingMethodAndLabels(labels);
 
+      // For return shipments without orderId, resolve any remaining base64 labels
+      if (isReturnShipment) {
+        for (let i = 0; i < labels.length; i++) {
+          const label = labels[i];
+          if (label.labelUrl && label.labelUrl.startsWith('data:')) {
+            const resolvedUrl = await resolveStoredLabelUrl(label.labelUrl, `wegrow-return-${Date.now()}-${i}`);
+            if (resolvedUrl) labels[i].labelUrl = resolvedUrl;
+          }
+        }
+      }
+
       return res.json({ success: true, labels });
     }
 
-    const labels = (packages || []).map((pkg, index) => {
-      const timestamp = Date.now();
-      const trackingCode = `${carrier.carrierType.toUpperCase()}-${timestamp}-${index}`;
-      return {
-        packageId: pkg.id || index,
-        carrierType: carrier.carrierType,
-        shippingMethod: selectedShippingMethod,
-        trackingCode,
-        labelUrl: null,
-      };
-    });
+    // Fallback
+    const labels = (packages || []).map((pkg, index) => ({
+      packageId: pkg.id || index,
+      carrierType: carrier.carrierType,
+      shippingMethod: selectedShippingMethod,
+      trackingCode: `${carrier.carrierType.toUpperCase()}-${Date.now()}-${index}`,
+      labelUrl: null,
+    }));
 
     await persistOrderShippingMethodAndLabels(labels);
-
     res.json({ success: true, labels });
+
   } catch (error) {
     console.error('Generate carrier labels error:', error);
-
     const errorMessage = String(error?.message || 'Failed to generate labels');
-    const isMissingShippingMethodColumn =
-      errorMessage.includes('Unknown column') && errorMessage.includes('shippingMethod');
-
+    const isMissingShippingMethodColumn = errorMessage.includes('Unknown column') && errorMessage.includes('shippingMethod');
     if (isMissingShippingMethodColumn) {
       return res.status(500).json({
         error: 'Failed to persist shipping method on order',
         details: 'Kolom shippingMethod ontbreekt in de Order tabel. Voer de migratie uit en probeer opnieuw.',
       });
     }
-
-    res.status(500).json({
-      error: 'Failed to generate labels',
-      details: errorMessage,
-    });
+    res.status(500).json({ error: 'Failed to generate labels', details: errorMessage });
   }
 };
-

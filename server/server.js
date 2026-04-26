@@ -21,7 +21,9 @@ import integrationRoutes from './src/routes/integrationRoutes.js';
 import bolRoutes from './src/routes/bolRoutes.js';
 import kauflandRoutes from './src/routes/kauflandRoutes.js';
 import automationRuleRoutes from './src/routes/automationRuleRoutes.js';
+import returnRoutes from './src/routes/returnRoutes.js';
 import { startBolSyncCronJob } from './src/jobs/bolSyncJob.js';
+import warehouseRoutes from './src/routes/warehouseRoutes.js';
 
 dotenv.config();
 
@@ -112,6 +114,8 @@ app.use('/api/integrations', integrationRoutes);
 app.use('/api/bol', bolRoutes);
 app.use('/api/kaufland', kauflandRoutes);
 app.use('/api/automation-rules', automationRuleRoutes);
+app.use('/api/returns', returnRoutes);
+app.use('/api/warehouse', warehouseRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

@@ -43,7 +43,6 @@ type TranslationKey =
   | 'fulfilmentOnlyRevenue'
   | 'selectPeriod'
   | 'dashboardSubtitle'
-  | 'totalRevenue'
   | 'totalOrders'
   | 'pendingOrders'
   | 'processedToday'
@@ -91,7 +90,113 @@ type TranslationKey =
   | 'noItemsFound'
   | 'articles'
   | 'status'
-  | 'apply';
+  | 'returns'
+  | 'apply'
+  | 'returnsSubtitle'
+  | 'returnsSelectInstallation'
+  | 'openReturns'
+  | 'processedThisMonth'
+  | 'waitingForQr'
+  | 'inReturnBox'
+  | 'openReturnsTab'
+  | 'processedReturnsTab'
+  | 'returnBoxTab'
+  | 'searchReturns'
+  | 'registerReturn'
+  | 'noOpenReturns'
+  | 'noProcessedReturns'
+  | 'noReturnBoxItems'
+  | 'articlesInReturnBox'
+  | 'totalSalesValue'
+  | 'createShipment'
+  | 'destroy'
+  | 'processReturn'
+  | 'processedReturn'
+  | 'productsFromOrder'
+  | 'noItemsKnown'
+  | 'dropshipRetourQr'
+  | 'uploadQrCode'
+  | 'processedOn'
+  | 'processing'
+  | 'quantity'
+  | 'inspectionStatus'
+  | 'processReturnBtn'
+  | 'viewReturn'
+  | 'close'
+  | 'goBack'
+  | 'yesProcessReturn'
+  | 'createShipmentFor'
+  | 'destroyItemsFor'
+  | 'warningIrreversible'
+  | 'createShipmentDescription'
+  | 'destroyDescription'
+  | 'yesCreateShipment'
+  | 'yesDestroy'
+  | 'registerReturnTitle'
+  | 'orderNumber'
+  | 'customerName'
+  | 'email'
+  | 'ffmClient'
+  | 'returnType'
+  | 'ownStock'
+  | 'dropship'
+  | 'returnReason'
+  | 'selectReason'
+  | 'damagedProduct'
+  | 'wrongProduct'
+  | 'notAsDescribed'
+  | 'changedMind'
+  | 'deliveryComplaint'
+  | 'returnToSupplier'
+  | 'other'
+  | 'explanation'
+  | 'explanationPlaceholder'
+  | 'statusRegistered'
+  | 'statusWaitingQr'
+  | 'statusQrReceived'
+  | 'statusReturned'
+  | 'statusReceived'
+  | 'statusProcessed'
+  | 'qrRequired'
+  | 'qrReceived'
+  | 'unknown'
+  | 'emailCopied'
+  | 'nameCopied'
+  | 'orderNumberCopied'
+  | 'eanCopied'
+  | 'copyEmail'
+  | 'copyName'
+  | 'copyOrderNumber'
+  | 'copyEan'
+  | 'inspectionReturnReceived'
+  | 'inspectionExchangeProduct'
+  | 'inspectionNotMeetConditions'
+  | 'inspectionRepairProduct'
+  | 'inspectionCustomerKeeps'
+  | 'inspectionStillApproved'
+  | 'inspectionReturnToSupplier'
+  | 'settingsSubtitle'
+  | 'settingsSelectInstallation'
+  | 'warehouseTab'
+  | 'warehouseTitle'
+  | 'warehouseSubtitle'
+  | 'warehouseName'
+  | 'warehouseNamePlaceholder'
+  | 'warehouseEmail'
+  | 'warehouseEmailPlaceholder'
+  | 'warehousePhone'
+  | 'warehousePhonePlaceholder'
+  | 'warehouseAddressSection'
+  | 'warehouseStreet'
+  | 'warehouseStreetPlaceholder'
+  | 'warehouseHouseNumber'
+  | 'warehousePostalCode'
+  | 'warehouseCity'
+  | 'warehouseCityPlaceholder'
+  | 'warehouseCountry'
+  | 'warehouseSaved'
+  | 'warehouseSaveError'
+  | 'save';
 
 type Dictionary = Record<TranslationKey, string>;
 
@@ -130,14 +235,13 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     purchaseCostsAndCogs: 'Purchase costs + COGS',
     margin: 'Margin',
     shopifyChannels: 'Shopify channels',
-    totalRevenueAllChannels: 'Total revenue — all channels',
+    totalRevenueAllChannels: 'Total revenue - all channels',
     revenue: 'Revenue',
     purchaseCosts: 'Purchase costs',
     advertisingCostsLabel: 'Advertising costs',
-    fulfilmentOnlyRevenue: 'Fulfilment only has revenue — no costs here',
+    fulfilmentOnlyRevenue: 'Fulfilment only has revenue - no costs here',
     selectPeriod: 'Select period',
     dashboardSubtitle: 'Overview of your most important metrics',
-    totalRevenue: 'Total Revenue',
     totalOrders: 'Total Orders',
     pendingOrders: 'Pending Orders',
     processedToday: 'Processed Today',
@@ -185,7 +289,113 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     noItemsFound: 'No items found',
     articles: 'articles',
     status: 'Status',
+    returns: 'Returns',
     apply: 'Apply',
+    returnsSubtitle: 'Overview of all registered returns',
+    returnsSelectInstallation: 'Select an installation to view returns',
+    openReturns: 'Open returns',
+    processedThisMonth: 'Processed this month',
+    waitingForQr: 'Waiting for QR',
+    inReturnBox: 'In return box',
+    openReturnsTab: 'Open returns',
+    processedReturnsTab: 'Processed returns',
+    returnBoxTab: 'Return box',
+    searchReturns: 'Search by return number, RMA, order number or customer...',
+    registerReturn: 'Register return',
+    noOpenReturns: 'No open returns found.',
+    noProcessedReturns: 'No processed returns found.',
+    noReturnBoxItems: 'No items in the return box.',
+    articlesInReturnBox: 'article(s) in return box',
+    totalSalesValue: 'Total sales value',
+    createShipment: 'Create shipment',
+    destroy: 'Destroy',
+    processReturn: 'process?',
+    processedReturn: '- processed',
+    productsFromOrder: 'Products from order',
+    noItemsKnown: 'No items known',
+    dropshipRetourQr: 'This is a dropship return. Upload the QR code once the customer has shared it.',
+    uploadQrCode: 'Upload QR code',
+    processedOn: 'Processed on',
+    processing: 'Processing',
+    quantity: 'Quantity',
+    inspectionStatus: 'Status',
+    processReturnBtn: 'Process',
+    viewReturn: 'View',
+    close: 'Close',
+    goBack: 'Cancel',
+    yesProcessReturn: 'Yes, process return',
+    createShipmentFor: 'Create shipment for',
+    destroyItemsFor: 'Destroy items for',
+    warningIrreversible: 'Warning: this action cannot be undone.',
+    createShipmentDescription: 'A return shipment will be created for all unsellable items.',
+    destroyDescription: 'All unsellable items will be destroyed.',
+    yesCreateShipment: 'Yes, create shipment',
+    yesDestroy: 'Yes, destroy',
+    registerReturnTitle: 'Register return',
+    orderNumber: 'Order number',
+    customerName: 'Customer name',
+    email: 'Email',
+    ffmClient: 'FFM client (store)',
+    returnType: 'Return type',
+    ownStock: 'Own stock',
+    dropship: 'Dropship',
+    returnReason: 'Return reason',
+    selectReason: 'Select reason',
+    damagedProduct: 'Damaged product',
+    wrongProduct: 'Wrong product',
+    notAsDescribed: 'Not as described',
+    changedMind: 'Changed mind',
+    deliveryComplaint: 'Delivery complaint',
+    returnToSupplier: 'Return to supplier',
+    other: 'Other',
+    explanation: 'Explanation (optional)',
+    explanationPlaceholder: 'Describe the reason...',
+    statusRegistered: 'Registered',
+    statusWaitingQr: 'Waiting for QR',
+    statusQrReceived: 'QR received',
+    statusReturned: 'Returned',
+    statusReceived: 'Received',
+    statusProcessed: 'Processed',
+    qrRequired: 'QR required',
+    qrReceived: 'QR received',
+    unknown: 'Unknown',
+    emailCopied: 'Email copied',
+    nameCopied: 'Name copied',
+    orderNumberCopied: 'Order number copied',
+    eanCopied: 'EAN copied',
+    copyEmail: 'Copy email',
+    copyName: 'Copy name',
+    copyOrderNumber: 'Copy order number',
+    copyEan: 'Copy EAN',
+    inspectionReturnReceived: 'Return received in good condition',
+    inspectionExchangeProduct: 'Exchange product',
+    inspectionNotMeetConditions: 'Return does not meet conditions',
+    inspectionRepairProduct: 'Product received for repair',
+    inspectionCustomerKeeps: 'Customer keeps product, credit paid',
+    inspectionStillApproved: 'Still approved',
+    inspectionReturnToSupplier: 'Return to supplier',
+    settingsSubtitle: 'Manage your account and system settings',
+    settingsSelectInstallation: 'Select an installation to manage settings',
+    warehouseTab: 'Warehouse',
+    warehouseTitle: 'Warehouse Address',
+    warehouseSubtitle: 'This address is used as the recipient for return labels',
+    warehouseName: 'Company name',
+    warehouseNamePlaceholder: 'e.g. Dropsyncr Warehouse',
+    warehouseEmail: 'Email',
+    warehouseEmailPlaceholder: 'warehouse@example.com',
+    warehousePhone: 'Phone number',
+    warehousePhonePlaceholder: '+31 6 12345678',
+    warehouseAddressSection: 'Address',
+    warehouseStreet: 'Street',
+    warehouseStreetPlaceholder: 'Warehouse Street',
+    warehouseHouseNumber: 'House number',
+    warehousePostalCode: 'Postal code',
+    warehouseCity: 'City',
+    warehouseCityPlaceholder: 'Amsterdam',
+    warehouseCountry: 'Country',
+    warehouseSaved: 'Warehouse address saved',
+    warehouseSaveError: 'Could not save warehouse address',
+    save: 'Save',
   },
   nl: {
     loading: 'Laden...',
@@ -221,14 +431,13 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     purchaseCostsAndCogs: 'Inkoopkosten + COGS',
     margin: 'Marge',
     shopifyChannels: 'Shopify kanalen',
-    totalRevenueAllChannels: 'Totale omzet — alle kanalen',
+    totalRevenueAllChannels: 'Totale omzet - alle kanalen',
     revenue: 'Omzet',
     purchaseCosts: 'Inkoopkosten',
     advertisingCostsLabel: 'Advertentiekosten',
-    fulfilmentOnlyRevenue: 'Fulfilment heeft alleen omzet — geen kosten hier',
+    fulfilmentOnlyRevenue: 'Fulfilment heeft alleen omzet - geen kosten hier',
     selectPeriod: 'Selecteer periode',
     dashboardSubtitle: 'Overzicht van je belangrijkste metrics',
-    totalRevenue: 'Totale Omzet',
     totalOrders: 'Totale Orders',
     pendingOrders: 'Openstaande Orders',
     processedToday: 'Verwerkt Vandaag',
@@ -276,10 +485,116 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     noItemsFound: 'Geen artikelen gevonden',
     articles: 'artikelen',
     status: 'Status',
+    returns: 'Retouren',
     apply: 'Toepassen',
+    returnsSubtitle: 'Overzicht van alle aangemelde retouren',
+    returnsSelectInstallation: 'Selecteer eerst een installatie om retouren te bekijken',
+    openReturns: 'Openstaande retouren',
+    processedThisMonth: 'Verwerkt deze maand',
+    waitingForQr: 'Wachten op QR',
+    inReturnBox: 'In retourbox',
+    openReturnsTab: 'Openstaande retouren',
+    processedReturnsTab: 'Verwerkte retouren',
+    returnBoxTab: 'Retourbox',
+    searchReturns: 'Zoek op retournummer, RMA, ordernummer of klantnaam...',
+    registerReturn: 'Retour aanmelden',
+    noOpenReturns: 'Geen openstaande retouren gevonden.',
+    noProcessedReturns: 'Geen verwerkte retouren gevonden.',
+    noReturnBoxItems: 'Geen artikelen in de retourbox.',
+    articlesInReturnBox: 'artikel(en) in retourbox',
+    totalSalesValue: 'Totale verkoopwaarde',
+    createShipment: 'Zending aanmaken',
+    destroy: 'Vernietigen',
+    processReturn: 'verwerken?',
+    processedReturn: '- verwerkt',
+    productsFromOrder: 'Producten uit order',
+    noItemsKnown: 'Geen artikelen bekend',
+    dropshipRetourQr: 'Dit is een dropship retour. Upload de QR code zodra de klant die heeft gedeeld.',
+    uploadQrCode: 'QR code uploaden',
+    processedOn: 'Verwerkt op',
+    processing: 'Verwerking',
+    quantity: 'Aantal',
+    inspectionStatus: 'Status',
+    processReturnBtn: 'Verwerk',
+    viewReturn: 'Bekijk',
+    close: 'Sluiten',
+    goBack: 'Annuleren',
+    yesProcessReturn: 'Ja, behandel retour',
+    createShipmentFor: 'Zending aanmaken voor',
+    destroyItemsFor: 'Artikelen vernietigen voor',
+    warningIrreversible: 'Let op: deze actie kan niet ongedaan worden gemaakt.',
+    createShipmentDescription: 'Er wordt een retourzending aangemaakt voor alle onverkoopbare artikelen.',
+    destroyDescription: 'Alle onverkoopbare artikelen worden vernietigd.',
+    yesCreateShipment: 'Ja, zending aanmaken',
+    yesDestroy: 'Ja, vernietigen',
+    registerReturnTitle: 'Retour aanmelden',
+    orderNumber: 'Ordernummer',
+    customerName: 'Klantnaam',
+    email: 'E-mail',
+    ffmClient: 'FFM klant (store)',
+    returnType: 'Type retour',
+    ownStock: 'Eigen voorraad',
+    dropship: 'Dropship',
+    returnReason: 'Retour reden',
+    selectReason: 'Selecteer reden',
+    damagedProduct: 'Beschadigd product',
+    wrongProduct: 'Verkeerd product',
+    notAsDescribed: 'Niet zoals beschreven',
+    changedMind: 'Van gedachten veranderd',
+    deliveryComplaint: 'Klacht over bezorging',
+    returnToSupplier: 'Retour naar leverancier',
+    other: 'Anders',
+    explanation: 'Toelichting (optioneel)',
+    explanationPlaceholder: 'Beschrijf de reden...',
+    statusRegistered: 'Aangemeld',
+    statusWaitingQr: 'Wacht op QR',
+    statusQrReceived: 'QR ontvangen',
+    statusReturned: 'Teruggestuurd',
+    statusReceived: 'Ontvangen',
+    statusProcessed: 'Verwerkt',
+    qrRequired: 'QR vereist',
+    qrReceived: 'QR ontvangen',
+    unknown: 'Onbekend',
+    emailCopied: 'E-mail gekopieerd',
+    nameCopied: 'Naam gekopieerd',
+    orderNumberCopied: 'Ordernummer gekopieerd',
+    eanCopied: 'EAN gekopieerd',
+    copyEmail: 'E-mail kopieren',
+    copyName: 'Naam kopieren',
+    copyOrderNumber: 'Ordernummer kopieren',
+    copyEan: 'EAN kopieren',
+    inspectionReturnReceived: 'Retour goed ontvangen',
+    inspectionExchangeProduct: 'Omruiling product',
+    inspectionNotMeetConditions: 'Retour voldoet niet aan voorwaarden',
+    inspectionRepairProduct: 'Product ter reparatie ontvangen',
+    inspectionCustomerKeeps: 'Klant houdt product, tegoed uitbetaald',
+    inspectionStillApproved: 'Alsnog akkoord',
+    inspectionReturnToSupplier: 'Retour naar leverancier',
+    settingsSubtitle: 'Beheer je account en systeeminstellingen',
+    settingsSelectInstallation: 'Selecteer een installatie om instellingen te beheren',
+    warehouseTab: 'Magazijn',
+    warehouseTitle: 'Magazijnadres',
+    warehouseSubtitle: 'Dit adres wordt gebruikt als ontvanger voor retourlabels',
+    warehouseName: 'Bedrijfsnaam',
+    warehouseNamePlaceholder: 'bijv. Dropsyncr Warehouse',
+    warehouseEmail: 'E-mail',
+    warehouseEmailPlaceholder: 'magazijn@example.com',
+    warehousePhone: 'Telefoonnummer',
+    warehousePhonePlaceholder: '+31 6 12345678',
+    warehouseAddressSection: 'Adres',
+    warehouseStreet: 'Straat',
+    warehouseStreetPlaceholder: 'Magazijnstraat',
+    warehouseHouseNumber: 'Huisnummer',
+    warehousePostalCode: 'Postcode',
+    warehouseCity: 'Stad',
+    warehouseCityPlaceholder: 'Amsterdam',
+    warehouseCountry: 'Land',
+    warehouseSaved: 'Magazijnadres opgeslagen',
+    warehouseSaveError: 'Kon magazijnadres niet opslaan',
+    save: 'Opslaan',
   },
   de: {
-    loading: 'Lädt...',
+    loading: 'Ladt...',
     orderManagement: 'BESTELLMANAGEMENT',
     system: 'SYSTEM',
     administrativeSection: 'ADMINISTRATION',
@@ -303,7 +618,7 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     warehouseManagement: 'LAGERVERWALTUNG',
     inventoryManagement: 'Bestand verwalten',
     inventoryAnalysis: 'Bestandsanalyse',
-    klkSubtitle: 'Übersicht aller Umsätze und Kosten pro Verkaufskanal',
+    klkSubtitle: 'Ubersicht aller Umsatze und Kosten pro Verkaufskanal',
     totalRevenue: 'Gesamtumsatz',
     totalPurchaseCosts: 'Gesamteinkaufskosten',
     grossProfit: 'Bruttogewinn',
@@ -311,23 +626,22 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     vsPreviousPeriod: 'vs. vorheriger Zeitraum',
     purchaseCostsAndCogs: 'Einkaufskosten + COGS',
     margin: 'Marge',
-    shopifyChannels: 'Shopify-Kanäle',
-    totalRevenueAllChannels: 'Gesamtumsatz — alle Kanäle',
+    shopifyChannels: 'Shopify-Kanale',
+    totalRevenueAllChannels: 'Gesamtumsatz - alle Kanale',
     revenue: 'Umsatz',
     purchaseCosts: 'Einkaufskosten',
     advertisingCostsLabel: 'Werbekosten',
-    fulfilmentOnlyRevenue: 'Fulfilment hat nur Umsatz — keine Kosten hier',
-    selectPeriod: 'Zeitraum auswählen',
-    dashboardSubtitle: 'Übersicht Ihrer wichtigsten Kennzahlen',
-    totalRevenue: 'Gesamtumsatz',
+    fulfilmentOnlyRevenue: 'Fulfilment hat nur Umsatz - keine Kosten hier',
+    selectPeriod: 'Zeitraum auswahlen',
+    dashboardSubtitle: 'Ubersicht Ihrer wichtigsten Kennzahlen',
     totalOrders: 'Gesamtbestellungen',
     pendingOrders: 'Offene Bestellungen',
     processedToday: 'Heute verarbeitet',
     vsLastPeriod: 'vs. letzter Zeitraum',
     stillToShip: 'Noch zu versenden',
     labelsPrinted: 'Etiketten gedruckt & versendet',
-    revenueOrdersOverview: 'Umsatz & Bestellungen Übersicht',
-    recentActivity: 'Letzte Aktivität',
+    revenueOrdersOverview: 'Umsatz & Bestellungen Ubersicht',
+    recentActivity: 'Letzte Aktivitat',
     today: 'Heute',
     yesterday: 'Gestern',
     last7days: 'Letzte 7 Tage',
@@ -335,7 +649,7 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     currentMonth: 'Aktueller Monat',
     thisYear: 'Dieses Jahr',
     custom: 'Benutzerdefiniert',
-    choosePeriod: 'Zeitraum wählen',
+    choosePeriod: 'Zeitraum wahlen',
     startDate: 'Startdatum',
     endDate: 'Enddatum',
     cancel: 'Abbrechen',
@@ -353,21 +667,127 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     filterInProgress: 'In Bearbeitung',
     filterReserved: 'Reserviert',
     filterLowStock: 'Geringer Bestand',
-    itemsSelected: 'Artikel ausgewählt',
+    itemsSelected: 'Artikel ausgewahlt',
     printEanBarcode: 'EAN-Barcode drucken',
-    deselectAll: 'Alle abwählen',
+    deselectAll: 'Alle abwahlen',
     product: 'Artikel',
     locations: 'Standort(e)',
     client: 'Kunde',
     registered: 'Angemeldet',
     inProgress: 'In Bearb.',
     reserved: 'Reserviert',
-    available: 'Verfügbar',
+    available: 'Verfugbar',
     total: 'Gesamt',
     noItemsFound: 'Keine Artikel gefunden',
     articles: 'Artikel',
     status: 'Status',
+    returns: 'Retouren',
     apply: 'Anwenden',
+    returnsSubtitle: 'Ubersicht aller registrierten Retouren',
+    returnsSelectInstallation: 'Wahlen Sie eine Installation aus, um Retouren anzuzeigen',
+    openReturns: 'Offene Retouren',
+    processedThisMonth: 'Diesen Monat verarbeitet',
+    waitingForQr: 'Warten auf QR',
+    inReturnBox: 'In Retourenbox',
+    openReturnsTab: 'Offene Retouren',
+    processedReturnsTab: 'Verarbeitete Retouren',
+    returnBoxTab: 'Retourenbox',
+    searchReturns: 'Suche nach Retouren-Nr., RMA, Bestellnummer oder Kunde...',
+    registerReturn: 'Retoure anmelden',
+    noOpenReturns: 'Keine offenen Retouren gefunden.',
+    noProcessedReturns: 'Keine verarbeiteten Retouren gefunden.',
+    noReturnBoxItems: 'Keine Artikel in der Retourenbox.',
+    articlesInReturnBox: 'Artikel in Retourenbox',
+    totalSalesValue: 'Gesamtverkaufswert',
+    createShipment: 'Sendung erstellen',
+    destroy: 'Vernichten',
+    processReturn: 'verarbeiten?',
+    processedReturn: '- verarbeitet',
+    productsFromOrder: 'Produkte aus Bestellung',
+    noItemsKnown: 'Keine Artikel bekannt',
+    dropshipRetourQr: 'Dies ist eine Dropship-Retoure. Laden Sie den QR-Code hoch, sobald der Kunde ihn geteilt hat.',
+    uploadQrCode: 'QR-Code hochladen',
+    processedOn: 'Verarbeitet am',
+    processing: 'Verarbeitung',
+    quantity: 'Menge',
+    inspectionStatus: 'Status',
+    processReturnBtn: 'Verarbeiten',
+    viewReturn: 'Anzeigen',
+    close: 'Schliessen',
+    goBack: 'Abbrechen',
+    yesProcessReturn: 'Ja, Retoure bearbeiten',
+    createShipmentFor: 'Sendung erstellen fur',
+    destroyItemsFor: 'Artikel vernichten fur',
+    warningIrreversible: 'Achtung: Diese Aktion kann nicht ruckgangig gemacht werden.',
+    createShipmentDescription: 'Eine Rucksendung wird fur alle unverkauflichen Artikel erstellt.',
+    destroyDescription: 'Alle unverkauflichen Artikel werden vernichtet.',
+    yesCreateShipment: 'Ja, Sendung erstellen',
+    yesDestroy: 'Ja, vernichten',
+    registerReturnTitle: 'Retoure anmelden',
+    orderNumber: 'Bestellnummer',
+    customerName: 'Kundenname',
+    email: 'E-Mail',
+    ffmClient: 'FFM-Kunde (Store)',
+    returnType: 'Retourentyp',
+    ownStock: 'Eigener Bestand',
+    dropship: 'Dropship',
+    returnReason: 'Retourengrund',
+    selectReason: 'Grund auswahlen',
+    damagedProduct: 'Beschadigtes Produkt',
+    wrongProduct: 'Falsches Produkt',
+    notAsDescribed: 'Nicht wie beschrieben',
+    changedMind: 'Meinung geandert',
+    deliveryComplaint: 'Lieferbeschwerden',
+    returnToSupplier: 'Rucksendung an Lieferanten',
+    other: 'Sonstiges',
+    explanation: 'Erlauterung (optional)',
+    explanationPlaceholder: 'Grund beschreiben...',
+    statusRegistered: 'Angemeldet',
+    statusWaitingQr: 'Warten auf QR',
+    statusQrReceived: 'QR erhalten',
+    statusReturned: 'Zuruckgesendet',
+    statusReceived: 'Erhalten',
+    statusProcessed: 'Verarbeitet',
+    qrRequired: 'QR erforderlich',
+    qrReceived: 'QR erhalten',
+    unknown: 'Unbekannt',
+    emailCopied: 'E-Mail kopiert',
+    nameCopied: 'Name kopiert',
+    orderNumberCopied: 'Bestellnummer kopiert',
+    eanCopied: 'EAN kopiert',
+    copyEmail: 'E-Mail kopieren',
+    copyName: 'Name kopieren',
+    copyOrderNumber: 'Bestellnummer kopieren',
+    copyEan: 'EAN kopieren',
+    inspectionReturnReceived: 'Retoure gut erhalten',
+    inspectionExchangeProduct: 'Umtauschprodukt',
+    inspectionNotMeetConditions: 'Retoure erfullt nicht die Bedingungen',
+    inspectionRepairProduct: 'Produkt zur Reparatur erhalten',
+    inspectionCustomerKeeps: 'Kunde behalt Produkt, Guthaben ausgezahlt',
+    inspectionStillApproved: 'Trotzdem genehmigt',
+    inspectionReturnToSupplier: 'Rucksendung an Lieferanten',
+    settingsSubtitle: 'Verwalten Sie Ihr Konto und Systemeinstellungen',
+    settingsSelectInstallation: 'Wahlen Sie eine Installation aus',
+    warehouseTab: 'Lager',
+    warehouseTitle: 'Lageradresse',
+    warehouseSubtitle: 'Diese Adresse wird als Empfanger fur Retourenetiketten verwendet',
+    warehouseName: 'Firmenname',
+    warehouseNamePlaceholder: 'z.B. Dropsyncr Lager',
+    warehouseEmail: 'E-Mail',
+    warehouseEmailPlaceholder: 'lager@example.com',
+    warehousePhone: 'Telefonnummer',
+    warehousePhonePlaceholder: '+49 30 12345678',
+    warehouseAddressSection: 'Adresse',
+    warehouseStreet: 'Strasse',
+    warehouseStreetPlaceholder: 'Lagerstrasse',
+    warehouseHouseNumber: 'Hausnummer',
+    warehousePostalCode: 'Postleitzahl',
+    warehouseCity: 'Stadt',
+    warehouseCityPlaceholder: 'Berlin',
+    warehouseCountry: 'Land',
+    warehouseSaved: 'Lageradresse gespeichert',
+    warehouseSaveError: 'Lageradresse konnte nicht gespeichert werden',
+    save: 'Speichern',
   },
 };
 
