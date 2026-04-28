@@ -40,6 +40,7 @@ model Installation {
   products     Product[]
   users        UserInstallation[]
   warehouseAddress WarehouseAddress?
+  warehouseLocations WarehouseLocation[]
 }
 
 model AutomationRule {
@@ -346,4 +347,22 @@ model WarehouseAddress {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   installation   Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+}
+
+model WarehouseLocation {
+  id             Int                @id @default(autoincrement())
+  installationId Int
+  code           String
+  type           String             // 'row' | 'section' | 'case'
+  parentId       Int?
+  active         Boolean            @default(true)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  installation   Installation       @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  parent         WarehouseLocation? @relation("LocationHierarchy", fields: [parentId], references: [id])
+  children       WarehouseLocation[] @relation("LocationHierarchy")
+
+  @@unique([installationId, code])
+  @@index([installationId])
+  @@index([parentId])
 }
