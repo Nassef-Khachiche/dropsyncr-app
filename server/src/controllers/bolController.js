@@ -1,11 +1,17 @@
 import prisma from '../config/database.js';
 import fetch from 'node-fetch';
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import {
   resolveShippingAutomationForOrder,
   inferBolShippingMethodFromOrderData,
   inferIsMailboxFromOrderData,
 } from '../utils/shippingAutomation.js';
-import { Console } from 'console';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const LABEL_STORAGE_DIR = path.resolve(__dirname, '../../storage/labels');
 
 const normalizeProductName = (value) => {
   const normalized = String(value ?? '').trim();
@@ -95,8 +101,7 @@ async function getBolAccessToken(credentials) {
   const { clientId, clientSecret } = credentials;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
-  
-  // Get access token (in production, implement token caching)
+
   const authString = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
   let tokenResponse;
   try {
@@ -144,7 +149,6 @@ async function bolApiRequestRaw(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 25000);
 
-  // Make the actual API request
   const options = {
     method,
     headers: {
@@ -175,12 +179,11 @@ async function bolApiRequestRaw(
 
 async function bolApiRequest(credentials, endpoint, method = 'GET', body = null) {
   const response = await bolApiRequestRaw(credentials, endpoint, { method, body });
-  
+
   if (!response.ok) {
     const errorText = await response.text();
     let errorMessage = `Bol API error: ${response.status}`;
-    
-    // Parse error details if available
+
     try {
       const errorJson = JSON.parse(errorText);
       if (response.status === 403) {
@@ -192,17 +195,11 @@ async function bolApiRequest(credentials, endpoint, method = 'GET', body = null)
     } catch (e) {
       errorMessage += ` - ${errorText}`;
     }
-    
+
     throw new Error(errorMessage);
   }
 
   const data = await response.json();
-  console.log('[BOL API] Response', {
-    endpoint,
-    method,
-    status: response.status,
-    data,
-  });
   return data;
 }
 
@@ -423,7 +420,15 @@ const extractFirstLinkId = (payload, fragment) => {
   return null;
 };
 
-async function resolveShippingLabelIdFromProcessStatus(credentials, processStatusId) {
+/**
+ * Poll for shipping label ID from process status.
+ * Bol's label creation is async — the process status may not resolve immediately.
+ */
+async function pollShippingLabelIdFromProcessStatus(
+  credentials,
+  processStatusId,
+  { maxAttempts = 6, delayMs = 2500 } = {},
+) {
   const normalizedId = String(processStatusId || '').trim();
   if (!normalizedId) return null;
 
@@ -432,16 +437,29 @@ async function resolveShippingLabelIdFromProcessStatus(credentials, processStatu
     `/process-statuses/${encodeURIComponent(normalizedId)}`,
   ];
 
-  for (const endpoint of endpoints) {
-    try {
-      const payload = await bolApiRequest(credentials, endpoint);
-      const directEntityId = String(payload?.entityId || '').trim();
-      if (directEntityId) return directEntityId;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    if (attempt > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
 
-      const linkedEntityId = extractFirstLinkId(payload, '/shipping-labels');
-      if (linkedEntityId) return linkedEntityId;
-    } catch {
-      // Ignore and continue with next process-status endpoint variant
+    for (const endpoint of endpoints) {
+      try {
+        const payload = await bolApiRequest(credentials, endpoint);
+
+        // Check if process is still pending
+        const processStatus = String(payload?.status || '').trim().toUpperCase();
+        if (processStatus === 'PENDING' || processStatus === 'IN_PROGRESS') {
+          break; // Break inner loop, try again after delay
+        }
+
+        const directEntityId = String(payload?.entityId || '').trim();
+        if (directEntityId) return directEntityId;
+
+        const linkedEntityId = extractFirstLinkId(payload, '/shipping-labels');
+        if (linkedEntityId) return linkedEntityId;
+      } catch {
+        // Ignore and try next endpoint
+      }
     }
   }
 
@@ -455,13 +473,39 @@ async function fetchBolShippingLabelById(credentials, shippingLabelId) {
   }
 
   const endpoint = `/shipping-labels/${encodeURIComponent(normalizedShippingLabelId)}`;
+
+  // FIX: Request PDF format for actual label PDF — not JSON metadata
   const response = await bolApiRequestRaw(credentials, endpoint, {
     method: 'GET',
-    accept: 'application/vnd.retailer.v10+json',
+    accept: 'application/vnd.retailer.v10+pdf',
     contentType: 'application/vnd.retailer.v10+json',
   });
 
   if (!response.ok) {
+    // If PDF not available, try JSON for metadata/tracking info
+    if (response.status === 406) {
+      const jsonResponse = await bolApiRequestRaw(credentials, endpoint, {
+        method: 'GET',
+        accept: 'application/vnd.retailer.v10+json',
+        contentType: 'application/vnd.retailer.v10+json',
+      });
+
+      if (!jsonResponse.ok) {
+        const errorText = await jsonResponse.text();
+        throw new Error(`Bol API error: ${jsonResponse.status} - ${errorText}`);
+      }
+
+      const jsonPayload = await jsonResponse.json();
+      const trackingCode = jsonResponse.headers.get('x-track-and-trace-code') || null;
+      const transporterCode = jsonResponse.headers.get('x-transporter-code') || null;
+      return {
+        ...jsonPayload,
+        shippingLabelId: normalizedShippingLabelId,
+        trackingCode: jsonPayload?.trackingCode || trackingCode,
+        transporterCode: jsonPayload?.transporterCode || transporterCode,
+      };
+    }
+
     const errorText = await response.text();
     let errorMessage = `Bol API error: ${response.status}`;
     try {
@@ -478,19 +522,8 @@ async function fetchBolShippingLabelById(credentials, shippingLabelId) {
     throw new Error(errorMessage);
   }
 
-  const contentType = String(response.headers.get('content-type') || '').toLowerCase();
   const trackingCode = response.headers.get('x-track-and-trace-code') || null;
   const transporterCode = response.headers.get('x-transporter-code') || null;
-
-  if (contentType.includes('application/json')) {
-    const jsonPayload = await response.json();
-    return {
-      ...jsonPayload,
-      shippingLabelId: normalizedShippingLabelId,
-      trackingCode: jsonPayload?.trackingCode || trackingCode,
-      transporterCode: jsonPayload?.transporterCode || transporterCode,
-    };
-  }
 
   const buffer = Buffer.from(await response.arrayBuffer());
   const base64Pdf = buffer.toString('base64');
@@ -514,8 +547,7 @@ const isUnauthorizedBolError = (error) => {
 };
 
 async function getBolLabelWithFallback(credentials, orderId) {
-  const preferredShippingLabelOfferId = null;
-  return getBolLabelWithFallbackInternal(credentials, orderId, { preferredShippingLabelOfferId });
+  return getBolLabelWithFallbackInternal(credentials, orderId, { preferredShippingLabelOfferId: null });
 }
 
 async function getBolLabelWithFallbackInternal(
@@ -523,6 +555,7 @@ async function getBolLabelWithFallbackInternal(
   orderId,
   {
     preferredShippingLabelOfferId = null,
+    prefetchedOrderItems = null,
   } = {},
 ) {
   const normalizedOrderId = String(orderId || '').trim();
@@ -533,103 +566,123 @@ async function getBolLabelWithFallbackInternal(
   const errors = [];
   const normalizedPreferredShippingLabelOfferId = String(preferredShippingLabelOfferId || '').trim();
 
-  if (normalizedPreferredShippingLabelOfferId) {
-    let orderItemsPayload = null;
+  // --- Helper: create label from order items + delivery option ---
+  const createLabelFromOrderItems = async (orderItemsPayload, preferredOfferId = null) => {
+    const orderItems = extractBolOrderItemsForLabel(orderItemsPayload);
+    console.log('[BOL LABEL DEBUG] createLabelFromOrderItems', { itemCount: orderItems.length, preferredOfferId });
+    if (orderItems.length === 0) return null;
+
+    const handoverWindow = await fetchBolDeliveryOptionHandoverWindow(
+      credentials,
+      orderItems,
+      preferredOfferId || null,
+    );
+
+    const selectedDeliveryOption = handoverWindow.selectedDeliveryOption;
+    const shippingLabelOfferId = String(selectedDeliveryOption?.shippingLabelOfferId || '').trim();
+    console.log('[BOL LABEL DEBUG] selectedDeliveryOption', { shippingLabelOfferId, transporter: selectedDeliveryOption?.transporterCode });
+
+    if (!shippingLabelOfferId) {
+      throw new Error('Geen Bol delivery option gevonden voor deze order items');
+    }
+
+    const createLabelPayload = await bolApiRequest(
+      credentials,
+      '/shipping-labels',
+      'POST',
+      { orderItems, shippingLabelOfferId },
+    );
+    console.log('[BOL LABEL DEBUG] createLabelPayload', JSON.stringify(createLabelPayload));
+
+    let createdShippingLabelId = String(createLabelPayload?.entityId || '').trim();
+    if (!createdShippingLabelId) {
+      createdShippingLabelId = extractFirstLinkId(createLabelPayload, '/shipping-labels') || '';
+    }
+
+    console.log('[BOL LABEL DEBUG] createdShippingLabelId after entityId/link', createdShippingLabelId);
+
+    // FIX: Use polling instead of single attempt — Bol label creation is async
+    if (!createdShippingLabelId && createLabelPayload?.processStatusId) {
+      console.log('[BOL LABEL DEBUG] polling processStatusId', createLabelPayload.processStatusId);
+      createdShippingLabelId = await pollShippingLabelIdFromProcessStatus(
+        credentials,
+        createLabelPayload.processStatusId,
+      ) || '';
+      console.log('[BOL LABEL DEBUG] createdShippingLabelId after polling', createdShippingLabelId);
+    }
+
+    if (!createdShippingLabelId) {
+      console.log('[BOL LABEL DEBUG] No shippingLabelId found, returning null');
+      return null;
+    }
+
+    const labelEndpoint = `/shipping-labels/${encodeURIComponent(createdShippingLabelId)}`;
+    const response = await fetchBolShippingLabelById(credentials, createdShippingLabelId);
+    const earliestHandoverDateTime = handoverWindow?.earliestHandoverDateTime || null;
+    const latestHandoverDateTime = handoverWindow?.latestHandoverDateTime || null;
+    const deliveryOptionValidation = validateBolDeliveryOptionAttachment({
+      selectedDeliveryOption,
+      labelData: response,
+      earliestHandoverDateTime,
+      latestHandoverDateTime,
+    });
+
+    return {
+      labelData: {
+        ...response,
+        earliestHandoverDateTime,
+        latestHandoverDateTime,
+        deliveryOptionValidation,
+      },
+      endpoint: labelEndpoint,
+    };
+  };
+
+  // --- Helper: resolve order items payload ---
+  const resolveOrderItemsPayload = async () => {
+    // Use pre-fetched order items from the client if available (avoids a /order-items call that may 403)
+    if (Array.isArray(prefetchedOrderItems) && prefetchedOrderItems.length > 0) {
+      console.log('[BOL LABEL DEBUG] Using pre-fetched orderItems from client', { count: prefetchedOrderItems.length });
+      return { orderItems: prefetchedOrderItems };
+    }
 
     try {
-      orderItemsPayload = await bolApiRequest(credentials, `/orders/${encodeURIComponent(normalizedOrderId)}/order-items`);
+      const payload = await bolApiRequest(credentials, `/orders/${encodeURIComponent(normalizedOrderId)}/order-items`);
+      if (payload) return payload;
     } catch (error) {
       errors.push({ endpoint: `/orders/${normalizedOrderId}/order-items`, error });
     }
 
-    if (!orderItemsPayload) {
-      try {
-        const matchingListedOrder = await findOrderInFbrOrderPages(credentials, normalizedOrderId, 8);
-
-        if (matchingListedOrder) {
-          orderItemsPayload = {
-            orderItems: Array.isArray(matchingListedOrder.orderItems)
-              ? matchingListedOrder.orderItems
-              : [],
-          };
-        }
-      } catch (error) {
-        errors.push({ endpoint: '/orders?status=ALL&page=*', error });
+    try {
+      const matchingListedOrder = await findOrderInFbrOrderPages(credentials, normalizedOrderId, 8);
+      if (matchingListedOrder) {
+        return {
+          orderItems: Array.isArray(matchingListedOrder.orderItems)
+            ? matchingListedOrder.orderItems
+            : [],
+        };
       }
+    } catch (error) {
+      errors.push({ endpoint: '/orders?status=ALL&page=*', error });
     }
 
-    if (orderItemsPayload) {
-      const orderItems = extractBolOrderItemsForLabel(orderItemsPayload);
+    return null;
+  };
 
-      if (orderItems.length > 0) {
-        try {
-          const handoverWindow = await fetchBolDeliveryOptionHandoverWindow(
-            credentials,
-            orderItems,
-            normalizedPreferredShippingLabelOfferId,
-          );
-
-          const selectedDeliveryOption = handoverWindow.selectedDeliveryOption;
-          const shippingLabelOfferId = String(selectedDeliveryOption?.shippingLabelOfferId || '').trim();
-
-          if (!shippingLabelOfferId) {
-            throw new Error(`Geen Bol delivery option gevonden voor shippingLabelOfferId ${normalizedPreferredShippingLabelOfferId}`);
-          }
-
-          const createLabelPayload = await bolApiRequest(
-            credentials,
-            '/shipping-labels',
-            'POST',
-            {
-              orderItems,
-              shippingLabelOfferId,
-            },
-          );
-
-          let createdShippingLabelId = String(createLabelPayload?.entityId || '').trim();
-          if (!createdShippingLabelId) {
-            createdShippingLabelId = extractFirstLinkId(createLabelPayload, '/shipping-labels') || '';
-          }
-
-          if (!createdShippingLabelId && createLabelPayload?.processStatusId) {
-            const processStatusResolvedId = await resolveShippingLabelIdFromProcessStatus(
-              credentials,
-              createLabelPayload.processStatusId,
-            );
-            if (processStatusResolvedId) {
-              createdShippingLabelId = processStatusResolvedId;
-            }
-          }
-
-          if (createdShippingLabelId) {
-            const labelEndpoint = `/shipping-labels/${encodeURIComponent(createdShippingLabelId)}`;
-            const response = await fetchBolShippingLabelById(credentials, createdShippingLabelId);
-            const earliestHandoverDateTime = handoverWindow?.earliestHandoverDateTime || null;
-            const latestHandoverDateTime = handoverWindow?.latestHandoverDateTime || null;
-            const deliveryOptionValidation = validateBolDeliveryOptionAttachment({
-              selectedDeliveryOption,
-              labelData: response,
-              earliestHandoverDateTime,
-              latestHandoverDateTime,
-            });
-
-            return {
-              labelData: {
-                ...response,
-                earliestHandoverDateTime,
-                latestHandoverDateTime,
-                deliveryOptionValidation,
-              },
-              endpoint: labelEndpoint,
-            };
-          }
-        } catch (error) {
-          errors.push({ endpoint: '/shipping-labels/delivery-options|/shipping-labels', error });
-        }
+  // 1. If a preferred shippingLabelOfferId was supplied, try that path first
+  if (normalizedPreferredShippingLabelOfferId) {
+    try {
+      const orderItemsPayload = await resolveOrderItemsPayload();
+      if (orderItemsPayload) {
+        const result = await createLabelFromOrderItems(orderItemsPayload, normalizedPreferredShippingLabelOfferId);
+        if (result) return result;
       }
+    } catch (error) {
+      errors.push({ endpoint: '/shipping-labels/delivery-options|/shipping-labels (preferred offer)', error });
     }
   }
 
+  // 2. Try direct endpoints that may already have a label
   const directEndpoints = [
     `/shipments?order-id=${normalizedOrderId}`,
     `/orders/${normalizedOrderId}/shipment-label`,
@@ -645,6 +698,7 @@ async function getBolLabelWithFallbackInternal(
     }
   }
 
+  // 3. Try to discover a shippingLabelId from order/order-items endpoints
   const shippingLabelIdDiscoveryEndpoints = [
     `/orders/${encodeURIComponent(normalizedOrderId)}`,
     `/orders/${encodeURIComponent(normalizedOrderId)}/order-items`,
@@ -659,10 +713,7 @@ async function getBolLabelWithFallbackInternal(
         const labelEndpoint = `/shipping-labels/${encodeURIComponent(shippingLabelId)}`;
         try {
           const response = await fetchBolShippingLabelById(credentials, shippingLabelId);
-          return {
-            labelData: response,
-            endpoint: labelEndpoint,
-          };
+          return { labelData: response, endpoint: labelEndpoint };
         } catch (error) {
           errors.push({ endpoint: labelEndpoint, error });
         }
@@ -672,148 +723,53 @@ async function getBolLabelWithFallbackInternal(
     }
   }
 
-  let orderItemsPayload = null;
+  // 4. Create label via delivery options (recommended / auto-select)
   try {
-    orderItemsPayload = await bolApiRequest(credentials, `/orders/${encodeURIComponent(normalizedOrderId)}/order-items`);
+    const orderItemsPayload = await resolveOrderItemsPayload();
+    if (orderItemsPayload) {
+      const result = await createLabelFromOrderItems(orderItemsPayload, null);
+      if (result) return result;
+    }
   } catch (error) {
-    errors.push({ endpoint: `/orders/${normalizedOrderId}/order-items`, error });
+    errors.push({ endpoint: '/shipping-labels/delivery-options|/shipping-labels (auto)', error });
   }
 
-  if (!orderItemsPayload) {
-    try {
-      const matchingListedOrder = await findOrderInFbrOrderPages(credentials, normalizedOrderId, 8);
-
-      if (matchingListedOrder) {
-        orderItemsPayload = {
-          orderItems: Array.isArray(matchingListedOrder.orderItems)
-            ? matchingListedOrder.orderItems
-            : [],
-        };
-      }
-    } catch (error) {
-      errors.push({ endpoint: '/orders?status=ALL&page=*', error });
-    }
-  }
-
-  if (orderItemsPayload) {
-    const orderItems = extractBolOrderItemsForLabel(orderItemsPayload);
-    let handoverWindow = null;
-
-    if (orderItems.length > 0) {
-      try {
-        handoverWindow = await fetchBolDeliveryOptionHandoverWindow(
-          credentials,
-          orderItems,
-          normalizedPreferredShippingLabelOfferId || null,
-        );
-        const selectedDeliveryOption = handoverWindow.selectedDeliveryOption;
-
-        const shippingLabelOfferId = String(selectedDeliveryOption?.shippingLabelOfferId || '').trim();
-        if (shippingLabelOfferId) {
-          const createLabelPayload = await bolApiRequest(
-            credentials,
-            '/shipping-labels',
-            'POST',
-            {
-              orderItems,
-              shippingLabelOfferId,
-            },
-          );
-
-          let createdShippingLabelId = String(createLabelPayload?.entityId || '').trim();
-          if (!createdShippingLabelId) {
-            createdShippingLabelId = extractFirstLinkId(createLabelPayload, '/shipping-labels') || '';
-          }
-
-          if (!createdShippingLabelId && createLabelPayload?.processStatusId) {
-            const processStatusResolvedId = await resolveShippingLabelIdFromProcessStatus(
-              credentials,
-              createLabelPayload.processStatusId,
-            );
-            if (processStatusResolvedId) {
-              createdShippingLabelId = processStatusResolvedId;
-            }
-          }
-
-          if (createdShippingLabelId) {
-            const labelEndpoint = `/shipping-labels/${encodeURIComponent(createdShippingLabelId)}`;
-            try {
-              const response = await fetchBolShippingLabelById(credentials, createdShippingLabelId);
-              const earliestHandoverDateTime = handoverWindow?.earliestHandoverDateTime || null;
-              const latestHandoverDateTime = handoverWindow?.latestHandoverDateTime || null;
-              const deliveryOptionValidation = validateBolDeliveryOptionAttachment({
-                selectedDeliveryOption,
-                labelData: response,
-                earliestHandoverDateTime,
-                latestHandoverDateTime,
-              });
-
-              return {
-                labelData: {
-                  ...response,
-                  earliestHandoverDateTime,
-                  latestHandoverDateTime,
-                  deliveryOptionValidation,
-                },
-                endpoint: labelEndpoint,
-              };
-            } catch (error) {
-              errors.push({ endpoint: labelEndpoint, error });
-            }
-          }
-        }
-      } catch (error) {
-        errors.push({ endpoint: '/shipping-labels/delivery-options|/shipping-labels', error });
-      }
-    }
-  }
-
-  let shipmentsPayload = null;
+  // 5. Try fetching label from existing shipments
   try {
-    shipmentsPayload = await bolApiRequest(credentials, `/shipments?order-id=${encodeURIComponent(normalizedOrderId)}`);
-  } catch (error) {
-    errors.push({ endpoint: `/shipments?order-id=${normalizedOrderId}`, error });
-  }
+    const shipmentsPayload = await bolApiRequest(credentials, `/shipments?order-id=${encodeURIComponent(normalizedOrderId)}`);
 
-  if (shipmentsPayload) {
-    const shippingLabelIds = extractShippingLabelIdsFromResponse(shipmentsPayload);
-    for (const shippingLabelId of shippingLabelIds) {
-      const endpoint = `/shipping-labels/${encodeURIComponent(shippingLabelId)}`;
-      try {
-        const response = await fetchBolShippingLabelById(credentials, shippingLabelId);
-        return {
-          labelData: response,
-          endpoint,
-        };
-      } catch (error) {
-        errors.push({ endpoint, error });
-      }
-    }
-
-    const shipmentIds = extractShipmentIdsFromResponse(shipmentsPayload);
-    for (const shipmentId of shipmentIds) {
-      const shipmentEndpoints = [
-        `/shipments/${encodeURIComponent(shipmentId)}/label`,
-        `/shipments/${encodeURIComponent(shipmentId)}/shipment-label`,
-      ];
-
-      for (const endpoint of shipmentEndpoints) {
+    if (shipmentsPayload) {
+      const shippingLabelIds = extractShippingLabelIdsFromResponse(shipmentsPayload);
+      for (const shippingLabelId of shippingLabelIds) {
+        const endpoint = `/shipping-labels/${encodeURIComponent(shippingLabelId)}`;
         try {
-          const response = await bolApiRequest(credentials, endpoint);
-          return {
-            labelData: {
-              ...response,
-              shipmentId,
-            },
-            endpoint,
-          };
+          const response = await fetchBolShippingLabelById(credentials, shippingLabelId);
+          return { labelData: response, endpoint };
         } catch (error) {
           errors.push({ endpoint, error });
         }
       }
+
+      const shipmentIds = extractShipmentIdsFromResponse(shipmentsPayload);
+      for (const shipmentId of shipmentIds) {
+        for (const endpoint of [
+          `/shipments/${encodeURIComponent(shipmentId)}/label`,
+          `/shipments/${encodeURIComponent(shipmentId)}/shipment-label`,
+        ]) {
+          try {
+            const response = await bolApiRequest(credentials, endpoint);
+            return { labelData: { ...response, shipmentId }, endpoint };
+          } catch (error) {
+            errors.push({ endpoint, error });
+          }
+        }
+      }
     }
+  } catch (error) {
+    errors.push({ endpoint: `/shipments?order-id=${normalizedOrderId}`, error });
   }
 
+  // Surface the most useful error
   const unauthorizedErrors = errors.filter(({ error }) => isUnauthorizedBolError(error));
   if (unauthorizedErrors.length > 0 && unauthorizedErrors.length === errors.length) {
     const attemptedEndpoints = errors.map(({ endpoint }) => endpoint).join(', ');
@@ -856,7 +812,6 @@ async function fetchAllBolOrders(credentials) {
           `/orders?status=${encodeURIComponent(status)}&page=${page}`,
         );
       } catch (error) {
-        // Some Bol environments reject certain status filters; continue with remaining statuses.
         if (page === 1) {
           console.warn('[BOL SYNC] Skipping unsupported status filter', {
             status,
@@ -884,10 +839,7 @@ async function fetchAllBolOrders(credentials) {
         const existingStatus = String(existingOrder?.status || '').trim();
         const incomingStatus = String(order?.status || '').trim();
         if (!existingStatus && incomingStatus) {
-          dedupedOrders.set(orderId, {
-            ...existingOrder,
-            ...order,
-          });
+          dedupedOrders.set(orderId, { ...existingOrder, ...order });
         }
       }
 
@@ -1063,26 +1015,13 @@ const hasBolShipmentConfirmation = ({ orderPayload = null, shipmentPayload = nul
   return orderSignals.length > 0;
 };
 
-const resolvePersistedOrderStatus = (existingOrder) => {
-  const normalizedOrderStatus = normalizeStatusToken(existingOrder?.orderStatus);
-  const normalizedStatus = normalizeStatusToken(existingOrder?.status);
-
-  if (DELIVERED_STATUS_TOKENS.has(normalizedOrderStatus) || DELIVERED_STATUS_TOKENS.has(normalizedStatus)) {
-    return 'afgeleverd';
-  }
-
-  if (
-    SHIPPED_STATUS_TOKENS.has(normalizedOrderStatus) ||
-    SHIPPED_STATUS_TOKENS.has(normalizedStatus) ||
-    Boolean(String(existingOrder?.supplierTracking || '').trim()) ||
-    Boolean(String(existingOrder?.tracking?.trackingCode || '').trim()) ||
-    String(existingOrder?.label?.status || '').trim().toLowerCase() === 'generated'
-  ) {
-    return 'verzonden';
-  }
-
-  return null;
-};
+/**
+ * FIX: resolvePersistedOrderStatus is removed.
+ *
+ * Previously this function would permanently "lock" an order as verzonden once
+ * it had been marked shipped — even if Bol's live data said otherwise.
+ * We now always trust Bol's live status from the API instead.
+ */
 
 const isLikelyImageUrl = (value) => {
   if (!value || typeof value !== 'string') return false;
@@ -1265,12 +1204,6 @@ const findStringValueByKey = (input, keyRegex) => {
 const extractProductImage = (item = {}) => {
   const images = item?.product?.images;
 
-  console.log('[BOL SYNC] Extracting product image from item:', {
-    itemId: item?.orderItemId || null,
-    productId: item?.product?.id || null,
-    images,
-  }); 
-
   if (Array.isArray(images) && images.length > 0) {
     const firstImage = images[0];
     if (typeof firstImage === 'string') return firstImage;
@@ -1408,12 +1341,10 @@ const fetchBolProductAssetsByUsage = async ({ credentials, ean, usage }) => {
   }
 };
 
-// --- ENRICH PRODUCT VIA CONTENT API ONLY ---
 const enrichBolProductData = async ({ credentials, ean }) => {
   const eanValue = firstNonEmptyString(ean);
 
   if (!eanValue) {
-    console.log('[BOL ENRICHMENT] No EAN available, skipping enrichment');
     return null;
   }
 
@@ -1443,23 +1374,12 @@ const enrichBolProductData = async ({ credentials, ean }) => {
     const assetResponses = [primaryAssets, additionalAssets, imageAssets].filter(Boolean);
     const mergedEnrichmentData = {
       ...data,
-      product: {
-        ...(data?.product || {}),
-      },
+      product: { ...(data?.product || {}) },
       assetsByUsage: assetResponses,
       assets: assetResponses.map((assetResponse) => assetResponse.data).filter(Boolean),
     };
 
     const resolvedImage = resolveImageFromBolEnrichment(mergedEnrichmentData);
-
-    console.log('[BOL ENRICHMENT SUCCESS]', {
-      ean: eanValue,
-      hasImages: Array.isArray(data?.images),
-      imageCount: data?.images?.length || 0,
-      assetResponseCount: assetResponses.length,
-      resolvedImage: !!resolvedImage,
-      brand: data?.brand,
-    });
 
     return { endpoint, data: mergedEnrichmentData, resolvedImage };
   } catch (error) {
@@ -1478,8 +1398,6 @@ const enrichBolProductData = async ({ credentials, ean }) => {
 export const syncBolOrders = async (req, res) => {
   try {
     const { installationId, integrationId } = req.query;
-    const debugOrderId = 'C00028PR4D';
-    let debugOrderSeen = false;
 
     if (!installationId) {
       return res.status(400).json({ error: 'Installation ID is required' });
@@ -1504,59 +1422,36 @@ export const syncBolOrders = async (req, res) => {
     const { integration, credentials } = await getBolIntegration(installationId, integrationId);
     const integrationCredentials = JSON.parse(integration.credentials || '{}');
     const integrationShopName = integrationCredentials.shopName || `Bol.com #${integration.id}`;
-    
-    // Fetch all order pages from Bol.com
+
     const bolOrders = await fetchAllBolOrders(credentials);
 
-    console.log('[BOL SYNC] Fetched orders from Bol.com:', {
-      totalOrders: bolOrders.length,
-    });
-    
+    console.log('[BOL SYNC] Fetched orders from Bol.com:', { totalOrders: bolOrders.length });
+
     let importedCount = 0;
     let updatedCount = 0;
     const enrichmentCache = new Map();
 
     for (const bolOrder of bolOrders) {
       const currentBolOrderId = String(bolOrder?.orderId || bolOrder?.orderNumber || '').trim();
-      const isDebugOrder = currentBolOrderId.toUpperCase() === debugOrderId;
-      if (isDebugOrder) {
-        debugOrderSeen = true;
-        console.log('[BOL SYNC][DEBUG ORDER] Matched target order in list', {
-          orderId: currentBolOrderId,
-          listedStatus: bolOrder?.status || null,
-          installationId: parseInt(installationId, 10),
-          integrationId: integrationId ? parseInt(integrationId, 10) : null,
-        });
-      }
 
-      // Log the complete order data for debugging
-      console.log('[BOL SYNC] ========================================');
-      console.log('[BOL SYNC] Processing order:', bolOrder.orderId);
-      console.log('[BOL SYNC] Full Bol Order Object:', JSON.stringify(bolOrder, null, 2));
-      console.log('[BOL SYNC] ========================================');
-      
-      // Fetch and log detailed Bol data for this order
       let bolOrderDetails = null;
       let bolOrderItemsDetails = null;
       let bolShipmentDetails = null;
 
       try {
         bolOrderDetails = await bolApiRequest(credentials, `/orders/${bolOrder.orderId}`);
-        console.log('[BOL SYNC] Order details:', JSON.stringify(bolOrderDetails, null, 2));
       } catch (detailError) {
         console.warn('[BOL SYNC] Failed to fetch order details:', detailError.message);
       }
 
       try {
         bolOrderItemsDetails = await bolApiRequest(credentials, `/orders/${bolOrder.orderId}/order-items`);
-        console.log('[BOL SYNC] Order items details:', JSON.stringify(bolOrderItemsDetails, null, 2));
       } catch (detailError) {
         console.warn('[BOL SYNC] Failed to fetch order items details:', detailError.message);
       }
 
       try {
         bolShipmentDetails = await bolApiRequest(credentials, `/shipments?order-id=${bolOrder.orderId}`);
-        console.log('[BOL SYNC] Shipment details:', JSON.stringify(bolShipmentDetails, null, 2));
       } catch (detailError) {
         console.warn('[BOL SYNC] Failed to fetch shipment details:', detailError.message);
       }
@@ -1590,6 +1485,7 @@ export const syncBolOrders = async (req, res) => {
         firstShipment?.transporter,
         findStringValueByKey(firstShipment, /(transporter.?code|carrier.?code|carrier)/i),
       );
+
       const bolStatusCandidates = [
         firstNonEmptyString(bolOrder?.status),
         firstNonEmptyString(orderPayload?.status),
@@ -1600,46 +1496,20 @@ export const syncBolOrders = async (req, res) => {
         findStringValueByKey(bolShipmentDetails, /(^|_)(status|shipment.?status|order.?status)$/i),
         shipmentConfirmedByBol ? 'SHIPPED' : null,
       ].filter(Boolean);
+
       const resolvedBolOrderStatus = resolvePrimaryBolStatus(bolStatusCandidates);
       const resolvedShippingStatus = resolvedBolOrderStatus || null;
+
+      // FIX: Always derive status from live Bol data — never from previously persisted DB status.
+      // This prevents orders from getting permanently stuck as "verzonden".
       const resolvedInternalStatus = resolveBolStatusToInternal({
         statuses: bolStatusCandidates,
         hasTrackAndTrace: Boolean(resolvedTrackAndTrace) || shipmentConfirmedByBol,
       });
-      if (isDebugOrder) {
-        console.log('[BOL SYNC][DEBUG ORDER] Status resolution', {
-          orderId: currentBolOrderId,
-          bolStatusCandidates,
-          resolvedBolOrderStatus,
-          resolvedShippingStatus,
-          resolvedInternalStatus,
-          shipmentConfirmedByBol,
-          resolvedTrackAndTrace,
-          firstShipmentStatus: firstShipment?.status || null,
-          firstShipmentShipmentStatus: firstShipment?.shipmentStatus || null,
-          firstShipmentTransportStatus: firstShipment?.transport?.status || null,
-        });
-      }
-      console.log('[BOL SYNC] Bol status sources:', {
-        orderId: bolOrder.orderId,
-        bolOrderStatus: bolOrder?.status || null,
-        orderDetailsStatus: orderPayload?.status || null,
-        shipmentStatus: firstShipment?.status || null,
-        shipmentShipmentStatus: firstShipment?.shipmentStatus || null,
-        shipmentTransportStatus: firstShipment?.transport?.status || null,
-        shipmentConfirmedByBol,
-      });
-      console.log('[BOL SYNC] Order status candidates from bol.com:', {
-        orderId: bolOrder.orderId,
-        rawStatuses: bolStatusCandidates,
-        resolvedBolOrderStatus,
-        resolvedShippingStatus,
-        resolvedInternalStatus,
-      });
 
-      console.log('[BOL SYNC] ALL ORDER DATA:', {
-        order1: orderPayload,
-      });
+      const finalInternalStatus = resolvedInternalStatus;
+      const finalOrderStatus = resolvedBolOrderStatus || finalInternalStatus;
+      const finalOrderStatusCode = toOrderStatusCode(finalInternalStatus || finalOrderStatus);
 
       const deliveryDate = resolveBolDeliveryDate(orderPayload, orderItems, bolShipmentDetails);
       const resolvedBolShippingMethod = inferBolShippingMethodFromOrderData({
@@ -1649,6 +1519,7 @@ export const syncBolOrders = async (req, res) => {
         shippingMethod: orderPayload?.shippingMethod,
         bolShippingMethod: orderPayload?.bolShippingMethod,
       });
+
       const distributionPartyCandidates = [
         orderPayload?.distributionParty,
         orderPayload?.distribution_party,
@@ -1664,7 +1535,6 @@ export const syncBolOrders = async (req, res) => {
         .map((value) => String(value || '').trim())
         .filter(Boolean);
 
-      const resolvedDistributionParty = distributionPartyCandidates[0] || null;
       const isVvbOrder = distributionPartyCandidates.some(
         (value) => value.toUpperCase() === 'BOL'
       );
@@ -1674,7 +1544,6 @@ export const syncBolOrders = async (req, res) => {
         shippingDescription: shipmentDetails?.deliveryMethod,
       });
 
-      // Check if order already exists (for import/update counters)
       const existingOrder = await prisma.order.findFirst({
         where: {
           orderNumber: bolOrder.orderId,
@@ -1687,31 +1556,17 @@ export const syncBolOrders = async (req, res) => {
           orderStatus: true,
           status: true,
           supplierTracking: true,
-          tracking: {
-            select: {
-              trackingCode: true,
-            },
-          },
-          label: {
-            select: {
-              status: true,
-            },
-          },
+          tracking: { select: { trackingCode: true } },
+          label: { select: { status: true } },
         },
       });
 
       const conflictingOrder = await prisma.order.findFirst({
         where: {
           orderNumber: bolOrder.orderId,
-          NOT: {
-            installationId: parseInt(installationId),
-          },
+          NOT: { installationId: parseInt(installationId) },
         },
-        select: {
-          id: true,
-          installationId: true,
-          storeName: true,
-        },
+        select: { id: true, installationId: true, storeName: true },
       });
 
       if (!existingOrder && conflictingOrder) {
@@ -1719,7 +1574,6 @@ export const syncBolOrders = async (req, res) => {
           orderNumber: bolOrder.orderId,
           targetInstallationId: parseInt(installationId),
           conflictingInstallationId: conflictingOrder.installationId,
-          conflictingStoreName: conflictingOrder.storeName,
         });
         continue;
       }
@@ -1729,7 +1583,6 @@ export const syncBolOrders = async (req, res) => {
           orderNumber: bolOrder.orderId,
           existingStoreName: existingOrder.storeName,
           incomingStoreName: integrationShopName,
-          installationId: parseInt(installationId),
         });
         continue;
       }
@@ -1746,30 +1599,16 @@ export const syncBolOrders = async (req, res) => {
         bolShippingMethod: resolvedBolShippingMethod,
         isBrievenbus: mailboxOrder,
       });
+
       const resolvedOrderShippingMethod = isVvbOrder
         ? 'Bol.com'
         : (shippingAutomationResult.shippingAssignment || null);
-      const persistedStatus = resolvePersistedOrderStatus(existingOrder);
-      const finalInternalStatus = persistedStatus || resolvedInternalStatus;
-      const finalOrderStatus = resolvedBolOrderStatus || finalInternalStatus;
-      const finalOrderStatusCode = toOrderStatusCode(finalInternalStatus || finalOrderStatus);
-      if (isDebugOrder) {
-        console.log('[BOL SYNC][DEBUG ORDER] Final mapped status before save', {
-          orderId: currentBolOrderId,
-          persistedStatus,
-          finalInternalStatus,
-          finalOrderStatus,
-          finalOrderStatusCode,
-          existingOrderStatus: existingOrder?.orderStatus || null,
-          existingStatus: existingOrder?.status || null,
-        });
-      }
 
       const orderData = {
         orderNumber: bolOrder.orderId,
         installationId: parseInt(installationId),
         userId: req.user.id,
-        customerName: customerName,
+        customerName,
         customerEmail: shipmentDetails?.email || null,
         address: [
           shipmentDetails?.streetName,
@@ -1795,6 +1634,7 @@ export const syncBolOrders = async (req, res) => {
         status: finalInternalStatus,
       };
 
+      // Resolve handover window dates for VVB orders (drop-off dates only — not shipping status)
       if (isVvbOrder && orderItems.length > 0) {
         try {
           const bolLabelOrderItems = orderItems
@@ -1813,11 +1653,8 @@ export const syncBolOrders = async (req, res) => {
 
           if (bolLabelOrderItems.length > 0) {
             const handoverWindow = await fetchBolDeliveryOptionHandoverWindow(credentials, bolLabelOrderItems);
-            const earliestDropOffDate = toValidDate(handoverWindow.earliestHandoverDateTime);
-            const latestDropOffDate = toValidDate(handoverWindow.latestHandoverDateTime);
-
-            orderData.earliestDropOffDate = earliestDropOffDate;
-            orderData.latestDropOffDate = latestDropOffDate;
+            orderData.earliestDropOffDate = toValidDate(handoverWindow.earliestHandoverDateTime);
+            orderData.latestDropOffDate = toValidDate(handoverWindow.latestHandoverDateTime);
           }
         } catch (handoverError) {
           console.warn('[BOL SYNC] Failed to resolve handover window from delivery options', {
@@ -1826,17 +1663,6 @@ export const syncBolOrders = async (req, res) => {
           });
         }
       }
-
-      console.log('[BOL SYNC] Mapped order data:', {
-        customerName: orderData.customerName,
-        orderValue: orderData.orderValue,
-        distributionPartyCandidates,
-        distributionParty: resolvedDistributionParty || null,
-        isVVB: isVvbOrder,
-        shippingMethod: resolvedOrderShippingMethod,
-        status: orderData.status,
-        orderStatus: orderData.orderStatus
-      });
 
       const savedOrder = existingOrder
         ? await prisma.order.update({
@@ -1879,7 +1705,6 @@ export const syncBolOrders = async (req, res) => {
           console.warn('[BOL SYNC] Failed to persist shippingMethod via raw SQL', {
             orderId: savedOrder.id,
             orderNumber: bolOrder.orderId,
-            isVvbOrder,
             message: shippingMethodError.message,
           });
         }
@@ -1889,15 +1714,6 @@ export const syncBolOrders = async (req, res) => {
         updatedCount++;
       } else {
         importedCount++;
-      }
-
-      if (isDebugOrder) {
-        console.log('[BOL SYNC][DEBUG ORDER] Save complete', {
-          orderId: currentBolOrderId,
-          savedOrderId: savedOrder?.id || null,
-          importedCount,
-          updatedCount,
-        });
       }
 
       if (Array.isArray(orderItems)) {
@@ -1958,31 +1774,17 @@ export const syncBolOrders = async (req, res) => {
           const enrichmentCacheKey = firstNonEmptyString(ean, sku, offerId, item?.orderItemId);
           if ((!resolvedProductImage || !resolvedProductBrand) && enrichmentCacheKey) {
             if (!enrichmentCache.has(enrichmentCacheKey)) {
-            const enrichment = await enrichBolProductData({
-              credentials,
-              ean,
-            });
+              const enrichment = await enrichBolProductData({ credentials, ean });
               enrichmentCache.set(enrichmentCacheKey, enrichment || null);
             }
 
             const enrichmentResponse = enrichmentCache.get(enrichmentCacheKey);
             if (enrichmentResponse) {
-              const enrichmentData = enrichmentResponse.data;
-              const enrichmentEndpoint = enrichmentResponse.endpoint;
-
               if (!resolvedProductImage) {
                 resolvedProductImage = firstNonEmptyString(
                   enrichmentResponse.resolvedImage,
-                  resolveImageFromBolEnrichment(enrichmentData)
+                  resolveImageFromBolEnrichment(enrichmentResponse.data)
                 );
-
-                if (resolvedProductImage) {
-                  console.log('[BOL IMAGE RESOLVED]', {
-                    ean,
-                    endpoint: enrichmentEndpoint,
-                    resolvedProductImage,
-                  });
-                }
               }
             }
           }
@@ -2000,10 +1802,7 @@ export const syncBolOrders = async (req, res) => {
                 ...(ean ? [{ ean }] : []),
               ],
             },
-            select: {
-              id: true,
-              image: true,
-            },
+            select: { id: true, image: true },
           });
 
           const normalizedProductName = normalizeProductName(productName);
@@ -2019,10 +1818,7 @@ export const syncBolOrders = async (req, res) => {
                 internalRef: internalRef || sku,
                 price: effectiveUnitPrice,
               },
-              select: {
-                id: true,
-                image: true,
-              },
+              select: { id: true, image: true },
             });
           } else {
             product = await prisma.product.create({
@@ -2036,10 +1832,7 @@ export const syncBolOrders = async (req, res) => {
                 internalRef: internalRef || sku,
                 price: effectiveUnitPrice,
               },
-              select: {
-                id: true,
-                image: true,
-              },
+              select: { id: true, image: true },
             });
           }
 
@@ -2060,13 +1853,6 @@ export const syncBolOrders = async (req, res) => {
       }
     }
 
-    if (!debugOrderSeen) {
-      console.warn('[BOL SYNC][DEBUG ORDER] Target order not found in fetched Bol orders', {
-        targetOrderId: debugOrderId,
-        totalFetchedOrders: bolOrders.length,
-      });
-    }
-
     res.json({
       success: true,
       imported: importedCount,
@@ -2081,19 +1867,29 @@ export const syncBolOrders = async (req, res) => {
         details: error?.meta?.target ? `Field: ${error.meta.target}` : undefined,
       });
     }
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to sync orders from Bol.com',
-      details: error.message 
+      details: error.message,
     });
   }
 };
 
 /**
- * Get shipping label from Bol.com
+ * Get shipping label from Bol.com.
+ *
+ * FIX: This no longer unconditionally marks orders as "verzonden".
+ * Status is only updated if the label contains a confirmed tracking code,
+ * which means Bol has actually shipped the order.
  */
 export const getBolShippingLabel = async (req, res) => {
   try {
-    const { installationId, orderId, integrationId, shippingLabelOfferId } = req.query;
+    const {
+      installationId,
+      orderId,
+      integrationId,
+      shippingLabelOfferId,
+      orderItems: bodyOrderItems,
+    } = req.body || {};
 
     if (!installationId || !orderId) {
       return res.status(400).json({ error: 'Installation ID and Order ID are required' });
@@ -2103,13 +1899,8 @@ export const getBolShippingLabel = async (req, res) => {
     const installationIdNumber = parseInt(installationId, 10);
 
     const matchingOrders = await prisma.order.findMany({
-      where: {
-        orderNumber: normalizedOrderId,
-      },
-      select: {
-        id: true,
-        installationId: true,
-      },
+      where: { orderNumber: normalizedOrderId },
+      select: { id: true, installationId: true, isVVB: true },
     });
 
     const orderScopedInstallations = Array.from(new Set(
@@ -2170,6 +1961,10 @@ export const getBolShippingLabel = async (req, res) => {
       throw new Error('Bol.com integration not found or not active');
     }
 
+    // Determine if this is a VVB order so we can auto-supply the preferred offer ID
+    const isVvbOrder = matchingOrders.some((o) => o.isVVB);
+    console.log('[BOL LABEL DEBUG] getBolShippingLabel called', { normalizedOrderId, installationId, integrationId, shippingLabelOfferId, isVvbOrder, matchingOrderCount: matchingOrders.length });
+
     let labelData = null;
     let successfulIntegrationId = null;
     let lastError = null;
@@ -2178,17 +1973,66 @@ export const getBolShippingLabel = async (req, res) => {
     for (const candidate of integrationCandidates) {
       try {
         attemptedIntegrationIds.push(candidate.integration.id);
-        const fallbackResult = await getBolLabelWithFallbackInternal(candidate.credentials, orderId, {
-          preferredShippingLabelOfferId: String(shippingLabelOfferId || '').trim() || null,
-        });
+
+        // For VVB orders with no explicit offer ID, resolve delivery options first
+        let resolvedShippingLabelOfferId = String(shippingLabelOfferId || '').trim() || null;
+
+        if (isVvbOrder && !resolvedShippingLabelOfferId) {
+          try {
+            let orderItemsPayload = null;
+            try {
+              orderItemsPayload = await bolApiRequest(
+                candidate.credentials,
+                `/orders/${encodeURIComponent(normalizedOrderId)}/order-items`,
+              );
+            } catch {
+              const listedOrder = await findOrderInFbrOrderPages(candidate.credentials, normalizedOrderId, 8);
+              if (listedOrder) {
+                orderItemsPayload = {
+                  orderItems: Array.isArray(listedOrder.orderItems) ? listedOrder.orderItems : [],
+                };
+              }
+            }
+
+            if (orderItemsPayload) {
+              const orderItems = extractBolOrderItemsForLabel(orderItemsPayload);
+              if (orderItems.length > 0) {
+                const handoverWindow = await fetchBolDeliveryOptionHandoverWindow(
+                  candidate.credentials,
+                  orderItems,
+                  null,
+                );
+                resolvedShippingLabelOfferId = String(
+                  handoverWindow.selectedDeliveryOption?.shippingLabelOfferId || ''
+                ).trim() || null;
+              }
+            }
+          } catch (offerResolutionError) {
+            console.warn('[BOL LABEL] Failed to auto-resolve shippingLabelOfferId for VVB order', {
+              orderId: normalizedOrderId,
+              message: offerResolutionError.message,
+            });
+          }
+        }
+
+        const prefetchedOrderItems = Array.isArray(bodyOrderItems) && bodyOrderItems.length > 0
+          ? bodyOrderItems
+          : null;
+
+        const fallbackResult = await getBolLabelWithFallbackInternal(
+          candidate.credentials,
+          orderId,
+          {
+            preferredShippingLabelOfferId: resolvedShippingLabelOfferId,
+            prefetchedOrderItems,
+          },
+        );
         labelData = fallbackResult.labelData;
         successfulIntegrationId = candidate.integration.id;
         break;
       } catch (candidateError) {
         lastError = candidateError;
-        const isUnauthorizedError = isUnauthorizedBolError(candidateError);
-
-        if (!isUnauthorizedError) {
+        if (!isUnauthorizedBolError(candidateError)) {
           throw candidateError;
         }
       }
@@ -2202,6 +2046,73 @@ export const getBolShippingLabel = async (req, res) => {
     const earliestDropOffDate = toValidDate(labelData?.earliestHandoverDateTime);
     const latestDropOffDate = toValidDate(labelData?.latestHandoverDateTime);
 
+    // Save the PDF to disk and persist a Label record so the label survives
+    // dialog close / page reload (same as DHL/DPD labels in carrierController).
+    const rawLabelDataUri = String(labelData?.labelUrl || '').trim();
+    let persistedLabelUrl = rawLabelDataUri; // fallback: return data URI if file save fails
+
+    if (rawLabelDataUri.startsWith('data:')) {
+      try {
+        const forwardedProto = String(req.get('x-forwarded-proto') || '').split(',')[0].trim().toLowerCase();
+        const forwardedHost = String(req.get('x-forwarded-host') || '').split(',')[0].trim();
+        const requestHost = forwardedHost || String(req.get('host') || '').trim();
+        const protocol =
+          req.secure || forwardedProto === 'https' || process.env.FORCE_LABEL_HTTPS === 'true' || process.env.NODE_ENV === 'production'
+            ? 'https'
+            : req.protocol;
+
+        const dataUrlMatch = rawLabelDataUri.match(/^data:([^;]+);base64,(.+)$/i);
+        if (dataUrlMatch) {
+          const mimeType = String(dataUrlMatch[1] || 'application/pdf').toLowerCase();
+          const base64Payload = dataUrlMatch[2] || '';
+          const extension = mimeType.includes('pdf') ? 'pdf' : 'bin';
+          const targetOrderDbId = matchingOrders[0]?.id || 'unknown';
+          const fileName = `label-${targetOrderDbId}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${extension}`;
+          const filePath = path.join(LABEL_STORAGE_DIR, fileName);
+
+          await fs.mkdir(LABEL_STORAGE_DIR, { recursive: true });
+          await fs.writeFile(filePath, Buffer.from(base64Payload, 'base64'));
+
+          persistedLabelUrl = `${protocol}://${requestHost}/labels/${fileName}`;
+          labelData = { ...labelData, labelUrl: persistedLabelUrl };
+
+          console.log('[BOL LABEL] Saved label to disk', { orderId: normalizedOrderId, fileName, persistedLabelUrl });
+        }
+      } catch (saveError) {
+        console.warn('[BOL LABEL] Failed to save label to disk, returning data URI', {
+          orderId: normalizedOrderId,
+          message: saveError?.message,
+        });
+      }
+    }
+
+    // Persist Label records for all matched order rows
+    const targetOrderDbIds = matchingOrders.map((o) => o.id).filter(Boolean);
+    if (targetOrderDbIds.length > 0 && persistedLabelUrl) {
+      try {
+        await Promise.all(
+          targetOrderDbIds.map((dbOrderId) =>
+            prisma.label.upsert({
+              where: { orderId: dbOrderId },
+              update: { labelUrl: persistedLabelUrl.length <= 191 ? persistedLabelUrl : null, status: 'generated', carrierId: null },
+              create: { orderId: dbOrderId, labelUrl: persistedLabelUrl.length <= 191 ? persistedLabelUrl : null, status: 'generated', carrierId: null },
+            }),
+          ),
+        );
+      } catch (labelDbError) {
+        console.warn('[BOL LABEL] Failed to persist Label record to database', {
+          orderId: normalizedOrderId,
+          message: labelDbError?.message,
+        });
+      }
+    }
+
+    // Mark as verzonden if we have a confirmed tracking code (bol has shipped the order).
+    // Otherwise mark as label-aangemaakt — generating a label confirms the order is being processed
+    // but has not been physically shipped yet.
+    // Drop-off dates are always updated because they come from delivery options, not shipment status.
+    const hasConfirmedTrackingCode = Boolean(labelData?.trackingCode);
+
     await prisma.order.updateMany({
       where: {
         orderNumber: normalizedOrderId,
@@ -2210,11 +2121,11 @@ export const getBolShippingLabel = async (req, res) => {
           : (Number.isFinite(installationIdNumber) ? { installationId: installationIdNumber } : {})),
       },
       data: {
-        orderStatus: 'verzonden',
-        status: 'verzonden',
-        orderStatusCode: 'SHIPPED',
-        earliestDropOffDate,
-        latestDropOffDate,
+        orderStatus: hasConfirmedTrackingCode ? 'verzonden' : 'label-aangemaakt',
+        status: hasConfirmedTrackingCode ? 'verzonden' : 'label-aangemaakt',
+        ...(hasConfirmedTrackingCode ? { orderStatusCode: 'SHIPPED' } : {}),
+        ...(earliestDropOffDate ? { earliestDropOffDate } : {}),
+        ...(latestDropOffDate ? { latestDropOffDate } : {}),
       },
     });
 
@@ -2230,9 +2141,9 @@ export const getBolShippingLabel = async (req, res) => {
       ? 403
       : 500;
 
-    res.status(statusCode).json({ 
+    res.status(statusCode).json({
       error: 'Failed to get shipping label from Bol.com',
-      details: errorDetails 
+      details: errorDetails,
     });
   }
 };
@@ -2288,10 +2199,9 @@ export const getBolDeliveryOptions = async (req, res) => {
     });
   } catch (error) {
     console.error('Get Bol delivery options error:', error);
-    const errorDetails = error?.message || 'Unknown error';
     res.status(500).json({
       error: 'Failed to get Bol delivery options',
-      details: errorDetails,
+      details: error?.message || 'Unknown error',
     });
   }
 };
@@ -2309,8 +2219,7 @@ export const updateBolShipment = async (req, res) => {
     }
 
     const { credentials } = await getBolIntegration(installationId, integrationId);
-    
-    // Update shipment in Bol
+
     const shipmentData = {
       shipmentReference,
       transport: {
@@ -2320,13 +2229,12 @@ export const updateBolShipment = async (req, res) => {
     };
 
     const result = await bolApiRequest(
-      credentials, 
+      credentials,
       `/orders/${orderId}/shipment`,
       'PUT',
       shipmentData
     );
 
-    // Update in our database
     const updatedOrder = await prisma.order.update({
       where: { orderNumber: orderId },
       data: {
@@ -2361,9 +2269,9 @@ export const updateBolShipment = async (req, res) => {
     res.json({ success: true, data: result });
   } catch (error) {
     console.error('Update Bol shipment error:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to update shipment on Bol.com',
-      details: error.message 
+      details: error.message,
     });
   }
 };
@@ -2380,16 +2288,14 @@ export const getBolReturns = async (req, res) => {
     }
 
     const { credentials } = await getBolIntegration(installationId, integrationId);
-    
-    // Fetch returns from Bol
     const returns = await bolApiRequest(credentials, `/returns?page=${page}`);
 
     res.json(returns);
   } catch (error) {
     console.error('Get Bol returns error:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to get returns from Bol.com',
-      details: error.message 
+      details: error.message,
     });
   }
 };
@@ -2407,11 +2313,10 @@ export const handleBolReturn = async (req, res) => {
     }
 
     const { credentials } = await getBolIntegration(installationId, integrationId);
-    
-    // Handle return in Bol
+
     const returnData = {
       quantityReturned,
-      handlingResult, // 'RETURN_RECEIVED', 'EXCHANGE_PRODUCT', 'RETURN_DOES_NOT_MEET_CONDITIONS', etc.
+      handlingResult,
     };
 
     const result = await bolApiRequest(
@@ -2424,9 +2329,9 @@ export const handleBolReturn = async (req, res) => {
     res.json({ success: true, data: result });
   } catch (error) {
     console.error('Handle Bol return error:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to handle return on Bol.com',
-      details: error.message 
+      details: error.message,
     });
   }
 };
@@ -2493,12 +2398,7 @@ export const syncBolOrdersForInstallation = async ({ installationId, integration
     throw new Error(payload?.details || payload?.error || 'Failed to sync orders from Bol.com');
   }
 
-  return payload || {
-    success: true,
-    imported: 0,
-    updated: 0,
-    total: 0,
-  };
+  return payload || { success: true, imported: 0, updated: 0, total: 0 };
 };
 
 // Helper function to map Bol status to internal status
@@ -2534,9 +2434,7 @@ function mapBolStatusToInternal(bolStatus) {
     'GEANNULEERD': 'geannuleerd',
   };
 
-  const resolvedStatus = statusMap[normalizedStatus] || 'openstaand';
-  console.log('[BOL SYNC] Mapping status:', bolStatus, 'normalized:', normalizedStatus, '->', resolvedStatus);
-  return resolvedStatus;
+  return statusMap[normalizedStatus] || 'openstaand';
 }
 
 function resolveBolStatusToInternal({ statuses = [], hasTrackAndTrace = false } = {}) {

@@ -18,7 +18,7 @@ router.use(authenticate);
 router.get('/sync-orders', syncBolOrders);
 
 // Shipping labels
-router.get('/shipping-label', getBolShippingLabel);
+router.post('/shipping-label', getBolShippingLabel);
 router.get('/delivery-options', getBolDeliveryOptions);
 
 // Shipment updates
