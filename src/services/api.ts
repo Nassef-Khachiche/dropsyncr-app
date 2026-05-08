@@ -561,20 +561,20 @@ class ApiService {
     orderId: string,
     integrationId?: number | string,
     shippingLabelOfferId?: string,
+    orderItems?: Array<{ orderItemId: string; quantity: number }>,
   ) {
-    const queryParams = new URLSearchParams();
-    queryParams.append('installationId', installationId);
-    queryParams.append('orderId', orderId);
-    if (integrationId !== undefined && integrationId !== null && String(integrationId).trim()) {
-      queryParams.append('integrationId', String(integrationId));
-    }
-    if (shippingLabelOfferId !== undefined && shippingLabelOfferId !== null && String(shippingLabelOfferId).trim()) {
-      queryParams.append('shippingLabelOfferId', String(shippingLabelOfferId));
-    }
-
-    return this.request<any>(
-      `/bol/shipping-label?${queryParams.toString()}`
-    );
+    return this.request<any>('/bol/shipping-label', {
+      method: 'POST',
+      body: JSON.stringify({
+        installationId,
+        orderId,
+        ...(integrationId !== undefined && integrationId !== null && String(integrationId).trim()
+          ? { integrationId: String(integrationId) }
+          : {}),
+        ...(shippingLabelOfferId ? { shippingLabelOfferId } : {}),
+        ...(orderItems && orderItems.length > 0 ? { orderItems } : {}),
+      }),
+    });
   }
 
   async getBolDeliveryOptions(installationId: string, orderId: string, integrationId?: number | string) {

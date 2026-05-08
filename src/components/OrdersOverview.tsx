@@ -1,4 +1,4 @@
-import { useState, useEffect, Fragment } from 'react';
+import { useState, useEffect, useRef, Fragment } from 'react';
 import { api } from '../services/api';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -354,14 +354,57 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
   const [selectedWeGrowCarrier, setSelectedWeGrowCarrier] = useState<string>('');
   const [generatingLabel, setGeneratingLabel] = useState(false);
   const [labelPreviewUrl, setLabelPreviewUrl] = useState<string>('');
+  const labelBlobUrlRef = useRef<string>('');
   const [generatedLabelMeta, setGeneratedLabelMeta] = useState<{
     shipmentId?: string | null;
     trackingCode?: string | null;
     trackingUrl?: string | null;
   } | null>(null);
   const [bolDeliveryOptions, setBolDeliveryOptions] = useState<BolDeliveryOption[]>([]);
+  const [bolOrderItems, setBolOrderItems] = useState<Array<{ orderItemId: string; quantity: number }>>([]);
   const [selectedBolDeliveryOptionId, setSelectedBolDeliveryOptionId] = useState<string>('');
   const [loadingBolDeliveryOptions, setLoadingBolDeliveryOptions] = useState(false);
+
+  // Convert a raw label URL (https or data: URI) to a Blob URL and set it as the
+  // preview. data: URIs must be converted because Chrome 60+ blocks them in iframes.
+  // Returns the viewable URL synchronously so callers can use it immediately.
+  const applyLabelUrl = (rawUrl: string): string => {
+    if (labelBlobUrlRef.current) {
+      URL.revokeObjectURL(labelBlobUrlRef.current);
+      labelBlobUrlRef.current = '';
+    }
+    if (!rawUrl) {
+      setLabelPreviewUrl('');
+      return '';
+    }
+    if (rawUrl.startsWith('data:')) {
+      try {
+        const commaIndex = rawUrl.indexOf(',');
+        const mime = rawUrl.slice(0, commaIndex).split(':')[1]?.split(';')[0] || 'application/pdf';
+        const b64 = rawUrl.slice(commaIndex + 1).replace(/\s/g, '');
+        const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+        const blob = new Blob([bytes], { type: mime });
+        const blobUrl = URL.createObjectURL(blob);
+        labelBlobUrlRef.current = blobUrl;
+        setLabelPreviewUrl(blobUrl);
+        return blobUrl;
+      } catch {
+        setLabelPreviewUrl('');
+        return '';
+      }
+    }
+    setLabelPreviewUrl(rawUrl);
+    return rawUrl;
+  };
+
+  // Revoke any active Blob URL when the component unmounts
+  useEffect(() => {
+    return () => {
+      if (labelBlobUrlRef.current) {
+        URL.revokeObjectURL(labelBlobUrlRef.current);
+      }
+    };
+  }, []);
 
   // --- Return label dialog state ---
   const [showReturnLabelDialog, setShowReturnLabelDialog] = useState(false);
@@ -438,6 +481,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
     const loadBolDeliveryOptions = async () => {
       if (!showLabelDialog || selectedContractId !== VVB_CONTRACT_ID || !labelOrder) {
         setBolDeliveryOptions([]);
+        setBolOrderItems([]);
         setSelectedBolDeliveryOptionId('');
         setLoadingBolDeliveryOptions(false);
         return;
@@ -463,8 +507,10 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
         setLoadingBolDeliveryOptions(true);
         const optionsResult = await api.getBolDeliveryOptions(installationId, bolOrderId, integrationId);
         const options = Array.isArray(optionsResult.deliveryOptions) ? optionsResult.deliveryOptions : [];
+        const fetchedOrderItems = Array.isArray(optionsResult.orderItems) ? optionsResult.orderItems : [];
 
         setBolDeliveryOptions(options);
+        setBolOrderItems(fetchedOrderItems);
 
         const defaultOption = options.find((option: BolDeliveryOption) => option?.recommended)
           || optionsResult.selectedDeliveryOption
@@ -667,7 +713,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
         ? initialWegrowCarrier
         : ''
     );
-    setLabelPreviewUrl(order?.label?.labelUrl || '');
+    applyLabelUrl(order?.label?.labelUrl || '');
     setGeneratedLabelMeta({
       shipmentId: order?.label?.id ? String(order.label.id) : null,
       trackingCode: order?.supplierTracking || order?.tracking?.trackingCode || null,
@@ -943,14 +989,20 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
           bolOrderId,
           integrationId,
           preferredDeliveryOptionId,
+          bolOrderItems,
         );
         const deliveryOptionValidation = bolLabelResult?.deliveryOptionValidation || null;
-        const labelUrl = extractFirstStringMatch(bolLabelResult, isLikelyUrl);
-        const pdfBase64 = extractFirstStringMatch(bolLabelResult, isLikelyPdfBase64);
-        const resolvedLabelPreviewUrl = labelUrl
-          || (pdfBase64
-            ? (pdfBase64.startsWith('data:application/pdf;base64,') ? pdfBase64 : `data:application/pdf;base64,${pdfBase64}`)
-            : '');
+        // Prefer the direct labelUrl field (server always sets it); fall back to scanning response
+        const rawLabelUrl = String(bolLabelResult?.labelUrl || '').trim()
+          || (() => {
+            const b64 = extractFirstStringMatch(bolLabelResult, isLikelyPdfBase64);
+            if (!b64) return '';
+            return b64.startsWith('data:') ? b64 : `data:application/pdf;base64,${b64}`;
+          })()
+          || extractFirstStringMatch(bolLabelResult, isLikelyUrl)
+          || '';
+        // Convert data URI → Blob URL for iframe rendering (Chrome 60+ blocks data: URIs in iframes)
+        const viewableLabelUrl = applyLabelUrl(rawLabelUrl);
 
         const trackingUrl = extractFirstStringMatch(bolLabelResult, (value) => {
           const normalized = value.toLowerCase();
@@ -961,10 +1013,6 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
           (value) => value.length >= 6 && value.length <= 40 && /[a-z0-9]/i.test(value) && !isLikelyUrl(value)
         );
 
-        if (resolvedLabelPreviewUrl) {
-          setLabelPreviewUrl(resolvedLabelPreviewUrl);
-        }
-
         setGeneratedLabelMeta({
           shipmentId: String(bolOrderId),
           trackingCode: trackingCode || null,
@@ -974,6 +1022,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
         if (typeof labelOrder.id === 'number') {
           await api.updateOrder(labelOrder.id, {
             shippingMethod: 'Bol.com',
+            orderStatus: 'label-aangemaakt',
           });
 
           setOrders((prevOrders) => prevOrders.map((entry) => (
@@ -981,10 +1030,11 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
               ? {
                   ...entry,
                   shippingMethod: 'Bol.com',
+                  orderStatus: 'label-aangemaakt',
                   label: {
                     ...(entry.label || {}),
-                    labelUrl: resolvedLabelPreviewUrl || entry.label?.labelUrl || null,
-                    status: resolvedLabelPreviewUrl ? 'generated' : (entry.label?.status || 'generated'),
+                    labelUrl: viewableLabelUrl || entry.label?.labelUrl || null,
+                    status: viewableLabelUrl ? 'generated' : (entry.label?.status || 'generated'),
                   },
                 }
               : entry
@@ -995,10 +1045,11 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
               ? {
                   ...prevLabelOrder,
                   shippingMethod: 'Bol.com',
+                  orderStatus: 'label-aangemaakt',
                   label: {
                     ...(prevLabelOrder.label || {}),
-                    labelUrl: resolvedLabelPreviewUrl || prevLabelOrder.label?.labelUrl || null,
-                    status: resolvedLabelPreviewUrl ? 'generated' : (prevLabelOrder.label?.status || 'generated'),
+                    labelUrl: viewableLabelUrl || prevLabelOrder.label?.labelUrl || null,
+                    status: viewableLabelUrl ? 'generated' : (prevLabelOrder.label?.status || 'generated'),
                   },
                 }
               : prevLabelOrder
@@ -1171,30 +1222,40 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
   };
 
   const exportToExcel = () => {
-    const exportData = filteredOrders.map(order => ({
-      'Ordernummer': order.orderNumber,
-      'Klantnaam': order.customerName,
-      'Land': order.country,
-      'Store': order.storeName,
-      'Platform': order.platform || 'bol.com',
-      'Aantal items': order.itemCount,
-      'Orderwaarde': order.orderValue ? `€${order.orderValue.toFixed(2)}` : '',
-      'Besteldatum': order.orderDate ? new Date(order.orderDate).toLocaleDateString('nl-NL') : '',
-      'Leverdatum': order.deliveryDate ? new Date(order.deliveryDate).toLocaleDateString('nl-NL') : '',
-      'Adres': order.address || '',
-      'Trackingnummer': order.supplierTracking || order?.tracking?.trackingCode || '',
-      'Status': order.status || '',
-      'Orderstatus': order.orderStatus || '',
-      'Zendingstatus': order.shippingStatus || ''
-    }));
+    const rows: Record<string, any>[] = [];
 
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    const colWidths = [
-      { wch: 15 }, { wch: 20 }, { wch: 8  }, { wch: 15 }, { wch: 12 },
-      { wch: 12 }, { wch: 12 }, { wch: 15 }, { wch: 15 }, { wch: 40 },
-      { wch: 20 }, { wch: 20 }, { wch: 15 }, { wch: 25 }
+    filteredOrders.forEach(order => {
+      const orderDate = order.orderDate ? new Date(order.orderDate).toLocaleDateString('nl-NL') : '';
+      const deliveryDate = order.deliveryDate ? new Date(order.deliveryDate).toLocaleDateString('nl-NL') : '';
+      const items: any[] = Array.isArray(order.orderItems) && order.orderItems.length > 0
+        ? order.orderItems
+        : [null];
+
+      items.forEach((item: any) => {
+        rows.push({
+          'Ordernummer': order.orderNumber || '',
+          'Naam': order.customerName || '',
+          'Land': order.country || '',
+          'Besteldatum': orderDate,
+          'Leverdatum': deliveryDate,
+          'EAN': item?.ean || '',
+          'Omzet (€)': item ? Number(((item.unitPrice ?? item.price ?? 0) * (item.quantity ?? 1)).toFixed(2)) : '',
+          'Aantal besteld': item?.quantity ?? '',
+        });
+      });
+    });
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [
+      { wch: 18 }, // Ordernummer
+      { wch: 22 }, // Naam
+      { wch: 8  }, // Land
+      { wch: 14 }, // Besteldatum
+      { wch: 14 }, // Leverdatum
+      { wch: 16 }, // EAN
+      { wch: 14 }, // Omzet
+      { wch: 16 }, // Aantal besteld
     ];
-    ws['!cols'] = colWidths;
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Orders');
@@ -1532,7 +1593,14 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                                 />
                               </div>
                             )}
-                            <span>{order.customerName}</span>
+                            <div className="flex flex-col gap-0.5">
+                              <span>{order.customerName}</span>
+                              {order.orderItems?.[0]?.ean && (
+                                <span className="inline-flex w-fit items-center rounded px-2 py-1 text-[10px] font-mono bg-slate-100 text-slate-500 border border-slate-200 leading-none">
+                                  {order.orderItems[0].ean}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </TableCell>
                         <TableCell>
