@@ -133,6 +133,8 @@ class ApiService {
     search?: string;
     page?: number;
     limit?: number;
+    fulfillmentType?: string;
+    expiringTomorrow?: boolean;
   }) {
     const queryParams = new URLSearchParams();
     if (params?.installationId) queryParams.append('installationId', params.installationId);
@@ -141,8 +143,10 @@ class ApiService {
     if (params?.search) queryParams.append('search', params.search);
     if (params?.page) queryParams.append('page', params.page.toString());
     if (params?.limit) queryParams.append('limit', params.limit.toString());
+    if (params?.fulfillmentType) queryParams.append('fulfillmentType', params.fulfillmentType);
+    if (params?.expiringTomorrow) queryParams.append('expiringTomorrow', 'true');
 
-    return this.request<{ orders: any[]; pagination: any }>(
+    return this.request<{ orders: any[]; pagination: any; stats: any }>(
       `/orders?${queryParams.toString()}`
     );
   }
@@ -171,7 +175,7 @@ class ApiService {
     });
   }
 
-  // Products
+  // Products (existing order-related products)
   async getProducts(params?: {
     installationId?: string;
     search?: string;
@@ -221,6 +225,45 @@ class ApiService {
     return this.request<any>('/products/bulk-update-stock', {
       method: 'POST',
       body: JSON.stringify({ productIds, stockUpdates }),
+    });
+  }
+
+  // Warehouse Products
+  async getWarehouseProducts(params?: {
+    installationId?: string;
+    search?: string;
+    status?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const queryParams = new URLSearchParams();
+    if (params?.installationId) queryParams.append('installationId', params.installationId);
+    if (params?.search) queryParams.append('search', params.search);
+    if (params?.status) queryParams.append('status', params.status);
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    return this.request<{ products: any[]; pagination: any; stats: any }>(
+      `/warehouse-products?${queryParams.toString()}`
+    );
+  }
+
+  async createWarehouseProduct(data: any) {
+    return this.request<any>('/warehouse-products', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateWarehouseProduct(id: number, data: any) {
+    return this.request<any>(`/warehouse-products/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteWarehouseProduct(id: number) {
+    return this.request<{ message: string }>(`/warehouse-products/${id}`, {
+      method: 'DELETE',
     });
   }
 
@@ -561,20 +604,18 @@ class ApiService {
     orderId: string,
     integrationId?: number | string,
     shippingLabelOfferId?: string,
-    orderItems?: Array<{ orderItemId: string; quantity: number }>,
   ) {
-    return this.request<any>('/bol/shipping-label', {
-      method: 'POST',
-      body: JSON.stringify({
-        installationId,
-        orderId,
-        ...(integrationId !== undefined && integrationId !== null && String(integrationId).trim()
-          ? { integrationId: String(integrationId) }
-          : {}),
-        ...(shippingLabelOfferId ? { shippingLabelOfferId } : {}),
-        ...(orderItems && orderItems.length > 0 ? { orderItems } : {}),
-      }),
-    });
+    const queryParams = new URLSearchParams();
+    queryParams.append('installationId', installationId);
+    queryParams.append('orderId', orderId);
+    if (integrationId !== undefined && integrationId !== null && String(integrationId).trim()) {
+      queryParams.append('integrationId', String(integrationId));
+    }
+    if (shippingLabelOfferId !== undefined && shippingLabelOfferId !== null && String(shippingLabelOfferId).trim()) {
+      queryParams.append('shippingLabelOfferId', String(shippingLabelOfferId));
+    }
+
+    return this.request<any>(`/bol/shipping-label?${queryParams.toString()}`);
   }
 
   async getBolDeliveryOptions(installationId: string, orderId: string, integrationId?: number | string) {
@@ -628,9 +669,7 @@ class ApiService {
     if (params?.status) queryParams.append('status', params.status);
     if (params?.search) queryParams.append('search', params.search);
 
-    return this.request<{ returns: any[] }>(
-      `/returns?${queryParams.toString()}`
-    );
+    return this.request<{ returns: any[] }>(`/returns?${queryParams.toString()}`);
   }
 
   async getReturn(id: number) {
@@ -656,17 +695,178 @@ class ApiService {
       method: 'DELETE',
     });
   }
-  
-  async getWarehouseAddress(installationId: string) {
-  return this.request<any>(`/warehouse?installationId=${installationId}`);
-}
 
-async upsertWarehouseAddress(data: any) {
-  return this.request<any>('/warehouse', {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
-}
+  // Warehouse Address
+  async getWarehouseAddress(installationId: string) {
+    return this.request<any>(`/warehouse?installationId=${installationId}`);
+  }
+
+  async upsertWarehouseAddress(data: any) {
+    return this.request<any>('/warehouse', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Warehouse Locations
+  async getLocations(installationId: string) {
+    return this.request<{ locations: any[] }>(`/locations?installationId=${installationId}`);
+  }
+
+  async createLocation(data: any) {
+    return this.request<any>('/locations', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async bulkCreateLocations(data: any) {
+    return this.request<{ locations: any[]; count: number }>('/locations/bulk', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateLocation(id: number, data: any) {
+    return this.request<any>(`/locations/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteLocation(id: number) {
+    return this.request<{ message: string }>(`/locations/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // ─── Stock / Inventory ───────────────────────────────────────────────────────
+
+  async getInventory(params?: {
+    installationId?: string;
+    search?: string;
+    status?: string;
+    sort?: string;
+  }) {
+    const queryParams = new URLSearchParams();
+    if (params?.installationId) queryParams.append('installationId', params.installationId);
+    if (params?.search) queryParams.append('search', params.search);
+    if (params?.status) queryParams.append('status', params.status);
+    if (params?.sort) queryParams.append('sort', params.sort);
+    return this.request<{ items: any[]; stats: any }>(`/stock?${queryParams.toString()}`);
+  }
+
+  async inboundStock(data: {
+    installationId: number;
+    productId: number;
+    locationId: number;
+    quantity: number;
+    reference?: string;
+    notes?: string;
+  }) {
+    return this.request<any>('/stock/inbound', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async reserveStock(data: {
+    installationId: number;
+    productId: number;
+    orderId: number;
+    quantity: number;
+  }) {
+    return this.request<any>('/stock/reserve', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async cancelReservation(id: number) {
+    return this.request<any>(`/stock/reserve/${id}/cancel`, {
+      method: 'DELETE',
+    });
+  }
+
+  async pickStock(data: {
+    reservationId: number;
+    notes?: string;
+  }) {
+    return this.request<any>('/stock/pick', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async adjustStock(data: {
+    installationId: number;
+    productId: number;
+    locationId?: number;
+    quantity: number;
+    notes: string;
+  }) {
+    return this.request<any>('/stock/adjust', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getProductMutations(productId: number, installationId: string) {
+    return this.request<{ mutations: any[] }>(
+      `/stock/${productId}/mutations?installationId=${installationId}`
+    );
+  }
+
+  async getProductBatches(productId: number, installationId: string) {
+    return this.request<{ batches: any[] }>(
+      `/stock/${productId}/batches?installationId=${installationId}`
+    );
+  }
+
+  async getAllMutations(params?: { installationId?: string; period?: string }) {
+    const queryParams = new URLSearchParams();
+    if (params?.installationId) queryParams.append('installationId', params.installationId);
+    if (params?.period) queryParams.append('period', params.period);
+    return this.request<{ mutations: any[] }>(`/stock/mutations?${queryParams.toString()}`);
+  }
+
+  // ─── EAN Aliassen ────────────────────────────────────────────────────────────
+
+  async getEanAliases(productId: number, installationId: string) {
+    return this.request<{ aliases: any[] }>(
+      `/stock/${productId}/ean-aliases?installationId=${installationId}`
+    );
+  }
+
+  async addEanAlias(productId: number, data: { ean: string; installationId: number }) {
+    return this.request<{ alias: any }>(`/stock/${productId}/ean-aliases`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteEanAlias(productId: number, aliasId: number) {
+    return this.request<{ message: string }>(`/stock/${productId}/ean-aliases/${aliasId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // ─── Pick ────────────────────────────────────────────────────────────────────
+
+  async getPicklist(orderIds: number[]) {
+    return this.request<{ orders: any[] }>(
+      `/orders/picklist?orderIds=${orderIds.join(',')}`
+    );
+  }
+
+  async pickOrders(orderIds: number[], installationId: string) {
+    return this.request<{ success: boolean; processed: number; errors: number; results: any[] }>(
+      '/orders/pick', {
+        method: 'POST',
+        body: JSON.stringify({ orderIds, installationId }),
+      }
+    );
+  }
 }
 
 export const api = new ApiService();

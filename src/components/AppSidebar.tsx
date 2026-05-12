@@ -15,6 +15,7 @@ import {
   BarChart3,
   Settings,
   RotateCcw,
+  MapPin,
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from './ui/utils';
@@ -30,7 +31,7 @@ interface AppSidebarProps {
 
 interface MenuItem {
   id: string;
-  labelKey: 'orders' | 'tracking' | 'labels' | 'integrations' | 'carriers' | 'settings' | 'automationRules' | 'administrative' | 'dashboard' | 'klkAnalytics' | 'fulfillmentAnalytics' | 'warehouseManagement' | 'inventoryManagement' | 'inventoryAnalysis';
+  labelKey: 'orders' | 'tracking' | 'labels' | 'integrations' | 'carriers' | 'settings' | 'automationRules' | 'administrative' | 'dashboard' | 'klkAnalytics' | 'fulfillmentAnalytics' | 'warehouseManagement' | 'inventoryManagement' | 'inventoryAnalysis' | 'returns' | 'locationManagement' | 'productManagement';
   icon: any;
   adminOnly?: boolean;
   children?: MenuItem[];
@@ -51,6 +52,8 @@ const menuItems: { sectionKey: 'orderManagement' | 'warehouseManagement' | 'anal
     items: [
       { id: 'inventory-management', labelKey: 'inventoryManagement', icon: Warehouse },
       { id: 'inventory-analysis', labelKey: 'inventoryAnalysis', icon: BarChart3 },
+      { id: 'location-management', labelKey: 'locationManagement', icon: MapPin },
+      { id: 'product-management', labelKey: 'productManagement', icon: Package },
       { id: 'carriers', labelKey: 'carriers', icon: Truck },
     ],
   },

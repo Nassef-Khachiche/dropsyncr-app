@@ -22,8 +22,15 @@ import bolRoutes from './src/routes/bolRoutes.js';
 import kauflandRoutes from './src/routes/kauflandRoutes.js';
 import automationRuleRoutes from './src/routes/automationRuleRoutes.js';
 import returnRoutes from './src/routes/returnRoutes.js';
-import { startBolSyncCronJob } from './src/jobs/bolSyncJob.js';
 import warehouseRoutes from './src/routes/warehouseRoutes.js';
+import warehouseLocationRoutes from './src/routes/warehouseLocationRoutes.js';
+import warehouseProductRoutes from './src/routes/warehouseProductRoutes.js';
+import stockRoutes from './src/routes/StockRoutes.js';
+
+// Cron jobs
+import { startBolSyncCronJob } from './src/jobs/bolSyncJob.js';
+import { startKauflandSyncCronJob } from './src/jobs/kauflandSyncJob.js';
+import { startStockReservationJob } from './src/jobs/stockReservationJob.js';
 
 dotenv.config();
 
@@ -62,7 +69,6 @@ app.use(cors({
       callback(null, true);
       return;
     }
-
     callback(null, false);
   },
   credentials: true
@@ -86,7 +92,6 @@ app.use('/labels', express.static(path.join(__dirname, 'storage', 'labels'), {
 // Health check endpoint
 app.get('/api/health', async (req, res) => {
   try {
-    // Test database connection
     const prisma = (await import('./src/config/database.js')).default;
     await prisma.$queryRaw`SELECT 1`;
     res.json({ status: 'ok', message: 'Server is running', database: 'connected' });
@@ -116,6 +121,9 @@ app.use('/api/kaufland', kauflandRoutes);
 app.use('/api/automation-rules', automationRuleRoutes);
 app.use('/api/returns', returnRoutes);
 app.use('/api/warehouse', warehouseRoutes);
+app.use('/api/locations', warehouseLocationRoutes);
+app.use('/api/warehouse-products', warehouseProductRoutes);
+app.use('/api/stock', stockRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -141,5 +149,6 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
   startBolSyncCronJob();
+  startKauflandSyncCronJob();
+  startStockReservationJob();
 });
-

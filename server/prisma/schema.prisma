@@ -78,13 +78,14 @@ model Order {
   id               Int          @id @default(autoincrement())
   orderNumber      String       @unique
   installationId   Int
-  userId           Int
+  userId           Int?
   customerName     String
   customerEmail    String?
   address          String
   country          String
   storeName        String
   platform         String
+  fulfillmentType  String?  // 'fulfillment' | 'dropship' — null = nog niet verwerkt
   orderDate        DateTime
   deliveryDate     DateTime?
   earliestDropOffDate DateTime?
@@ -103,7 +104,7 @@ model Order {
   label            Label?
   installation     Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
   orderStatusRef   OrderStatus  @relation(fields: [orderStatusCode], references: [code])
-  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user             User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
   orderItems       OrderItem[]
   tracking         Tracking?
 
@@ -149,7 +150,14 @@ model Product {
   name             String            @db.Text
   image            String?
   brand            String?
+  sizeCategory     String?
+  weight           Float?
+  dimensionL       Float?
+  dimensionW       Float?
+  dimensionH       Float?
+  eanAliases       ProductEanAlias[]
   price            Float
+  purchasePrice    Float?
   totalStock       Int               @default(0)
   availableStock   Int               @default(0)
   fulfillmentStock Int               @default(0)
@@ -285,6 +293,7 @@ model Analytics {
   @@unique([installationId, date])
   @@index([installationId, date])
 }
+
 model Return {
   id                   Int           @id @default(autoincrement())
   installationId       Int
@@ -350,19 +359,94 @@ model WarehouseAddress {
 }
 
 model WarehouseLocation {
-  id             Int                @id @default(autoincrement())
+  id             Int                 @id @default(autoincrement())
   installationId Int
   code           String
-  type           String             // 'row' | 'section' | 'case'
+  type           String              // 'row' | 'section' | 'case'
   parentId       Int?
-  active         Boolean            @default(true)
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-  installation   Installation       @relation(fields: [installationId], references: [id], onDelete: Cascade)
-  parent         WarehouseLocation? @relation("LocationHierarchy", fields: [parentId], references: [id])
+  active         Boolean             @default(true)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  installation   Installation        @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  parent         WarehouseLocation?  @relation("LocationHierarchy", fields: [parentId], references: [id])
   children       WarehouseLocation[] @relation("LocationHierarchy")
 
   @@unique([installationId, code])
   @@index([installationId])
   @@index([parentId])
+}
+
+model StockBatch {
+  id             Int       @id @default(autoincrement())
+  installationId Int
+  productId      Int
+  locationId     Int
+  quantity       Int
+  receivedAt     DateTime  @default(now())
+  receivedBy     Int       // userId
+  reference      String?   // bijv. zending-referentie of PO nummer
+  notes          String?   @db.Text
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  mutations      StockMutation[]
+
+  @@index([installationId])
+  @@index([productId])
+  @@index([locationId])
+  @@index([receivedAt])
+}
+
+model StockMutation {
+  id             Int       @id @default(autoincrement())
+  installationId Int
+  productId      Int
+  batchId        Int?
+  type           String    // 'inbound' | 'reserved' | 'picked' | 'move' | 'return' | 'adjust'
+  quantity       Int       // positief = toevoeging, negatief = aftrek
+  locationId     Int?
+  orderId        Int?
+  performedBy    Int       // userId
+  performedAt    DateTime  @default(now())
+  notes          String?   @db.Text
+  createdAt      DateTime  @default(now())
+
+  batch          StockBatch? @relation(fields: [batchId], references: [id])
+
+  @@index([installationId])
+  @@index([productId])
+  @@index([batchId])
+  @@index([orderId])
+  @@index([performedAt])
+}
+
+model StockReservation {
+  id             Int       @id @default(autoincrement())
+  installationId Int
+  productId      Int
+  orderId        Int
+  quantity       Int
+  reservedAt     DateTime  @default(now())
+  reservedBy     Int       // userId of 0 voor systeem
+  pickedAt       DateTime?
+  pickedBy       Int?
+  cancelled      Boolean   @default(false)
+  cancelledAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([installationId])
+  @@index([productId])
+  @@index([orderId])
+}
+
+model ProductEanAlias {
+  id             Int      @id @default(autoincrement())
+  productId      Int
+  ean            String
+  installationId Int
+  createdAt      DateTime @default(now())
+  product        Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([ean, installationId])
 }
