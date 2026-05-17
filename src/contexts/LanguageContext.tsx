@@ -196,7 +196,94 @@ type TranslationKey =
   | 'warehouseCountry'
   | 'warehouseSaved'
   | 'warehouseSaveError'
-  | 'save';
+  | 'save'
+  | 'delete'
+  | 'locationManagement'
+  | 'locationManagementSubtitle'
+  | 'newLocation'
+  | 'totalRows'
+  | 'totalSections'
+  | 'totalCases'
+  | 'searchLocationCode'
+  | 'locationOverview'
+  | 'locationOverviewSubtitle'
+  | 'noLocationsFound'
+  | 'noLocationsYet'
+  | 'row'
+  | 'section'
+  | 'case'
+  | 'inactive'
+  | 'deactivate'
+  | 'activate'
+  | 'locationDeleted'
+  | 'locationActivated'
+  | 'locationDeactivated'
+  | 'errorLoadingLocations'
+  | 'errorUpdatingLocation'
+  | 'errorDeletingLocation'
+  | 'errorCreatingLocation'
+  | 'locationCreated'
+  | 'locationType'
+  | 'parentRow'
+  | 'parentSection'
+  | 'selectRow'
+  | 'selectSection'
+  | 'locationCode'
+  | 'locationCodeRequired'
+  | 'parentLocationRequired'
+  | 'newLocationSubtitle'
+  | 'create'
+  | 'locationCodeRowPlaceholder'
+  | 'locationCodeSectionPlaceholder'
+  | 'locationCodeCasePlaceholder'
+  | 'bulkCreate'
+  | 'bulkCreateSubtitle'
+  | 'startCode'
+  | 'amount'
+  | 'perRow'
+  | 'perSection'
+  | 'preview'
+  | 'printBarcode'
+  | 'printAllBarcodes'
+  | 'productManagement'
+  | 'productManagementSubtitle'
+  | 'newProduct'
+  | 'totalProducts'
+  | 'active'
+  | 'archived'
+  | 'products'
+  | 'productsFound'
+  | 'photo'
+  | 'eanCode'
+  | 'productName'
+  | 'brand'
+  | 'sizeCategory'
+  | 'selectSizeCategory'
+  | 'purchasePrice'
+  | 'dimensionsOptional'
+  | 'noProductsFound'
+  | 'productCreated'
+  | 'productUpdated'
+  | 'productArchived'
+  | 'productRestored'
+  | 'productDeleted'
+  | 'errorLoadingProducts'
+  | 'errorCreatingProduct'
+  | 'errorUpdatingProduct'
+  | 'errorDeletingProduct'
+  | 'productNameRequired'
+  | 'selectInstallationFirst'
+  | 'newProductSubtitle'
+  | 'editProduct'
+  | 'archive'
+  | 'restore'
+  | 'edit'
+  | 'totalValue'
+  | 'openOrders'
+  | 'needsPicking'
+  | 'expiringTomorrow'
+  | 'processed'
+  | 'searchProductEanClient';
 
 type Dictionary = Record<TranslationKey, string>;
 
@@ -396,6 +483,93 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     warehouseSaved: 'Warehouse address saved',
     warehouseSaveError: 'Could not save warehouse address',
     save: 'Save',
+    delete: 'Delete',
+    locationManagement: 'Location Management',
+    locationManagementSubtitle: 'Manage warehouse locations',
+    newLocation: 'New location',
+    totalRows: 'Total Rows',
+    totalSections: 'Total Sections',
+    totalCases: 'Total Cases',
+    searchLocationCode: 'Search by location code...',
+    locationOverview: 'Location overview',
+    locationOverviewSubtitle: 'Hierarchical overview of all warehouse locations',
+    noLocationsFound: 'No locations found',
+    noLocationsYet: 'No locations created yet',
+    row: 'Row',
+    section: 'Section',
+    case: 'Case',
+    inactive: 'Inactive',
+    deactivate: 'Deactivate',
+    activate: 'Activate',
+    locationDeleted: 'Location deleted',
+    locationActivated: 'Location activated',
+    locationDeactivated: 'Location deactivated',
+    errorLoadingLocations: 'Could not load locations',
+    errorUpdatingLocation: 'Could not update location',
+    errorDeletingLocation: 'Could not delete location',
+    errorCreatingLocation: 'Could not create location',
+    locationCreated: 'Location created',
+    locationType: 'Location type',
+    parentRow: 'Parent row',
+    parentSection: 'Parent section',
+    selectRow: 'Select a row',
+    selectSection: 'Select a section',
+    locationCode: 'Location code',
+    locationCodeRequired: 'Please enter a location code',
+    parentLocationRequired: 'Please select a parent location',
+    newLocationSubtitle: 'Create a new warehouse location',
+    create: 'Create',
+    locationCodeRowPlaceholder: 'e.g. A',
+    locationCodeSectionPlaceholder: 'e.g. A-01',
+    locationCodeCasePlaceholder: 'e.g. A-01-1',
+    bulkCreate: 'Bulk create',
+    bulkCreateSubtitle: 'Create multiple rows, sections and cases at once',
+    startCode: 'Start code',
+    amount: 'Amount',
+    perRow: 'per row',
+    perSection: 'per section',
+    preview: 'Preview',
+    printBarcode: 'Print barcode',
+    printAllBarcodes: 'Print all barcodes in row',
+    productManagement: 'Product Management',
+    productManagementSubtitle: 'Manage products and product information',
+    newProduct: 'New product',
+    totalProducts: 'Total products',
+    active: 'Active',
+    archived: 'Archived',
+    products: 'Products',
+    productsFound: 'products found',
+    photo: 'Photo',
+    eanCode: 'EAN code',
+    productName: 'Product name',
+    brand: 'Brand',
+    sizeCategory: 'Size category',
+    selectSizeCategory: 'Select size category',
+    purchasePrice: 'Purchase price',
+    dimensionsOptional: 'Dimensions & weight (optional)',
+    noProductsFound: 'No products found',
+    productCreated: 'Product created',
+    productUpdated: 'Product updated',
+    productArchived: 'Product archived',
+    productRestored: 'Product restored',
+    productDeleted: 'Product deleted',
+    errorLoadingProducts: 'Could not load products',
+    errorCreatingProduct: 'Could not create product',
+    errorUpdatingProduct: 'Could not update product',
+    errorDeletingProduct: 'Could not delete product',
+    productNameRequired: 'Product name is required',
+    selectInstallationFirst: 'Please select an installation first',
+    newProductSubtitle: 'Add a new product to the catalogue',
+    editProduct: 'Edit product',
+    archive: 'Archive',
+    restore: 'Restore',
+    edit: 'Edit',
+    searchProductEanClient: 'Search by product name, EAN or client...',
+    totalValue: 'Total value',
+    openOrders: 'Open orders',
+    needsPicking: 'Needs picking',
+    expiringTomorrow: 'Expiring tomorrow',
+    processed: 'Processed',
   },
   nl: {
     loading: 'Laden...',
@@ -592,6 +766,93 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     warehouseSaved: 'Magazijnadres opgeslagen',
     warehouseSaveError: 'Kon magazijnadres niet opslaan',
     save: 'Opslaan',
+    delete: 'Verwijderen',
+    locationManagement: 'Locatiebeheer',
+    locationManagementSubtitle: 'Beheer warehouse locaties',
+    newLocation: 'Nieuwe locatie',
+    totalRows: 'Totaal Rijen',
+    totalSections: 'Totaal Secties',
+    totalCases: 'Totaal Cases',
+    searchLocationCode: 'Zoek op locatiecode...',
+    locationOverview: 'Locatieoverzicht',
+    locationOverviewSubtitle: 'Hiërarchisch overzicht van alle warehouse locaties',
+    noLocationsFound: 'Geen locaties gevonden',
+    noLocationsYet: 'Nog geen locaties aangemaakt',
+    row: 'Rij',
+    section: 'Sectie',
+    case: 'Case',
+    inactive: 'Inactief',
+    deactivate: 'Deactiveren',
+    activate: 'Activeren',
+    locationDeleted: 'Locatie verwijderd',
+    locationActivated: 'Locatie geactiveerd',
+    locationDeactivated: 'Locatie gedeactiveerd',
+    errorLoadingLocations: 'Kon locaties niet laden',
+    errorUpdatingLocation: 'Kon locatie niet bijwerken',
+    errorDeletingLocation: 'Kon locatie niet verwijderen',
+    errorCreatingLocation: 'Kon locatie niet aanmaken',
+    locationCreated: 'Locatie aangemaakt',
+    locationType: 'Type locatie',
+    parentRow: 'Bovenliggende rij',
+    parentSection: 'Bovenliggende sectie',
+    selectRow: 'Selecteer een rij',
+    selectSection: 'Selecteer een sectie',
+    locationCode: 'Locatiecode',
+    locationCodeRequired: 'Voer een locatiecode in',
+    parentLocationRequired: 'Selecteer een bovenliggende locatie',
+    newLocationSubtitle: 'Maak een nieuwe warehouse locatie aan',
+    create: 'Aanmaken',
+    locationCodeRowPlaceholder: 'bijv. A',
+    locationCodeSectionPlaceholder: 'bijv. A-01',
+    locationCodeCasePlaceholder: 'bijv. A-01-1',
+    bulkCreate: 'Bulk aanmaken',
+    bulkCreateSubtitle: 'Maak meerdere rijen, secties en cases tegelijk aan',
+    startCode: 'Startcode',
+    amount: 'Aantal',
+    perRow: 'per rij',
+    perSection: 'per sectie',
+    preview: 'Voorbeeld',
+    printBarcode: 'Barcode printen',
+    printAllBarcodes: 'Alle barcodes van rij printen',
+    productManagement: 'Productbeheer',
+    productManagementSubtitle: 'Beheer producten en productinformatie',
+    newProduct: 'Nieuw product',
+    totalProducts: 'Totaal producten',
+    active: 'Actief',
+    archived: 'Gearchiveerd',
+    products: 'Producten',
+    productsFound: 'producten gevonden',
+    photo: 'Foto',
+    eanCode: 'EAN code',
+    productName: 'Productnaam',
+    brand: 'Merk',
+    sizeCategory: 'Maatcategorie',
+    selectSizeCategory: 'Selecteer maatcategorie',
+    purchasePrice: 'Inkoopprijs',
+    dimensionsOptional: 'Afmetingen & gewicht (optioneel)',
+    noProductsFound: 'Geen producten gevonden',
+    productCreated: 'Product aangemaakt',
+    productUpdated: 'Product bijgewerkt',
+    productArchived: 'Product gearchiveerd',
+    productRestored: 'Product hersteld',
+    productDeleted: 'Product verwijderd',
+    errorLoadingProducts: 'Kon producten niet laden',
+    errorCreatingProduct: 'Kon product niet aanmaken',
+    errorUpdatingProduct: 'Kon product niet bijwerken',
+    errorDeletingProduct: 'Kon product niet verwijderen',
+    productNameRequired: 'Productnaam is verplicht',
+    selectInstallationFirst: 'Selecteer eerst een installatie',
+    newProductSubtitle: 'Voeg een nieuw product toe aan de catalogus',
+    editProduct: 'Product bewerken',
+    archive: 'Archiveren',
+    restore: 'Herstellen',
+    edit: 'Bewerken',
+    searchProductEanClient: 'Zoek op productnaam, EAN of klant...',
+    totalValue: 'Totale waarde',
+    openOrders: 'Open orders',
+    needsPicking: 'Te picken',
+    expiringTomorrow: 'Verloopt morgen',
+    processed: 'Verwerkt',
   },
   de: {
     loading: 'Ladt...',
@@ -788,6 +1049,93 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     warehouseSaved: 'Lageradresse gespeichert',
     warehouseSaveError: 'Lageradresse konnte nicht gespeichert werden',
     save: 'Speichern',
+    delete: 'Loschen',
+    locationManagement: 'Standortverwaltung',
+    locationManagementSubtitle: 'Lagerstandorte verwalten',
+    newLocation: 'Neuer Standort',
+    totalRows: 'Gesamt Reihen',
+    totalSections: 'Gesamt Sektionen',
+    totalCases: 'Gesamt Cases',
+    searchLocationCode: 'Nach Standortcode suchen...',
+    locationOverview: 'Standortubersicht',
+    locationOverviewSubtitle: 'Hierarchische Ubersicht aller Lagerstandorte',
+    noLocationsFound: 'Keine Standorte gefunden',
+    noLocationsYet: 'Noch keine Standorte erstellt',
+    row: 'Reihe',
+    section: 'Sektion',
+    case: 'Case',
+    inactive: 'Inaktiv',
+    deactivate: 'Deaktivieren',
+    activate: 'Aktivieren',
+    locationDeleted: 'Standort geloscht',
+    locationActivated: 'Standort aktiviert',
+    locationDeactivated: 'Standort deaktiviert',
+    errorLoadingLocations: 'Standorte konnten nicht geladen werden',
+    errorUpdatingLocation: 'Standort konnte nicht aktualisiert werden',
+    errorDeletingLocation: 'Standort konnte nicht geloscht werden',
+    errorCreatingLocation: 'Standort konnte nicht erstellt werden',
+    locationCreated: 'Standort erstellt',
+    locationType: 'Standorttyp',
+    parentRow: 'Ubergeordnete Reihe',
+    parentSection: 'Ubergeordnete Sektion',
+    selectRow: 'Reihe auswahlen',
+    selectSection: 'Sektion auswahlen',
+    locationCode: 'Standortcode',
+    locationCodeRequired: 'Bitte einen Standortcode eingeben',
+    parentLocationRequired: 'Bitte einen ubergeordneten Standort auswahlen',
+    newLocationSubtitle: 'Neuen Lagerstandort erstellen',
+    create: 'Erstellen',
+    locationCodeRowPlaceholder: 'z.B. A',
+    locationCodeSectionPlaceholder: 'z.B. A-01',
+    locationCodeCasePlaceholder: 'z.B. A-01-1',
+    bulkCreate: 'Massenanlage',
+    bulkCreateSubtitle: 'Mehrere Reihen, Sektionen und Cases auf einmal erstellen',
+    startCode: 'Startcode',
+    amount: 'Anzahl',
+    perRow: 'pro Reihe',
+    perSection: 'pro Sektion',
+    preview: 'Vorschau',
+    printBarcode: 'Barcode drucken',
+    printAllBarcodes: 'Alle Barcodes der Reihe drucken',
+    productManagement: 'Produktverwaltung',
+    productManagementSubtitle: 'Produkte und Produktinformationen verwalten',
+    newProduct: 'Neues Produkt',
+    totalProducts: 'Produkte gesamt',
+    active: 'Aktiv',
+    archived: 'Archiviert',
+    products: 'Produkte',
+    productsFound: 'Produkte gefunden',
+    photo: 'Foto',
+    eanCode: 'EAN-Code',
+    productName: 'Produktname',
+    brand: 'Marke',
+    sizeCategory: 'Grosskategorie',
+    selectSizeCategory: 'Grosskategorie auswahlen',
+    purchasePrice: 'Einkaufspreis',
+    dimensionsOptional: 'Abmessungen & Gewicht (optional)',
+    noProductsFound: 'Keine Produkte gefunden',
+    productCreated: 'Produkt erstellt',
+    productUpdated: 'Produkt aktualisiert',
+    productArchived: 'Produkt archiviert',
+    productRestored: 'Produkt wiederhergestellt',
+    productDeleted: 'Produkt geloscht',
+    errorLoadingProducts: 'Produkte konnten nicht geladen werden',
+    errorCreatingProduct: 'Produkt konnte nicht erstellt werden',
+    errorUpdatingProduct: 'Produkt konnte nicht aktualisiert werden',
+    errorDeletingProduct: 'Produkt konnte nicht geloscht werden',
+    productNameRequired: 'Produktname ist erforderlich',
+    selectInstallationFirst: 'Bitte zuerst eine Installation auswahlen',
+    newProductSubtitle: 'Neues Produkt zum Katalog hinzufugen',
+    editProduct: 'Produkt bearbeiten',
+    archive: 'Archivieren',
+    restore: 'Wiederherstellen',
+    edit: 'Bearbeiten',
+    searchProductEanClient: 'Nach Produktname, EAN oder Kunde suchen...',
+    totalValue: 'Gesamtwert',
+    openOrders: 'Offene Bestellungen',
+    needsPicking: 'Zu picken',
+    expiringTomorrow: 'Lauft morgen ab',
+    processed: 'Verarbeitet',
   },
 };
 
@@ -817,7 +1165,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   const value = useMemo<LanguageContextType>(() => ({
     language,
     setLanguage,
-    t: (key: TranslationKey) => dictionaries[language][key],
+    t: (key: TranslationKey) => dictionaries[language][key] ?? dictionaries['en'][key] ?? key,
   }), [language]);
 
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;

@@ -6,7 +6,6 @@ import crypto from 'crypto';
  * Kaufland API Integration Controller
  */
 
-// Valuta conversie naar EUR (vaste rates als fallback)
 const CURRENCY_TO_EUR = {
   EUR: 1,
   CZK: 0.040,
@@ -24,7 +23,6 @@ function convertToEur(amount, currency) {
   return parseFloat((amount * rate).toFixed(2));
 }
 
-// Helper: get Kaufland integration from database
 async function getKauflandIntegration(installationId, integrationId = null) {
   const installationIdNumber = parseInt(installationId, 10);
   if (!Number.isFinite(installationIdNumber)) {
@@ -51,7 +49,6 @@ async function getKauflandIntegration(installationId, integrationId = null) {
   return { integration, credentials };
 }
 
-// Helper: make authenticated Kaufland API request
 async function kauflandApiRequest(credentials, endpoint, method = 'GET', body = null) {
   const { clientId, clientSecret } = credentials;
   const baseUrl = 'https://sellerapi.kaufland.com/v2';
@@ -59,12 +56,7 @@ async function kauflandApiRequest(credentials, endpoint, method = 'GET', body = 
   const timestamp = String(Math.floor(Date.now() / 1000));
   const bodyString = body ? JSON.stringify(body) : '';
 
-  const stringToSign = [
-    method.toUpperCase(),
-    uri,
-    bodyString,
-    timestamp,
-  ].join('\n');
+  const stringToSign = [method.toUpperCase(), uri, bodyString, timestamp].join('\n');
 
   const signature = crypto
     .createHmac('sha256', clientSecret)
@@ -104,7 +96,6 @@ async function kauflandApiRequest(credentials, endpoint, method = 'GET', body = 
   return response.json();
 }
 
-// Helper: fetch all Kaufland order units
 async function fetchAllKauflandOrders(credentials) {
   const allOrders = [];
   let offset = 0;
@@ -132,9 +123,175 @@ async function fetchAllKauflandOrders(credentials) {
   return allOrders;
 }
 
-/**
- * Sync orders from Kaufland
- */
+export async function syncKauflandOrdersForInstallation({ installationId, integrationId, userId = null }) {
+  const { integration, credentials } = await getKauflandIntegration(installationId, integrationId);
+  const integrationCredentials = JSON.parse(integration.credentials || '{}');
+  const shopName = integrationCredentials.shopName || `Kaufland #${integration.id}`;
+
+  const kauflandOrderUnits = await fetchAllKauflandOrders(credentials);
+
+  console.log('[KAUFLAND SYNC] Total fetched:', { total: kauflandOrderUnits.length });
+
+  const orderGroups = new Map();
+  for (const unit of kauflandOrderUnits) {
+    const orderId = String(unit?.id_order || unit?.order_id || '').trim();
+    if (!orderId) continue;
+    if (!orderGroups.has(orderId)) {
+      orderGroups.set(orderId, []);
+    }
+    orderGroups.get(orderId).push(unit);
+  }
+
+  console.log('[KAUFLAND SYNC] Unique orders:', { total: orderGroups.size });
+
+  let importedCount = 0;
+  let updatedCount = 0;
+
+  for (const [orderId, orderUnits] of orderGroups) {
+    const orderNumber = orderId;
+    const order = orderUnits[0];
+
+    const billingAddress = order?.billing_address || {};
+    const shippingAddress = order?.shipping_address || billingAddress;
+    const firstName = shippingAddress?.first_name || billingAddress?.first_name || '';
+    const lastName = shippingAddress?.last_name || billingAddress?.last_name || '';
+    const customerName = `${firstName} ${lastName}`.trim() || 'Unknown';
+    const currency = order?.currency || 'EUR';
+
+    const orderValue = orderUnits.reduce((sum, unit) => {
+      const priceInCents = parseFloat(unit?.price || 0);
+      const priceInCurrency = priceInCents / 100;
+      return sum + convertToEur(priceInCurrency, currency);
+    }, 0);
+
+    // Haal bestaande order op inclusief fulfillmentType zodat we die kunnen behouden
+    const existingOrder = await prisma.order.findFirst({
+      where: {
+        orderNumber,
+        installationId: parseInt(installationId),
+      },
+      select: { id: true, fulfillmentType: true },
+    });
+
+    const orderData = {
+      orderNumber,
+      installationId: parseInt(installationId),
+      // userId null als de cron job sync doet — alleen vullen als een echte user het triggert
+      userId: userId || null,
+      customerName,
+      customerEmail: order?.buyer?.email || null,
+      address: [
+        shippingAddress?.street,
+        shippingAddress?.house_number,
+        shippingAddress?.postcode,
+        shippingAddress?.city,
+      ].filter(Boolean).join(', '),
+      country: shippingAddress?.country || 'DE',
+      storeName: shopName,
+      platform: 'kaufland',
+      orderDate: new Date(order?.ts_created_iso || order?.ts_created || Date.now()),
+      deliveryDate: order?.delivery_time_expires_iso ? new Date(order.delivery_time_expires_iso) : null,
+      orderStatus: 'openstaand',
+      orderValue: parseFloat(orderValue.toFixed(2)),
+      itemCount: orderUnits.length,
+      status: 'openstaand',
+      // Nieuwe orders krijgen null zodat de reserveringsjob ze oppikt
+      // Bestaande orders behouden hun huidige fulfillmentType
+      fulfillmentType: existingOrder ? existingOrder.fulfillmentType : null,
+    };
+
+    const savedOrder = existingOrder
+      ? await prisma.order.update({
+          where: { id: existingOrder.id },
+          data: orderData,
+          select: { id: true },
+        })
+      : await prisma.order.create({
+          data: orderData,
+          select: { id: true },
+        });
+
+    await prisma.orderItem.deleteMany({ where: { orderId: savedOrder.id } });
+
+    for (const unit of orderUnits) {
+      const product = unit?.product || {};
+      const ean = String(product?.eans?.[0] || unit?.ean || '').trim() || null;
+      const sku = String(unit?.id_offer || ean || `kaufland-${orderNumber}-${unit?.id_order_unit}`).trim();
+      const productName = String(product?.title || unit?.title || unit?.name || 'Unknown Product').trim();
+      const productImage = product?.main_picture || null;
+      const productBrand = product?.manufacturer || 'Kaufland';
+      const quantity = 1;
+      const priceInCurrency = parseFloat(unit?.price || 0) / 100;
+      const itemPrice = convertToEur(priceInCurrency, currency);
+
+      let existingProduct = await prisma.product.findFirst({
+        where: {
+          installationId: parseInt(installationId),
+          OR: [
+            { sku },
+            ...(ean ? [{ ean }] : []),
+          ],
+        },
+        select: { id: true },
+      });
+
+      if (existingProduct) {
+        await prisma.product.update({
+          where: { id: existingProduct.id },
+          data: {
+            name: productName,
+            ean: ean || undefined,
+            price: itemPrice,
+            image: productImage || undefined,
+            brand: productBrand,
+          },
+        });
+      } else {
+        existingProduct = await prisma.product.create({
+          data: {
+            installationId: parseInt(installationId),
+            sku,
+            ean,
+            name: productName,
+            price: itemPrice,
+            brand: productBrand,
+            image: productImage,
+            sizeCategory: null,
+            weight: null,
+            dimensionL: null,
+            dimensionW: null,
+            dimensionH: null,
+          },
+          select: { id: true },
+        });
+      }
+
+      await prisma.orderItem.create({
+        data: {
+          orderId: savedOrder.id,
+          productId: existingProduct.id,
+          productName,
+          productImage,
+          ean,
+          sku,
+          quantity,
+          price: itemPrice,
+          unitPrice: itemPrice,
+        },
+      });
+    }
+
+    existingOrder ? updatedCount++ : importedCount++;
+  }
+
+  return {
+    success: true,
+    imported: importedCount,
+    updated: updatedCount,
+    total: importedCount + updatedCount,
+  };
+}
+
 export const syncKauflandOrders = async (req, res) => {
   try {
     const { installationId, integrationId } = req.query;
@@ -143,7 +300,6 @@ export const syncKauflandOrders = async (req, res) => {
       return res.status(400).json({ error: 'Installation ID is required' });
     }
 
-    // Check access
     if (!req.user.isGlobalAdmin) {
       const hasAccess = await prisma.userInstallation.findFirst({
         where: {
@@ -156,165 +312,13 @@ export const syncKauflandOrders = async (req, res) => {
       }
     }
 
-    const { integration, credentials } = await getKauflandIntegration(installationId, integrationId);
-    const integrationCredentials = JSON.parse(integration.credentials || '{}');
-    const shopName = integrationCredentials.shopName || `Kaufland #${integration.id}`;
-
-    const kauflandOrderUnits = await fetchAllKauflandOrders(credentials);
-
-    console.log('[KAUFLAND SYNC] Total fetched:', { total: kauflandOrderUnits.length });
-
-    // Groepeer order-units per order ID
-    const orderGroups = new Map();
-    for (const unit of kauflandOrderUnits) {
-      const orderId = String(unit?.id_order || unit?.order_id || '').trim();
-      if (!orderId) continue;
-      if (!orderGroups.has(orderId)) {
-        orderGroups.set(orderId, []);
-      }
-      orderGroups.get(orderId).push(unit);
-    }
-
-    console.log('[KAUFLAND SYNC] Unique orders:', { total: orderGroups.size });
-
-    let importedCount = 0;
-    let updatedCount = 0;
-
-    for (const [orderId, orderUnits] of orderGroups) {
-      const orderNumber = orderId;
-      const order = orderUnits[0];
-
-      const billingAddress = order?.billing_address || {};
-      const shippingAddress = order?.shipping_address || billingAddress;
-      const firstName = shippingAddress?.first_name || billingAddress?.first_name || '';
-      const lastName = shippingAddress?.last_name || billingAddress?.last_name || '';
-      const customerName = `${firstName} ${lastName}`.trim() || 'Unknown';
-      const currency = order?.currency || 'EUR';
-
-      // Bereken totale orderwaarde in EUR
-      const orderValue = orderUnits.reduce((sum, unit) => {
-        const priceInCents = parseFloat(unit?.price || 0);
-        const priceInCurrency = priceInCents / 100;
-        return sum + convertToEur(priceInCurrency, currency);
-      }, 0);
-
-      const existingOrder = await prisma.order.findFirst({
-        where: {
-          orderNumber,
-          installationId: parseInt(installationId),
-        },
-        select: { id: true },
-      });
-
-      const orderData = {
-        orderNumber,
-        installationId: parseInt(installationId),
-        userId: req.user.id,
-        customerName,
-        customerEmail: order?.buyer?.email || null,
-        address: [
-          shippingAddress?.street,
-          shippingAddress?.house_number,
-          shippingAddress?.postcode,
-          shippingAddress?.city,
-        ].filter(Boolean).join(', '),
-        country: shippingAddress?.country || 'DE',
-        storeName: shopName,
-        platform: 'kaufland',
-        orderDate: new Date(order?.ts_created_iso || order?.ts_created || Date.now()),
-        deliveryDate: order?.delivery_time_expires_iso ? new Date(order.delivery_time_expires_iso) : null,
-        orderStatus: 'openstaand',
-        orderValue: parseFloat(orderValue.toFixed(2)),
-        itemCount: orderUnits.length,
-        status: 'openstaand',
-      };
-
-      const savedOrder = existingOrder
-        ? await prisma.order.update({
-            where: { id: existingOrder.id },
-            data: orderData,
-            select: { id: true },
-          })
-        : await prisma.order.create({
-            data: orderData,
-            select: { id: true },
-          });
-
-      // Verwijder oude items en sla nieuwe op
-      await prisma.orderItem.deleteMany({ where: { orderId: savedOrder.id } });
-
-      for (const unit of orderUnits) {
-        const product = unit?.product || {};
-        const ean = String(product?.eans?.[0] || unit?.ean || '').trim() || null;
-        const sku = String(unit?.id_offer || ean || `kaufland-${orderNumber}-${unit?.id_order_unit}`).trim();
-        const productName = String(product?.title || unit?.title || unit?.name || 'Unknown Product').trim();
-        const productImage = product?.main_picture || null;
-        const productBrand = product?.manufacturer || 'Kaufland';
-        const quantity = 1;
-        const priceInCurrency = parseFloat(unit?.price || 0) / 100;
-        const itemPrice = convertToEur(priceInCurrency, currency);
-
-        let existingProduct = await prisma.product.findFirst({
-          where: {
-            installationId: parseInt(installationId),
-            OR: [
-              { sku },
-              ...(ean ? [{ ean }] : []),
-            ],
-          },
-          select: { id: true },
-        });
-
-        if (existingProduct) {
-          await prisma.product.update({
-            where: { id: existingProduct.id },
-            data: {
-              name: productName,
-              ean: ean || undefined,
-              price: itemPrice,
-              image: productImage || undefined,
-              brand: productBrand,
-            },
-          });
-        } else {
-          existingProduct = await prisma.product.create({
-            data: {
-              installationId: parseInt(installationId),
-              sku,
-              ean,
-              name: productName,
-              price: itemPrice,
-              brand: productBrand,
-              image: productImage,
-            },
-            select: { id: true },
-          });
-        }
-
-        await prisma.orderItem.create({
-          data: {
-            orderId: savedOrder.id,
-            productId: existingProduct.id,
-            productName,
-            productImage,
-            ean,
-            sku,
-            quantity,
-            price: itemPrice,
-            unitPrice: itemPrice,
-          },
-        });
-      }
-
-      existingOrder ? updatedCount++ : importedCount++;
-    }
-
-    res.json({
-      success: true,
-      imported: importedCount,
-      updated: updatedCount,
-      total: importedCount + updatedCount,
+    const result = await syncKauflandOrdersForInstallation({
+      installationId,
+      integrationId,
+      userId: req.user.id,
     });
+
+    res.json(result);
   } catch (error) {
     console.error('[KAUFLAND SYNC] Error:', error);
     res.status(500).json({

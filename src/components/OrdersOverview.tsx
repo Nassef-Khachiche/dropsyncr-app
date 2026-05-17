@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, Fragment } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { api } from '../services/api';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -7,6 +7,7 @@ import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { RadioGroup, RadioGroupItem } from './ui/radio-group';
+import { useLanguage } from '../contexts/LanguageContext';
 import * as XLSX from 'xlsx';
 import { 
   Table, 
@@ -42,6 +43,12 @@ import {
   Weight,
   RotateCcw,
   ArrowLeftRight,
+  ShoppingBag,
+  PackageCheck,
+  AlertTriangle,
+  Star,
+  ClipboardList,
+  CheckSquare,
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
@@ -307,6 +314,15 @@ const buildOrderLabelPackage = (order: any) => {
   };
 };
 
+const getNextWorkday = (date: Date): Date => {
+  const next = new Date(date);
+  next.setDate(next.getDate() + 1);
+  while (next.getDay() === 0 || next.getDay() === 6) {
+    next.setDate(next.getDate() + 1);
+  }
+  return next;
+};
+
 const formatBolDeliveryOptionDateTime = (value?: string) => {
   if (!value) return '-';
 
@@ -334,6 +350,8 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
     bol: bolLogo,
   };
 
+  const { t } = useLanguage();
+
   const isAllStoresSelected = activeProfile === 'all';
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -344,6 +362,17 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
   const [allowedIntegrationStoreNames, setAllowedIntegrationStoreNames] = useState<string[]>([]);
   const [allowedIntegrationInstallationIds, setAllowedIntegrationInstallationIds] = useState<number[]>([]);
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
+  const [filterFulfillmentType, setFilterFulfillmentType] = useState<string | null>(null);
+  const [filterExpiringTomorrow, setFilterExpiringTomorrow] = useState(false);
+  const [statsOpenOrders, setStatsOpenOrders] = useState(0);
+  const [statsNeedsPicking, setStatsNeedsPicking] = useState(0);
+  const [statsExpiringTomorrow, setStatsExpiringTomorrow] = useState(0);
+  const [statsProcessed, setStatsProcessed] = useState(0);
+  const [selectedOrders, setSelectedOrders] = useState<number[]>([]);
+  const [showPicklistDialog, setShowPicklistDialog] = useState(false);
+  const [picklistData, setPicklistData] = useState<any[]>([]);
+  const [loadingPicklist, setLoadingPicklist] = useState(false);
+  const [pickingOrders, setPickingOrders] = useState(false);
 
   // --- Normal label dialog state ---
   const [showLabelDialog, setShowLabelDialog] = useState(false);
@@ -354,57 +383,14 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
   const [selectedWeGrowCarrier, setSelectedWeGrowCarrier] = useState<string>('');
   const [generatingLabel, setGeneratingLabel] = useState(false);
   const [labelPreviewUrl, setLabelPreviewUrl] = useState<string>('');
-  const labelBlobUrlRef = useRef<string>('');
   const [generatedLabelMeta, setGeneratedLabelMeta] = useState<{
     shipmentId?: string | null;
     trackingCode?: string | null;
     trackingUrl?: string | null;
   } | null>(null);
   const [bolDeliveryOptions, setBolDeliveryOptions] = useState<BolDeliveryOption[]>([]);
-  const [bolOrderItems, setBolOrderItems] = useState<Array<{ orderItemId: string; quantity: number }>>([]);
   const [selectedBolDeliveryOptionId, setSelectedBolDeliveryOptionId] = useState<string>('');
   const [loadingBolDeliveryOptions, setLoadingBolDeliveryOptions] = useState(false);
-
-  // Convert a raw label URL (https or data: URI) to a Blob URL and set it as the
-  // preview. data: URIs must be converted because Chrome 60+ blocks them in iframes.
-  // Returns the viewable URL synchronously so callers can use it immediately.
-  const applyLabelUrl = (rawUrl: string): string => {
-    if (labelBlobUrlRef.current) {
-      URL.revokeObjectURL(labelBlobUrlRef.current);
-      labelBlobUrlRef.current = '';
-    }
-    if (!rawUrl) {
-      setLabelPreviewUrl('');
-      return '';
-    }
-    if (rawUrl.startsWith('data:')) {
-      try {
-        const commaIndex = rawUrl.indexOf(',');
-        const mime = rawUrl.slice(0, commaIndex).split(':')[1]?.split(';')[0] || 'application/pdf';
-        const b64 = rawUrl.slice(commaIndex + 1).replace(/\s/g, '');
-        const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-        const blob = new Blob([bytes], { type: mime });
-        const blobUrl = URL.createObjectURL(blob);
-        labelBlobUrlRef.current = blobUrl;
-        setLabelPreviewUrl(blobUrl);
-        return blobUrl;
-      } catch {
-        setLabelPreviewUrl('');
-        return '';
-      }
-    }
-    setLabelPreviewUrl(rawUrl);
-    return rawUrl;
-  };
-
-  // Revoke any active Blob URL when the component unmounts
-  useEffect(() => {
-    return () => {
-      if (labelBlobUrlRef.current) {
-        URL.revokeObjectURL(labelBlobUrlRef.current);
-      }
-    };
-  }, []);
 
   // --- Return label dialog state ---
   const [showReturnLabelDialog, setShowReturnLabelDialog] = useState(false);
@@ -435,11 +421,11 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
     if (activeProfile) {
       loadOrders();
     }
-  }, [activeProfile, filterStatus, searchQuery, currentPage]);
+  }, [activeProfile, filterStatus, searchQuery, currentPage, filterFulfillmentType, filterExpiringTomorrow]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeProfile, filterStatus, searchQuery]);
+}, [activeProfile, filterStatus, searchQuery, filterFulfillmentType, filterExpiringTomorrow]);
 
   useEffect(() => {
     setFilterStore('all');
@@ -481,7 +467,6 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
     const loadBolDeliveryOptions = async () => {
       if (!showLabelDialog || selectedContractId !== VVB_CONTRACT_ID || !labelOrder) {
         setBolDeliveryOptions([]);
-        setBolOrderItems([]);
         setSelectedBolDeliveryOptionId('');
         setLoadingBolDeliveryOptions(false);
         return;
@@ -507,10 +492,8 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
         setLoadingBolDeliveryOptions(true);
         const optionsResult = await api.getBolDeliveryOptions(installationId, bolOrderId, integrationId);
         const options = Array.isArray(optionsResult.deliveryOptions) ? optionsResult.deliveryOptions : [];
-        const fetchedOrderItems = Array.isArray(optionsResult.orderItems) ? optionsResult.orderItems : [];
 
         setBolDeliveryOptions(options);
-        setBolOrderItems(fetchedOrderItems);
 
         const defaultOption = options.find((option: BolDeliveryOption) => option?.recommended)
           || optionsResult.selectedDeliveryOption
@@ -544,6 +527,8 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
           search: searchQuery || undefined,
           page: currentPage,
           limit: ORDERS_PER_PAGE,
+          fulfillmentType: filterFulfillmentType || undefined,
+          expiringTomorrow: filterExpiringTomorrow || undefined,
         }),
         isAllStoresSelected ? api.getIntegrations(undefined, true) : Promise.resolve(null),
       ]);
@@ -582,6 +567,12 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
       setOrders(data.orders || []);
       setTotalOrders(Number(data.pagination?.total) || 0);
       setTotalPages(Math.max(1, Number(data.pagination?.pages) || 1));
+      if (data.stats) {
+        setStatsOpenOrders(data.stats.openOrders || 0);
+        setStatsNeedsPicking(data.stats.needsPicking || 0);
+        setStatsExpiringTomorrow(data.stats.expiringTomorrow || 0);
+        setStatsProcessed(data.stats.processed || 0);
+      }
     } catch (error) {
       console.error('Failed to load orders:', error);
     } finally {
@@ -664,6 +655,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
       'onderweg-ffm',
       'binnengekomen-ffm',
       'label-aangemaakt',
+      'gepickt',
     ];
 
     const shippedStatuses = [
@@ -713,7 +705,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
         ? initialWegrowCarrier
         : ''
     );
-    applyLabelUrl(order?.label?.labelUrl || '');
+    setLabelPreviewUrl(order?.label?.labelUrl || '');
     setGeneratedLabelMeta({
       shipmentId: order?.label?.id ? String(order.label.id) : null,
       trackingCode: order?.supplierTracking || order?.tracking?.trackingCode || null,
@@ -989,20 +981,14 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
           bolOrderId,
           integrationId,
           preferredDeliveryOptionId,
-          bolOrderItems,
         );
         const deliveryOptionValidation = bolLabelResult?.deliveryOptionValidation || null;
-        // Prefer the direct labelUrl field (server always sets it); fall back to scanning response
-        const rawLabelUrl = String(bolLabelResult?.labelUrl || '').trim()
-          || (() => {
-            const b64 = extractFirstStringMatch(bolLabelResult, isLikelyPdfBase64);
-            if (!b64) return '';
-            return b64.startsWith('data:') ? b64 : `data:application/pdf;base64,${b64}`;
-          })()
-          || extractFirstStringMatch(bolLabelResult, isLikelyUrl)
-          || '';
-        // Convert data URI → Blob URL for iframe rendering (Chrome 60+ blocks data: URIs in iframes)
-        const viewableLabelUrl = applyLabelUrl(rawLabelUrl);
+        const labelUrl = extractFirstStringMatch(bolLabelResult, isLikelyUrl);
+        const pdfBase64 = extractFirstStringMatch(bolLabelResult, isLikelyPdfBase64);
+        const resolvedLabelPreviewUrl = labelUrl
+          || (pdfBase64
+            ? (pdfBase64.startsWith('data:application/pdf;base64,') ? pdfBase64 : `data:application/pdf;base64,${pdfBase64}`)
+            : '');
 
         const trackingUrl = extractFirstStringMatch(bolLabelResult, (value) => {
           const normalized = value.toLowerCase();
@@ -1013,6 +999,10 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
           (value) => value.length >= 6 && value.length <= 40 && /[a-z0-9]/i.test(value) && !isLikelyUrl(value)
         );
 
+        if (resolvedLabelPreviewUrl) {
+          setLabelPreviewUrl(resolvedLabelPreviewUrl);
+        }
+
         setGeneratedLabelMeta({
           shipmentId: String(bolOrderId),
           trackingCode: trackingCode || null,
@@ -1022,7 +1012,6 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
         if (typeof labelOrder.id === 'number') {
           await api.updateOrder(labelOrder.id, {
             shippingMethod: 'Bol.com',
-            orderStatus: 'label-aangemaakt',
           });
 
           setOrders((prevOrders) => prevOrders.map((entry) => (
@@ -1030,11 +1019,10 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
               ? {
                   ...entry,
                   shippingMethod: 'Bol.com',
-                  orderStatus: 'label-aangemaakt',
                   label: {
                     ...(entry.label || {}),
-                    labelUrl: viewableLabelUrl || entry.label?.labelUrl || null,
-                    status: viewableLabelUrl ? 'generated' : (entry.label?.status || 'generated'),
+                    labelUrl: resolvedLabelPreviewUrl || entry.label?.labelUrl || null,
+                    status: resolvedLabelPreviewUrl ? 'generated' : (entry.label?.status || 'generated'),
                   },
                 }
               : entry
@@ -1045,11 +1033,10 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
               ? {
                   ...prevLabelOrder,
                   shippingMethod: 'Bol.com',
-                  orderStatus: 'label-aangemaakt',
                   label: {
                     ...(prevLabelOrder.label || {}),
-                    labelUrl: viewableLabelUrl || prevLabelOrder.label?.labelUrl || null,
-                    status: viewableLabelUrl ? 'generated' : (prevLabelOrder.label?.status || 'generated'),
+                    labelUrl: resolvedLabelPreviewUrl || prevLabelOrder.label?.labelUrl || null,
+                    status: resolvedLabelPreviewUrl ? 'generated' : (prevLabelOrder.label?.status || 'generated'),
                   },
                 }
               : prevLabelOrder
@@ -1199,6 +1186,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
         ? (filterStore === 'all' || orderStoreName === filterStore)
         : (filterStore === 'all' || order.storeName === filterStore);
 
+      if (filterFulfillmentType && order.fulfillmentType !== filterFulfillmentType) return false;
       return matchesIntegrationScope && matchesStore;
     })
     .sort((a, b) => {
@@ -1217,45 +1205,74 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
         )
       ).map((storeName) => ({ id: storeName, name: storeName }));
 
+  const toggleOrderSelection = (orderId: number) => {
+    setSelectedOrders(prev =>
+      prev.includes(orderId) ? prev.filter(id => id !== orderId) : [...prev, orderId]
+    );
+  };
+
+  const handleOpenPicklist = async () => {
+    if (selectedOrders.length === 0) return;
+    try {
+      setLoadingPicklist(true);
+      setShowPicklistDialog(true);
+      const data = await api.getPicklist(selectedOrders);
+      setPicklistData(data.orders || []);
+    } catch (error) {
+      toast.error('Kon picklijst niet laden');
+    } finally {
+      setLoadingPicklist(false);
+    }
+  };
+
+  const handlePickOrders = async () => {
+    if (selectedOrders.length === 0) return;
+    try {
+      setPickingOrders(true);
+      const result = await api.pickOrders(selectedOrders, activeProfile);
+      toast.success(`${result.processed} order(s) gepickt`);
+      if (result.errors > 0) {
+        toast.error(`${result.errors} order(s) mislukt`);
+      }
+      setSelectedOrders([]);
+      setShowPicklistDialog(false);
+      loadOrders();
+    } catch (error) {
+      toast.error('Kon orders niet picken');
+    } finally {
+      setPickingOrders(false);
+    }
+  };
+
   const toggleOrderDetails = (orderNumber: string) => {
     setExpandedOrder(expandedOrder === orderNumber ? null : orderNumber);
   };
 
   const exportToExcel = () => {
-    const rows: Record<string, any>[] = [];
+    const exportData = filteredOrders.map(order => ({
+      'Ordernummer': order.orderNumber,
+      'Klantnaam': order.customerName,
+      'Land': order.country,
+      'Store': order.storeName,
+      'Platform': order.platform || 'bol.com',
+      'Aantal items': order.itemCount,
+      'Orderwaarde': order.orderValue ? `€${order.orderValue.toFixed(2)}` : '',
+      'Besteldatum': order.orderDate ? new Date(order.orderDate).toLocaleDateString('nl-NL') : '',
+      'Leverdatum': order.deliveryDate ? new Date(order.deliveryDate).toLocaleDateString('nl-NL') : '',
+      'Adres': order.address || '',
+      'Trackingnummer': order.supplierTracking || order?.tracking?.trackingCode || '',
+      'Status': order.status || '',
+      'Orderstatus': order.orderStatus || '',
+      'Zendingstatus': order.shippingStatus || ''
+    }));
 
-    filteredOrders.forEach(order => {
-      const orderDate = order.orderDate ? new Date(order.orderDate).toLocaleDateString('nl-NL') : '';
-      const deliveryDate = order.deliveryDate ? new Date(order.deliveryDate).toLocaleDateString('nl-NL') : '';
-      const items: any[] = Array.isArray(order.orderItems) && order.orderItems.length > 0
-        ? order.orderItems
-        : [null];
-
-      items.forEach((item: any) => {
-        rows.push({
-          'Ordernummer': order.orderNumber || '',
-          'Naam': order.customerName || '',
-          'Land': order.country || '',
-          'Besteldatum': orderDate,
-          'Leverdatum': deliveryDate,
-          'EAN': item?.ean || '',
-          'Omzet (€)': item ? Number(((item.unitPrice ?? item.price ?? 0) * (item.quantity ?? 1)).toFixed(2)) : '',
-          'Aantal besteld': item?.quantity ?? '',
-        });
-      });
-    });
-
-    const ws = XLSX.utils.json_to_sheet(rows);
-    ws['!cols'] = [
-      { wch: 18 }, // Ordernummer
-      { wch: 22 }, // Naam
-      { wch: 8  }, // Land
-      { wch: 14 }, // Besteldatum
-      { wch: 14 }, // Leverdatum
-      { wch: 16 }, // EAN
-      { wch: 14 }, // Omzet
-      { wch: 16 }, // Aantal besteld
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const colWidths = [
+      { wch: 15 }, { wch: 20 }, { wch: 8  }, { wch: 15 }, { wch: 12 },
+      { wch: 12 }, { wch: 12 }, { wch: 15 }, { wch: 15 }, { wch: 40 },
+      { wch: 20 }, { wch: 20 }, { wch: 15 }, { wch: 25 }
     ];
+    ws['!cols'] = colWidths;
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Orders');
@@ -1287,10 +1304,28 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
     };
   };
 
+ const getFulfillmentTypeBadge = (fulfillmentType: string | null) => {
+  if (!fulfillmentType) return null;
+  if (fulfillmentType === 'fulfillment') {
+    return (
+      <Badge variant="outline" className="text-xs border-indigo-200 text-indigo-600 bg-indigo-50 px-1.5 py-0">
+        FFM
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="outline" className="text-xs border-purple-200 text-purple-600 bg-purple-50 px-1.5 py-0">
+      DS
+    </Badge>
+  );
+};
+
   const getOrderStatusBadge = (status: string) => {
     const normalizedStatus = String(status || '').trim().toLowerCase();
 
     switch (normalizedStatus) {
+      case 'gepickt':
+        return <Badge variant="outline" className="text-blue-600 border-blue-300 bg-blue-50">Gepickt</Badge>;
       case 'openstaand':
         return <Badge variant="outline" className="text-orange-600 border-orange-300 bg-orange-50">Openstaand</Badge>;
       case 'onderweg-ffm':
@@ -1472,6 +1507,62 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
         <p className="text-slate-600">Beheer en verwerk al je openstaande orders</p>
       </div>
 
+      {/* Stats Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card className={`border-slate-200 shadow-sm cursor-pointer hover:shadow-md transition-shadow ${filterStatus === 'openstaand' && !filterFulfillmentType && !filterExpiringTomorrow ? 'ring-2 ring-indigo-500 border-indigo-300' : ''}`} onClick={() => { if (filterStatus === 'openstaand' && !filterFulfillmentType && !filterExpiringTomorrow) { setFilterStatus('all'); } else { setFilterStatus('openstaand'); setFilterFulfillmentType(null); setFilterExpiringTomorrow(false); } }}>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-500 mb-1"> {t('openOrders')} </p>
+                <p className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">{statsOpenOrders}</p>
+              </div>
+              <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center">
+                <ShoppingBag className="w-6 h-6 text-indigo-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className={`border-slate-200 shadow-sm cursor-pointer hover:shadow-md transition-shadow ${filterStatus === 'openstaand' && filterFulfillmentType === 'fulfillment' ? 'ring-2 ring-indigo-500 border-indigo-300' : ''}`} onClick={() => { if (filterStatus === 'openstaand' && filterFulfillmentType === 'fulfillment') { setFilterStatus('all'); setFilterFulfillmentType(null); } else { setFilterStatus('openstaand'); setFilterFulfillmentType('fulfillment'); setFilterExpiringTomorrow(false); } }}>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-500 mb-1">{t('needsPicking')}</p>
+                <p className="text-3xl font-bold text-emerald-600">{statsNeedsPicking}</p>
+              </div>
+              <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center">
+                <PackageCheck className="w-6 h-6 text-emerald-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-slate-200 shadow-sm cursor-pointer hover:shadow-md transition-shadow" onClick={() => { setFilterStatus('openstaand'); setFilterFulfillmentType(null); setFilterExpiringTomorrow(true); }}>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-500 mb-1">{t('expiringTomorrow')}</p>
+                <p className={`text-3xl font-bold ${statsExpiringTomorrow > 0 ? 'text-amber-600' : 'text-slate-600'}`}>{statsExpiringTomorrow}</p>
+              </div>
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center ${statsExpiringTomorrow > 0 ? 'bg-amber-100' : 'bg-slate-100'}`}>
+                <AlertTriangle className={`w-6 h-6 ${statsExpiringTomorrow > 0 ? 'text-amber-600' : 'text-slate-400'}`} />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-slate-200 shadow-sm cursor-pointer hover:shadow-md transition-shadow" onClick={() => { setFilterStatus('verzonden'); setFilterFulfillmentType(null); setFilterExpiringTomorrow(false); }}>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-500 mb-1">{t('processed')}</p>
+                <p className="text-3xl font-bold text-purple-600">{statsProcessed}</p>
+              </div>
+              <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
+                <Star className="w-6 h-6 text-purple-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       <Card className="border-slate-200 shadow-sm">
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -1486,6 +1577,16 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                 <Download className="w-4 h-4" />
                 Exporteren
               </Button>
+              {selectedOrders.length > 0 && (
+                <Button
+                  size="sm"
+                  className="gap-2 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600"
+                  onClick={handleOpenPicklist}
+                >
+                  <ClipboardList className="w-4 h-4" />
+                  Picklijst ({selectedOrders.length})
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="sm"
@@ -1531,6 +1632,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
               <SelectContent className="border-slate-200 shadow-lg">
                 <SelectItem value="all">Alle statussen</SelectItem>
                 <SelectItem value="openstaand">Openstaand</SelectItem>
+                <SelectItem value="gepickt">Gepickt</SelectItem>
                 <SelectItem value="verzonden">Verzonden</SelectItem>
               </SelectContent>
             </Select>
@@ -1541,6 +1643,20 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
             <Table>
               <TableHeader>
                 <TableRow className="bg-slate-50/50">
+                  <TableHead className="w-8">
+                    {filterFulfillmentType === 'fulfillment' && filteredOrders.length > 0 && (
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 accent-indigo-600 cursor-pointer"
+                        checked={filteredOrders.filter(o => String(o.status || '').toLowerCase() !== 'gepickt' && String(o.orderStatus || '').toLowerCase() !== 'gepickt').every(o => selectedOrders.includes(o.id))}
+                        onChange={() => {
+                          const allIds = filteredOrders.filter(o => String(o.status || '').toLowerCase() !== 'gepickt' && String(o.orderStatus || '').toLowerCase() !== 'gepickt').map(o => o.id);
+                          const allSelected = allIds.every(id => selectedOrders.includes(id));
+                          setSelectedOrders(allSelected ? [] : allIds);
+                        }}
+                      />
+                    )}
+                  </TableHead>
                   <TableHead className="w-12"></TableHead>
                   <TableHead>Ordernummer</TableHead>
                   <TableHead>Klantnaam</TableHead>
@@ -1557,13 +1673,13 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={11} className="text-center py-8">
+                    <TableCell colSpan={12} className="text-center py-8">
                       <Loader2 className="h-6 w-6 animate-spin text-indigo-600 mx-auto" />
                     </TableCell>
                   </TableRow>
                 ) : filteredOrders.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={11} className="text-center py-8 text-slate-500">
+                    <TableCell colSpan={12} className="text-center py-8 text-slate-500">
                       Geen orders gevonden
                     </TableCell>
                   </TableRow>
@@ -1574,6 +1690,16 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                         className="hover:bg-slate-50/50 cursor-pointer"
                         onClick={() => toggleOrderDetails(order.orderNumber)}
                       >
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          {order.fulfillmentType === 'fulfillment' && normalizeOrderStatus(order) === 'openstaand' && String(order.status || '').toLowerCase() !== 'gepickt' && String(order.orderStatus || '').toLowerCase() !== 'gepickt' && (
+                            <input
+                              type="checkbox"
+                              checked={selectedOrders.includes(order.id)}
+                              onChange={() => toggleOrderSelection(order.id)}
+                              className="w-4 h-4 accent-indigo-600 cursor-pointer"
+                            />
+                          )}
+                        </TableCell>
                         <TableCell>
                           {expandedOrder === order.orderNumber ? (
                             <ChevronDown className="w-4 h-4 text-slate-400" />
@@ -1593,14 +1719,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                                 />
                               </div>
                             )}
-                            <div className="flex flex-col gap-0.5">
-                              <span>{order.customerName}</span>
-                              {order.orderItems?.[0]?.ean && (
-                                <span className="inline-flex w-fit items-center rounded px-2 py-1 text-[10px] font-mono bg-slate-100 text-slate-500 border border-slate-200 leading-none">
-                                  {order.orderItems[0].ean}
-                                </span>
-                              )}
-                            </div>
+                            <span>{order.customerName}</span>
                           </div>
                         </TableCell>
                         <TableCell>
@@ -1751,7 +1870,10 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                           })()}
                         </TableCell>
                         <TableCell>
-                          {getOrderStatusBadge(order.status || 'onderweg-ffm')}
+                          <div className="flex items-center gap-2">
+                            {getOrderStatusBadge(order.status || 'onderweg-ffm')}
+                            {getFulfillmentTypeBadge(order.fulfillmentType)}
+                          </div>
                         </TableCell>
                         <TableCell className="text-right" onClick={(event) => event.stopPropagation()}>
                           <div className="flex items-center justify-end">
@@ -1796,7 +1918,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                       {/* Expanded Details Row */}
                       {expandedOrder === order.orderNumber && (
                         <TableRow className="bg-gradient-to-r from-slate-50/80 to-indigo-50/30">
-                          <TableCell colSpan={11} className="p-6">
+                          <TableCell colSpan={12} className="p-6">
                             <div className="flex gap-6">
                               {/* Left Column - Basic Info */}
                               <div className="flex-1 space-y-6">
@@ -2571,6 +2693,184 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ===== PICKLIJST DIALOG ===== */}
+      <Dialog open={showPicklistDialog} onOpenChange={setShowPicklistDialog}>
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+          <DialogHeader>
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
+                <ClipboardList className="w-4 h-4 text-indigo-600" />
+              </div>
+              <div>
+                <DialogTitle>Picklijst</DialogTitle>
+                <DialogDescription>
+                  {selectedOrders.length} order(s) geselecteerd om te picken
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-auto space-y-4">
+            {loadingPicklist ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-6 h-6 animate-spin text-indigo-600" />
+              </div>
+            ) : (
+              picklistData.map((order) => (
+                <div key={order.id} className="border border-slate-200 rounded-xl overflow-hidden">
+                  <div className="bg-slate-50 px-4 py-3 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className="font-mono text-sm font-medium text-slate-900">{order.orderNumber}</span>
+                      <Badge variant="outline" className="border-indigo-200 text-indigo-700 bg-indigo-50">
+                        {order.storeName}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm text-slate-500">{order.customerName}</span>
+                      <Button
+                        size="sm"
+                        className="gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white h-9 px-4 text-sm font-medium"
+                        disabled={pickingOrders}
+                        onClick={async () => {
+                          try {
+                            setPickingOrders(true);
+                            await api.pickOrders([order.id], activeProfile);
+                            toast.success(`Order ${order.orderNumber} gepickt`);
+                            setSelectedOrders(prev => prev.filter(id => id !== order.id));
+                            setPicklistData(prev => prev.filter(o => o.id !== order.id));
+                            loadOrders();
+                            if (picklistData.length <= 1) {
+                              setShowPicklistDialog(false);
+                            }
+                          } catch {
+                            toast.error('Kon order niet picken');
+                          } finally {
+                            setPickingOrders(false);
+                          }
+                        }}
+                      >
+                        <CheckSquare className="w-3 h-3" />
+                        Gepickt
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    {order.orderItems?.map((item: any) => (
+                      <div key={item.id} className="px-4 py-4 flex items-center gap-6">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-slate-900 truncate">{item.productName}</p>
+                          <p className="text-xs text-slate-500 font-mono mt-0.5">{item.ean || '-'}</p>
+                        </div>
+                        <div className="flex items-center gap-4 shrink-0">
+                          {/* Locatie */}
+                          <div className="flex flex-col gap-1">
+                            {item.product?.locations?.length > 0 ? (
+                              item.product.locations.map((loc: any, i: number) => (
+                                <span key={i} className="inline-flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-900 text-sm font-semibold px-3 py-1.5 rounded-lg font-mono">
+                                  📍 {loc.location}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-slate-400 text-sm">Geen locatie</span>
+                            )}
+                          </div>
+                          {/* Aantal */}
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span className="text-xs text-slate-400">Aantal</span>
+                            <span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 font-bold text-lg">
+                              {item.quantity}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              className="border-slate-200 gap-2"
+              onClick={() => {
+                const printWindow = window.open('', '_blank');
+                if (!printWindow) return;
+                const html = `
+                  <!DOCTYPE html>
+                  <html>
+                  <head>
+                    <title>Picklijst</title>
+                    <style>
+                      body { font-family: Arial, sans-serif; padding: 24px; font-size: 13px; }
+                      h1 { font-size: 20px; margin-bottom: 4px; }
+                      .subtitle { color: #666; margin-bottom: 24px; }
+                      .order { border: 1px solid #ddd; border-radius: 8px; margin-bottom: 16px; overflow: hidden; }
+                      .order-header { background: #f5f5f5; padding: 10px 16px; display: flex; justify-content: space-between; font-weight: bold; }
+                      .item { padding: 10px 16px; border-top: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+                      .item-info { flex: 1; }
+                      .item-name { font-weight: 500; margin-bottom: 2px; }
+                      .item-ean { color: #888; font-size: 11px; font-family: monospace; }
+                      .item-location { background: #fff8e1; border: 1px solid #f0c040; border-radius: 4px; padding: 2px 8px; font-size: 11px; font-family: monospace; }
+                      .item-qty { width: 32px; height: 32px; border-radius: 50%; background: #e8e8ff; color: #3333aa; font-weight: bold; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+                      @media print { body { padding: 0; } }
+                    </style>
+                  </head>
+                  <body>
+                    <h1>Picklijst</h1>
+                    <p class="subtitle">${picklistData.length} order(s) — ${new Date().toLocaleDateString('nl-NL')}</p>
+                    ${picklistData.map(order => `
+                      <div class="order">
+                        <div class="order-header">
+                          <span>${order.orderNumber} — ${order.storeName}</span>
+                          <span>${order.customerName}</span>
+                        </div>
+                        ${(order.orderItems || []).map((item: any) => `
+                          <div class="item">
+                            <div class="item-info">
+                              <div class="item-name">${item.productName}</div>
+                              <div class="item-ean">${item.ean || '-'}</div>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:12px;">
+                              ${item.product?.locations?.length > 0
+                                ? item.product.locations.map((loc: any) => `<span class="item-location">📍 ${loc.location}</span>`).join(' ')
+                                : '<span style="color:#aaa;font-size:11px;">Geen locatie</span>'
+                              }
+                              <div class="item-qty">${item.quantity}</div>
+                            </div>
+                          </div>
+                        `).join('')}
+                      </div>
+                    `).join('')}
+                    <script>window.onload = () => { window.print(); }</script>
+                  </body>
+                  </html>
+                `;
+                printWindow.document.write(html);
+                printWindow.document.close();
+              }}
+            >
+              <Download className="w-4 h-4" />
+              Afdrukken
+            </Button>
+            <Button variant="outline" onClick={() => setShowPicklistDialog(false)} className="border-slate-200">
+              Sluiten
+            </Button>
+            <Button
+              onClick={handlePickOrders}
+              disabled={pickingOrders || loadingPicklist}
+              className="gap-2 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600"
+            >
+              {pickingOrders && <Loader2 className="w-4 h-4 animate-spin" />}
+              <CheckSquare className="w-4 h-4" />
+              Alles gepickt
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>          
+
     </div>
   );
 }
