@@ -2161,7 +2161,7 @@ export const getBolDeliveryOptions = async (req, res) => {
 
     let orderItemsPayload = null;
     try {
-      orderItemsPayload = await bolApiRequest(credentials, `/orders/${encodeURIComponent(normalizedOrderId)}/order-items`);
+      orderItemsPayload = await bolApiRequest(credentials, `/orders/${encodeURIComponent(normalizedOrderId)}`);
     } catch {
       // Fallback below
     }
