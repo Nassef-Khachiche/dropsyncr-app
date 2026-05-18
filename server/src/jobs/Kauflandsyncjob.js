@@ -1,6 +1,8 @@
 import prisma from '../config/database.js';
 import { syncKauflandOrdersForInstallation } from '../controllers/kauflandController.js';
 
+
+// Kaudfland job: Runs every 5 minutes (configurable via KAUFLAND_SYNC_INTERVAL_MINUTES env var) to sync orders for all active Kaufland integrations. Each cycle checks if a previous sync is still running to prevent overlaps, and logs the results of each sync attempt.
 let kauflandSyncIntervalRef = null;
 let isKauflandSyncRunning = false;
 
