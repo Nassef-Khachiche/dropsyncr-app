@@ -433,6 +433,7 @@ async function pollShippingLabelIdFromProcessStatus(
   if (!normalizedId) return null;
 
   const endpoints = [
+    `/shared/process-status/${encodeURIComponent(normalizedId)}`,
     `/process-status/${encodeURIComponent(normalizedId)}`,
     `/process-statuses/${encodeURIComponent(normalizedId)}`,
   ];
@@ -445,8 +446,6 @@ async function pollShippingLabelIdFromProcessStatus(
     for (const endpoint of endpoints) {
       try {
         const payload = await bolApiRequest(credentials, endpoint);
-
-        // Check if process is still pending
         const processStatus = String(payload?.status || '').trim().toUpperCase();
         if (processStatus === 'PENDING' || processStatus === 'IN_PROGRESS') {
           break; // Break inner loop, try again after delay
@@ -457,10 +456,7 @@ async function pollShippingLabelIdFromProcessStatus(
 
         const linkedEntityId = extractFirstLinkId(payload, '/shipping-labels');
         if (linkedEntityId) return linkedEntityId;
-      } catch {
-        // Ignore and try next endpoint
-      }
-    }
+      } 
   }
 
   return null;
@@ -602,13 +598,21 @@ async function getBolLabelWithFallbackInternal(
     console.log('[BOL LABEL DEBUG] createdShippingLabelId after entityId/link', createdShippingLabelId);
 
     // FIX: Use polling instead of single attempt — Bol label creation is async
-    if (!createdShippingLabelId && createLabelPayload?.processStatusId) {
-      console.log('[BOL LABEL DEBUG] polling processStatusId', createLabelPayload.processStatusId);
-      createdShippingLabelId = await pollShippingLabelIdFromProcessStatus(
-        credentials,
-        createLabelPayload.processStatusId,
-      ) || '';
-      console.log('[BOL LABEL DEBUG] createdShippingLabelId after polling', createdShippingLabelId);
+    const processStatusId = createLabelPayload?.processStatusId
+      || extractFirstLinkId(createLabelPayload, '/shared/process-status')
+      || extractFirstLinkId(createLabelPayload, '/process-status');
+    if (!createdShippingLabelId && processStatusId) {
+      console.log('[BOL LABEL DEBUG] polling processStatusId', processStatusId);
+      // Wait 5 seconds for Bol to process the label
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      // Try to get the latest shipping label directly
+      try {
+        const latestLabels = await bolApiRequest(credentials, '/shipping-labels');
+        createdShippingLabelId = extractFirstLinkId(latestLabels, '/shipping-labels') || String(latestLabels?.shippingLabelId || '').trim() || '';
+        console.log('[BOL LABEL DEBUG] createdShippingLabelId from latest labels', createdShippingLabelId);
+      } catch (err) {
+        console.log('[BOL LABEL DEBUG] failed to get latest labels', err.message);
+      }
     }
 
     if (!createdShippingLabelId) {
@@ -1632,6 +1636,7 @@ export const syncBolOrders = async (req, res) => {
         itemCount: orderItems?.length || 1,
         ...(resolvedTrackAndTrace ? { supplierTracking: resolvedTrackAndTrace } : {}),
         status: finalInternalStatus,
+        fulfillmentType: null,
       };
 
       // Resolve handover window dates for VVB orders (drop-off dates only — not shipping status)
@@ -1831,6 +1836,7 @@ export const syncBolOrders = async (req, res) => {
                 brand: resolvedProductBrand,
                 internalRef: internalRef || sku,
                 price: effectiveUnitPrice,
+                sizeCategory: null,
               },
               select: { id: true, image: true },
             });
