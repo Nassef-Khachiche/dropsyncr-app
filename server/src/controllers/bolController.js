@@ -1649,6 +1649,22 @@ export const syncBolOrders = async (req, res) => {
         ? 'Bol.com'
         : (shippingAutomationResult.shippingAssignment || null);
 
+      // Never downgrade a locally-confirmed shipment back to an open state during sync.
+      // This covers the window between label generation / POST /shipments and Bol's own
+      // status update propagating back. Cancellations and deliveries from Bol still win.
+      const localShipmentStatuses = new Set(['verzonden', 'label-aangemaakt']);
+      const syncOpenStatuses = new Set(['openstaand', 'onderweg-ffm', 'binnengekomen-ffm']);
+      const bolIsDowngradingShipment =
+        existingOrder &&
+        localShipmentStatuses.has(existingOrder.status) &&
+        syncOpenStatuses.has(finalInternalStatus);
+
+      const syncedStatus = bolIsDowngradingShipment ? existingOrder.status : finalInternalStatus;
+      const syncedOrderStatus = bolIsDowngradingShipment ? existingOrder.orderStatus : finalOrderStatus;
+      const syncedOrderStatusCode = bolIsDowngradingShipment
+        ? toOrderStatusCode(existingOrder.orderStatus)
+        : finalOrderStatusCode;
+
       const orderData = {
         orderNumber: bolOrder.orderId,
         installationId: parseInt(installationId),
@@ -1666,8 +1682,8 @@ export const syncBolOrders = async (req, res) => {
         platform: 'bol.com',
         orderDate: new Date(orderPayload.orderPlacedDateTime),
         deliveryDate,
-        orderStatus: finalOrderStatus,
-        orderStatusCode: finalOrderStatusCode,
+        orderStatus: syncedOrderStatus,
+        orderStatusCode: syncedOrderStatusCode,
         shippingStatus: resolvedShippingStatus || null,
         isVVB: isVvbOrder,
         orderValue: parseFloat(orderItems?.reduce((sum, item) => {
@@ -1676,7 +1692,7 @@ export const syncBolOrders = async (req, res) => {
         }, 0) || 0),
         itemCount: orderItems?.length || 1,
         ...(resolvedTrackAndTrace ? { supplierTracking: resolvedTrackAndTrace } : {}),
-        status: finalInternalStatus,
+        status: syncedStatus,
         fulfillmentType: null,
       };
 
@@ -2014,6 +2030,7 @@ export const getBolShippingLabel = async (req, res) => {
 
     let labelData = null;
     let successfulIntegrationId = null;
+    let successfulCredentials = null;
     let lastError = null;
     const attemptedIntegrationIds = [];
 
@@ -2076,6 +2093,7 @@ export const getBolShippingLabel = async (req, res) => {
         );
         labelData = fallbackResult.labelData;
         successfulIntegrationId = candidate.integration.id;
+        successfulCredentials = candidate.credentials;
         break;
       } catch (candidateError) {
         lastError = candidateError;
@@ -2184,6 +2202,44 @@ export const getBolShippingLabel = async (req, res) => {
         ...(latestDropOffDate ? { latestDropOffDate } : {}),
       },
     });
+
+    // Confirm shipment with Bol.com so the order is marked as shipped on their side.
+    // For VVB orders the carrier is assigned by Bol; for FBR we pass whatever the label returned.
+    // Failures here are non-fatal — the label has already been generated and saved.
+    if (successfulCredentials) {
+      const shipmentOrderItems = Array.isArray(bodyOrderItems) && bodyOrderItems.length > 0
+        ? extractBolOrderItemsForLabel({ orderItems: bodyOrderItems })
+        : null;
+
+      if (shipmentOrderItems && shipmentOrderItems.length > 0) {
+        try {
+          const shipmentBody = { orderItems: shipmentOrderItems };
+          if (labelData?.transporterCode || labelData?.trackingCode) {
+            shipmentBody.transport = {};
+            if (labelData.transporterCode) shipmentBody.transport.transporterCode = labelData.transporterCode;
+            if (labelData.trackingCode) shipmentBody.transport.trackAndTrace = labelData.trackingCode;
+          }
+          await bolApiRequest(successfulCredentials, '/shipments', 'POST', shipmentBody);
+          console.log('[BOL LABEL] Shipment confirmed with Bol.com', { orderId: normalizedOrderId });
+
+          // Also update the local status to verzonden now that Bol confirmed
+          await prisma.order.updateMany({
+            where: {
+              orderNumber: normalizedOrderId,
+              ...(orderScopedInstallations.length > 0
+                ? { installationId: { in: orderScopedInstallations } }
+                : (Number.isFinite(installationIdNumber) ? { installationId: installationIdNumber } : {})),
+            },
+            data: { status: 'verzonden', orderStatus: 'verzonden', orderStatusCode: 'SHIPPED' },
+          });
+        } catch (shipmentError) {
+          console.warn('[BOL LABEL] Failed to confirm shipment with Bol.com (non-fatal)', {
+            orderId: normalizedOrderId,
+            message: shipmentError?.message,
+          });
+        }
+      }
+    }
 
     res.json({
       ...labelData,
