@@ -338,6 +338,24 @@ const formatBolDeliveryOptionDateTime = (value?: string) => {
   });
 };
 
+const downloadLabelFile = async (url: string, filename = 'label.pdf') => {
+  try {
+    const res = await fetch(url, { credentials: 'omit' });
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = objectUrl;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(objectUrl);
+  } catch {
+    // Fallback: open in new tab
+    window.open(url, '_blank', 'noreferrer');
+  }
+};
+
 export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
   const ORDERS_PER_PAGE = 50;
 
@@ -983,7 +1001,12 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
           preferredDeliveryOptionId,
         );
         const deliveryOptionValidation = bolLabelResult?.deliveryOptionValidation || null;
-        const labelUrl = extractFirstStringMatch(bolLabelResult, isLikelyUrl);
+        // Prefer the explicit labelUrl property (set by backend after saving PDF to disk),
+        // then fall back to scanning the whole response for any URL or base64 PDF.
+        const directLabelUrl = typeof bolLabelResult?.labelUrl === 'string' && isLikelyUrl(bolLabelResult.labelUrl.trim())
+          ? bolLabelResult.labelUrl.trim()
+          : null;
+        const labelUrl = directLabelUrl || extractFirstStringMatch(bolLabelResult, isLikelyUrl);
         const pdfBase64 = extractFirstStringMatch(bolLabelResult, isLikelyPdfBase64);
         const resolvedLabelPreviewUrl = labelUrl
           || (pdfBase64
@@ -2425,11 +2448,14 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                         Volledige preview
                       </a>
                     </Button>
-                    <Button variant="outline" size="sm" className="border-slate-200 shadow-sm" asChild>
-                      <a href={labelPreviewUrl} download>
-                        <Download className="w-4 h-4 mr-1.5" />
-                        Download label
-                      </a>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="border-slate-200 shadow-sm"
+                      onClick={() => downloadLabelFile(labelPreviewUrl, `label-${labelOrder?.orderNumber || 'download'}.pdf`)}
+                    >
+                      <Download className="w-4 h-4 mr-1.5" />
+                      Download label
                     </Button>
                   </div>
                 </div>
@@ -2639,11 +2665,14 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                         Volledige preview
                       </a>
                     </Button>
-                    <Button variant="outline" size="sm" className="border-slate-200 shadow-sm" asChild>
-                      <a href={returnLabelPreviewUrl} download>
-                        <Download className="w-4 h-4 mr-1.5" />
-                        Download label
-                      </a>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="border-slate-200 shadow-sm"
+                      onClick={() => downloadLabelFile(returnLabelPreviewUrl, `retourlabel-${returnLabelOrder?.orderNumber || 'download'}.pdf`)}
+                    >
+                      <Download className="w-4 h-4 mr-1.5" />
+                      Download label
                     </Button>
                   </div>
                 </div>

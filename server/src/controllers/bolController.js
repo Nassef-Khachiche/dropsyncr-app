@@ -162,8 +162,14 @@ async function bolApiRequestRaw(
     options.body = JSON.stringify(body);
   }
 
+  // Allow callers to pass a full URL (e.g. https://api.bol.com/shared/process-status/...).
+  // Those endpoints are NOT under /retailer, so we must not prepend it.
+  const url = /^https?:\/\//i.test(endpoint)
+    ? endpoint
+    : `https://api.bol.com/retailer${endpoint}`;
+
   try {
-    return await fetch(`https://api.bol.com/retailer${endpoint}`, {
+    return await fetch(url, {
       ...options,
       signal: controller.signal,
     });
@@ -432,10 +438,10 @@ async function pollShippingLabelIdFromProcessStatus(
   const normalizedId = String(processStatusId || '').trim();
   if (!normalizedId) return null;
 
+  // The Bol process-status endpoint lives at https://api.bol.com/shared/process-status/ (no /retailer prefix).
+  // Use the full URL so bolApiRequestRaw doesn't incorrectly prepend /retailer.
   const endpoints = [
-    `/shared/process-status/${encodeURIComponent(normalizedId)}`,
-    `/process-status/${encodeURIComponent(normalizedId)}`,
-    `/process-statuses/${encodeURIComponent(normalizedId)}`,
+    `https://api.bol.com/shared/process-status/${encodeURIComponent(normalizedId)}`,
   ];
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -447,16 +453,42 @@ async function pollShippingLabelIdFromProcessStatus(
       try {
         const payload = await bolApiRequest(credentials, endpoint);
         const processStatus = String(payload?.status || '').trim().toUpperCase();
+        console.log(`[BOL POLL] attempt ${attempt}, endpoint ${endpoint}, status=${processStatus}, entityId=${payload?.entityId}, links=${JSON.stringify(payload?.links)}`);
         if (processStatus === 'PENDING' || processStatus === 'IN_PROGRESS') {
           break; // Break inner loop, try again after delay
+        }
+        if (processStatus === 'FAILURE' || processStatus === 'ERROR' || processStatus === 'FAILED') {
+          console.warn('[BOL POLL] Process status FAILED', JSON.stringify(payload));
+          return null;
+        }
+        if (processStatus === 'SUCCESS') {
+          console.log('[BOL POLL] Process SUCCESS full payload', JSON.stringify(payload));
         }
 
         const directEntityId = String(payload?.entityId || '').trim();
         if (directEntityId) return directEntityId;
 
+        // Try all link relations, not just /shipping-labels/
+        const links = Array.isArray(payload?.links) ? payload.links : [];
+        for (const link of links) {
+          const href = String(link?.href || '').trim();
+          const rel = String(link?.rel || '').trim().toLowerCase();
+          if (!href) continue;
+          // Skip self-referencing process status links
+          if (href.includes('/process-status')) continue;
+          const idMatch = href.match(/\/([^/]+)\/?$/);
+          if (idMatch?.[1] && rel !== 'self') {
+            console.log('[BOL POLL] Extracted entity ID from link', { href, rel, id: idMatch[1] });
+            return idMatch[1];
+          }
+        }
         const linkedEntityId = extractFirstLinkId(payload, '/shipping-labels');
         if (linkedEntityId) return linkedEntityId;
-      } 
+      } catch (err) {
+        console.warn(`[BOL POLL] attempt ${attempt}, endpoint ${endpoint} failed:`, err?.message);
+        // ignore endpoint error, try next endpoint
+      }
+    }
   }
 
   return null;
@@ -602,16 +634,25 @@ async function getBolLabelWithFallbackInternal(
       || extractFirstLinkId(createLabelPayload, '/shared/process-status')
       || extractFirstLinkId(createLabelPayload, '/process-status');
     if (!createdShippingLabelId && processStatusId) {
-      console.log('[BOL LABEL DEBUG] polling processStatusId', processStatusId);
-      // Wait 5 seconds for Bol to process the label
-      await new Promise((resolve) => setTimeout(resolve, 5000));
-      // Try to get the latest shipping label directly
+      console.log('[BOL LABEL DEBUG] polling processStatusId via process-status endpoint', processStatusId);
+      createdShippingLabelId = await pollShippingLabelIdFromProcessStatus(credentials, processStatusId, { maxAttempts: 10, delayMs: 3000 }) || '';
+      console.log('[BOL LABEL DEBUG] createdShippingLabelId from process status polling', createdShippingLabelId);
+    }
+
+    // Fallback: process was submitted (we have a processStatusId) but we couldn't extract the
+    // entity ID from the process status response. Try to find the newly created label via shipments.
+    if (!createdShippingLabelId && processStatusId) {
+      console.log('[BOL LABEL DEBUG] falling back to shipments lookup for label ID');
       try {
-        const latestLabels = await bolApiRequest(credentials, '/shipping-labels');
-        createdShippingLabelId = extractFirstLinkId(latestLabels, '/shipping-labels') || String(latestLabels?.shippingLabelId || '').trim() || '';
-        console.log('[BOL LABEL DEBUG] createdShippingLabelId from latest labels', createdShippingLabelId);
-      } catch (err) {
-        console.log('[BOL LABEL DEBUG] failed to get latest labels', err.message);
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        const shipmentsPayload = await bolApiRequest(credentials, `/shipments?order-id=${encodeURIComponent(normalizedOrderId)}`);
+        const shipmentLabelIds = extractShippingLabelIdsFromResponse(shipmentsPayload);
+        if (shipmentLabelIds.length > 0) {
+          createdShippingLabelId = shipmentLabelIds[0];
+          console.log('[BOL LABEL DEBUG] found shippingLabelId from shipments fallback', createdShippingLabelId);
+        }
+      } catch (fallbackErr) {
+        console.log('[BOL LABEL DEBUG] shipments fallback failed', fallbackErr.message);
       }
     }
 
@@ -2054,7 +2095,16 @@ export const getBolShippingLabel = async (req, res) => {
 
     // Save the PDF to disk and persist a Label record so the label survives
     // dialog close / page reload (same as DHL/DPD labels in carrierController).
-    const rawLabelDataUri = String(labelData?.labelUrl || '').trim();
+    let rawLabelDataUri = String(labelData?.labelUrl || '').trim();
+
+    // Bol's JSON label API returns the PDF as base64 in a `body` field rather than a data URI.
+    // Convert it so the disk-save path below can handle it uniformly.
+    if (!rawLabelDataUri) {
+      const bodyBase64 = String(labelData?.body || '').trim();
+      if (bodyBase64 && /^JVBER/i.test(bodyBase64)) {
+        rawLabelDataUri = `data:application/pdf;base64,${bodyBase64}`;
+      }
+    }
     let persistedLabelUrl = rawLabelDataUri; // fallback: return data URI if file save fails
 
     if (rawLabelDataUri.startsWith('data:')) {
