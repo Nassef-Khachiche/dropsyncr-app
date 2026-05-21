@@ -172,7 +172,7 @@ export const getInventory = async (req, res) => {
 
 export const inboundStock = async (req, res) => {
   try {
-    const { installationId, productId, locationId, quantity, reference, notes } = req.body;
+    const { installationId, productId, locationId, quantity, reference, notes, receivedAt } = req.body;
 
     const parsedInstallationId = parseInt(installationId, 10);
     const parsedProductId = parseInt(productId, 10);
@@ -196,7 +196,7 @@ export const inboundStock = async (req, res) => {
         receivedBy: req.user.id,
         reference: reference || null,
         notes: notes || null,
-        receivedAt: new Date(),
+        receivedAt: receivedAt ? new Date(receivedAt) : new Date(),
       },
     });
 

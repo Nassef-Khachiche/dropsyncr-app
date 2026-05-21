@@ -2,7 +2,7 @@ import prisma from '../config/database.js';
 import { syncKauflandOrdersForInstallation } from '../controllers/kauflandController.js';
 
 
-// Kaudfland job: Runs every 5 minutes (configurable via KAUFLAND_SYNC_INTERVAL_MINUTES env var) to sync orders for all active Kaufland integrations. Each cycle checks if a previous sync is still running to prevent overlaps, and logs the results of each sync attempt.
+// Kaudfland job: Runs every 10 minutes (configurable via KAUFLAND_SYNC_INTERVAL_MINUTES env var) to sync orders for all active Kaufland integrations. Each cycle checks if a previous sync is still running to prevent overlaps, and logs the results of each sync attempt.
 let kauflandSyncIntervalRef = null;
 let isKauflandSyncRunning = false;
 
@@ -63,7 +63,7 @@ async function runKauflandSyncCycle() {
 }
 
 export function startKauflandSyncCronJob() {
-  const syncIntervalMinutes = parseInt(process.env.KAUFLAND_SYNC_INTERVAL_MINUTES || '5', 10);
+  const syncIntervalMinutes = parseInt(process.env.KAUFLAND_SYNC_INTERVAL_MINUTES || '10', 10);
   const safeIntervalMinutes = Number.isFinite(syncIntervalMinutes) && syncIntervalMinutes > 0
     ? syncIntervalMinutes
     : 5;

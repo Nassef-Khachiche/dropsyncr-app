@@ -283,7 +283,8 @@ type TranslationKey =
   | 'needsPicking'
   | 'expiringTomorrow'
   | 'processed'
-  | 'searchProductEanClient';
+  | 'searchProductEanClient'
+  | 'receivedAtDate';
 
 type Dictionary = Record<TranslationKey, string>;
 
@@ -570,6 +571,7 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     needsPicking: 'Needs picking',
     expiringTomorrow: 'Expiring tomorrow',
     processed: 'Processed',
+    receivedAtDate: 'Arrival date (optional)',
   },
   nl: {
     loading: 'Laden...',
@@ -853,6 +855,7 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     needsPicking: 'Te picken',
     expiringTomorrow: 'Verloopt morgen',
     processed: 'Verwerkt',
+    receivedAtDate: 'Binnenkomst datum (optioneel)',
   },
   de: {
     loading: 'Ladt...',
@@ -1136,6 +1139,7 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     needsPicking: 'Zu picken',
     expiringTomorrow: 'Lauft morgen ab',
     processed: 'Verarbeitet',
+    receivedAtDate: 'Eingangsdatum (optional)',
   },
 };
 
