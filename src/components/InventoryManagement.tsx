@@ -120,7 +120,7 @@ export function InventoryManagement({ activeProfile, isGlobalAdmin = false }: In
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
   const [installations, setInstallations] = useState<any[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
-  const [inboundForm, setInboundForm] = useState({ installationId: '', locationId: '', quantity: '', notes: '' });
+  const [inboundForm, setInboundForm] = useState({ installationId: '', locationId: '', quantity: '', notes: '', receivedAt: '' });
 
   // Print EAN dialog
   const [showPrintDialog, setShowPrintDialog] = useState(false);
@@ -254,7 +254,7 @@ export function InventoryManagement({ activeProfile, isGlobalAdmin = false }: In
     setSelectedProduct(null);
     setProductSearch('');
     setProductSearchResults([]);
-    setInboundForm({ installationId: '', locationId: '', quantity: '', notes: '' });
+    setInboundForm({ installationId: '', locationId: '', quantity: '', notes: '', receivedAt: '' });
   };
 
   const handleSelectProduct = (product: any) => {
@@ -277,6 +277,7 @@ export function InventoryManagement({ activeProfile, isGlobalAdmin = false }: In
         locationId: parseInt(inboundForm.locationId),
         quantity: parseInt(inboundForm.quantity),
         notes: inboundForm.notes || undefined,
+        receivedAt: inboundForm.receivedAt ? new Date(inboundForm.receivedAt).toISOString() : undefined,
       });
       toast.success(`${inboundForm.quantity}x ${selectedProduct.name} ingeboekt`);
       setShowInboundDialog(false);
@@ -996,6 +997,10 @@ export function InventoryManagement({ activeProfile, isGlobalAdmin = false }: In
             <div className="space-y-2">
               <Label>Aantal <span className="text-red-500">*</span></Label>
               <Input type="number" min="1" placeholder="bijv. 50" value={inboundForm.quantity} onChange={(e) => setInboundForm(prev => ({ ...prev, quantity: e.target.value }))} />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-slate-500 text-xs">{t('receivedAtDate')}</Label>
+              <Input type="date" value={inboundForm.receivedAt} onChange={(e) => setInboundForm(prev => ({ ...prev, receivedAt: e.target.value }))} />
             </div>
             <div className="space-y-2">
               <Label className="text-slate-500 text-xs">Notitie (optioneel)</Label>
