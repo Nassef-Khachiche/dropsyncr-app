@@ -2207,22 +2207,49 @@ export const getBolShippingLabel = async (req, res) => {
     // For VVB orders the carrier is assigned by Bol; for FBR we pass whatever the label returned.
     // Failures here are non-fatal — the label has already been generated and saved.
     if (successfulCredentials) {
-      const shipmentOrderItems = Array.isArray(bodyOrderItems) && bodyOrderItems.length > 0
-        ? extractBolOrderItemsForLabel({ orderItems: bodyOrderItems })
-        : null;
+      try {
+        // Order items oplossen: eerst van de client, anders backend-side bij Bol ophalen.
+        let shipmentOrderItems = Array.isArray(bodyOrderItems) && bodyOrderItems.length > 0
+          ? extractBolOrderItemsForLabel({ orderItems: bodyOrderItems })
+          : null;
 
-      if (shipmentOrderItems && shipmentOrderItems.length > 0) {
-        try {
+        if (!shipmentOrderItems || shipmentOrderItems.length === 0) {
+          let orderItemsPayload = null;
+          try {
+            orderItemsPayload = await bolApiRequest(
+              successfulCredentials,
+              `/orders/${encodeURIComponent(normalizedOrderId)}/order-items`,
+            );
+          } catch {
+            const listedOrder = await findOrderInFbrOrderPages(successfulCredentials, normalizedOrderId, 8);
+            if (listedOrder) {
+              orderItemsPayload = { orderItems: Array.isArray(listedOrder.orderItems) ? listedOrder.orderItems : [] };
+            }
+          }
+          if (orderItemsPayload) {
+            shipmentOrderItems = extractBolOrderItemsForLabel(orderItemsPayload);
+          }
+        }
+
+        const resolvedShippingLabelId = String(labelData?.shippingLabelId || '').trim();
+
+        if (shipmentOrderItems && shipmentOrderItems.length > 0) {
           const shipmentBody = { orderItems: shipmentOrderItems };
-          if (labelData?.transporterCode || labelData?.trackingCode) {
+
+          // VVB: koppel de aangemaakte Bol shipping label zodat Bol de transporter
+          // + track & trace automatisch toewijst en de order op verzonden zet.
+          if (resolvedShippingLabelId) {
+            shipmentBody.shippingLabelId = resolvedShippingLabelId;
+          } else if (labelData?.transporterCode || labelData?.trackingCode) {
             shipmentBody.transport = {};
             if (labelData.transporterCode) shipmentBody.transport.transporterCode = labelData.transporterCode;
             if (labelData.trackingCode) shipmentBody.transport.trackAndTrace = labelData.trackingCode;
           }
-          await bolApiRequest(successfulCredentials, '/shipments', 'POST', shipmentBody);
-          console.log('[BOL LABEL] Shipment confirmed with Bol.com', { orderId: normalizedOrderId });
 
-          // Also update the local status to verzonden now that Bol confirmed
+          await bolApiRequest(successfulCredentials, '/shipments', 'POST', shipmentBody);
+          console.log('[BOL LABEL] Shipment confirmed with Bol.com', { orderId: normalizedOrderId, shippingLabelId: resolvedShippingLabelId || null });
+
+          // Lokale status ook op verzonden nu Bol bevestigd heeft
           await prisma.order.updateMany({
             where: {
               orderNumber: normalizedOrderId,
@@ -2232,12 +2259,14 @@ export const getBolShippingLabel = async (req, res) => {
             },
             data: { status: 'verzonden', orderStatus: 'verzonden', orderStatusCode: 'SHIPPED' },
           });
-        } catch (shipmentError) {
-          console.warn('[BOL LABEL] Failed to confirm shipment with Bol.com (non-fatal)', {
-            orderId: normalizedOrderId,
-            message: shipmentError?.message,
-          });
+        } else {
+          console.warn('[BOL LABEL] Kon order items niet oplossen om shipment te bevestigen', { orderId: normalizedOrderId });
         }
+      } catch (shipmentError) {
+        console.warn('[BOL LABEL] Failed to confirm shipment with Bol.com (non-fatal)', {
+          orderId: normalizedOrderId,
+          message: shipmentError?.message,
+        });
       }
     }
 
@@ -2274,8 +2303,8 @@ export const getBolDeliveryOptions = async (req, res) => {
     let orderItemsPayload = null;
     try {
       orderItemsPayload = await bolApiRequest(credentials, `/orders/${encodeURIComponent(normalizedOrderId)}`);
-    } catch {
-      // Fallback below
+    } catch (err) {
+      console.warn('[BOL DELIVERY OPTIONS] /orders/{id} failed', { orderId: normalizedOrderId, message: err?.message });
     }
 
     if (!orderItemsPayload) {

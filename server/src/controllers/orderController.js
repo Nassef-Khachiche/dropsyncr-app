@@ -94,7 +94,7 @@ const getShippingMethodMapForOrderIds = async (orderIds = []) => {
 
 export const getOrders = async (req, res) => {
   try {
-    const { installationId, userScoped, status, search, page = 1, limit = 50, fulfillmentType } = req.query;
+    const { installationId, userScoped, status, search, page = 1, limit = 50, fulfillmentType, storeName } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const isAllStoresMode = !installationId || installationId === 'all';
     const forceUserScope = userScoped === 'true';
@@ -149,6 +149,7 @@ export const getOrders = async (req, res) => {
     }
 
     if (fulfillmentType) andConditions.push({ fulfillmentType: String(fulfillmentType) });
+    if (storeName && storeName !== 'all') andConditions.push({ storeName: String(storeName) });
 
     if (req.query.expiringTomorrow === 'true') {
       const filterNow = new Date();

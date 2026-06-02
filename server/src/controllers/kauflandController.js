@@ -277,6 +277,7 @@ export async function syncKauflandOrdersForInstallation({ installationId, integr
           quantity,
           price: itemPrice,
           unitPrice: itemPrice,
+          externalId: String(unit?.id_order_unit || '').trim() || null,
         },
       });
     }
@@ -327,3 +328,66 @@ export const syncKauflandOrders = async (req, res) => {
     });
   }
 };
+
+export async function sendKauflandTracking(installationId, orderNumber, trackingCode, carrierType, shippingMethod) {
+  try {
+    const { credentials } = await getKauflandIntegration(installationId);
+
+    const carrierCodeMap = {
+      dpd: 'DPD',
+      dhl: 'DHL',
+      postnl: 'PostNL',
+      'wegrow-dhl-nl': 'DHL',
+      'wegrow-dhl-for-you-envelop': 'DHL',
+      'wegrow-dhl-for-you-brievenbuspakje': 'DHL',
+      'wegrow-dhl-for-you': 'DHL',
+      'wegrow-postnl-nederland-brievenbuspakketje-0-2kg': 'PostNL',
+      'wegrow-postnl-belgie-standaard-0-23kg': 'PostNL',
+      wegrow: 'Other',
+    };
+
+    const normalizedShippingMethod = String(shippingMethod || '').toLowerCase();
+    const normalizedCarrierType = String(carrierType || '').toLowerCase();
+    const carrierCode = carrierCodeMap[normalizedShippingMethod]
+      || carrierCodeMap[normalizedCarrierType]
+      || 'Other';
+
+    const order = await prisma.order.findFirst({
+      where: { orderNumber, installationId: parseInt(installationId) },
+      include: { orderItems: true },
+    });
+
+    if (!order) {
+      console.warn('[KAUFLAND TRACKING] Order not found:', orderNumber);
+      return;
+    }
+
+    const orderUnits = order.orderItems
+      .map(item => item.externalId)
+      .filter(Boolean);
+
+    if (orderUnits.length === 0) {
+      console.warn('[KAUFLAND TRACKING] No order unit IDs found for order:', orderNumber);
+      return;
+    }
+
+    for (const orderUnitId of orderUnits) {
+      try {
+        await kauflandApiRequest(
+          credentials,
+          `/order-units/${orderUnitId}/send`,
+          'PATCH',
+          {
+            carrier_code: carrierCode,
+            tracking_numbers: trackingCode,
+          }
+        );
+        console.log('[KAUFLAND TRACKING] Sent tracking for order unit:', orderUnitId);
+      } catch (error) {
+        console.error('[KAUFLAND TRACKING] Failed for order unit:', orderUnitId, error.message);
+      }
+    }
+  } catch (error) {
+    console.error('[KAUFLAND TRACKING] Error:', error.message);
+  }
+}

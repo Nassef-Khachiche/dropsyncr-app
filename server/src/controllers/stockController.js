@@ -15,6 +15,70 @@ const getInstallationIds = async (req, parsedInstallationId) => {
   return [parsedInstallationId];
 };
 
+// Bereken voorraad per product per installatie (klant)
+const calculateStockPerProductPerInstallation = async (productIds, installationIds) => {
+  if (productIds.length === 0) return {};
+
+  const inboundMutations = await prisma.stockMutation.groupBy({
+    by: ['productId', 'installationId'],
+    where: { productId: { in: productIds }, installationId: { in: installationIds }, type: 'inbound' },
+    _sum: { quantity: true },
+  });
+
+  const pickedMutations = await prisma.stockMutation.groupBy({
+    by: ['productId', 'installationId'],
+    where: { productId: { in: productIds }, installationId: { in: installationIds }, type: 'picked' },
+    _sum: { quantity: true },
+  });
+
+  const adjustMutations = await prisma.stockMutation.groupBy({
+    by: ['productId', 'installationId'],
+    where: { productId: { in: productIds }, installationId: { in: installationIds }, type: 'adjust' },
+    _sum: { quantity: true },
+  });
+
+  const reservations = await prisma.stockReservation.groupBy({
+    by: ['productId', 'installationId'],
+    where: { productId: { in: productIds }, installationId: { in: installationIds }, pickedAt: null, cancelled: false },
+    _sum: { quantity: true },
+  });
+
+  // result[productId][installationId] = { totaal, gereserveerd, beschikbaar }
+  const result = {};
+
+  const getOrCreate = (productId, installationId) => {
+    if (!result[productId]) result[productId] = {};
+    if (!result[productId][installationId]) {
+      result[productId][installationId] = { totaal: 0, gereserveerd: 0, beschikbaar: 0 };
+    }
+    return result[productId][installationId];
+  };
+
+  for (const m of inboundMutations) {
+    getOrCreate(m.productId, m.installationId).totaal += m._sum.quantity || 0;
+  }
+  for (const m of pickedMutations) {
+    getOrCreate(m.productId, m.installationId).totaal -= m._sum.quantity || 0;
+  }
+  for (const m of adjustMutations) {
+    getOrCreate(m.productId, m.installationId).totaal += m._sum.quantity || 0;
+  }
+  for (const r of reservations) {
+    getOrCreate(r.productId, r.installationId).gereserveerd += r._sum.quantity || 0;
+  }
+
+  // Bereken beschikbaar
+  for (const productId of Object.keys(result)) {
+    for (const installationId of Object.keys(result[productId])) {
+      const entry = result[productId][installationId];
+      entry.beschikbaar = Math.max(0, entry.totaal - entry.gereserveerd);
+    }
+  }
+
+  return result;
+};
+
+// Blijft beschikbaar voor andere functies die het nog gebruiken (reserve, pick etc.)
 const calculateStockForProducts = async (productIds, installationIds) => {
   if (productIds.length === 0) return {};
 
@@ -76,8 +140,26 @@ export const getInventory = async (req, res) => {
     const installationIds = await getInstallationIds(req, parsedInstallationId);
     if (!installationIds) return res.status(403).json({ error: 'Access denied' });
 
+    // Voor global admins: haal batches op van ALLE installaties, niet alleen activeProfile
+    const allInstallations = req.user.isGlobalAdmin
+      ? await prisma.installation.findMany({ select: { id: true } }).then(r => r.map(i => i.id))
+      : installationIds;
+
+    // Haal alle batches op voor deze installaties
+    const allBatches = await prisma.stockBatch.findMany({
+      where: { installationId: { in: allInstallations } },
+      select: { productId: true, locationId: true, installationId: true },
+    });
+
+    if (allBatches.length === 0) {
+      return res.json({ items: [], stats: { total: 0, totalAvailable: 0, totalReserved: 0 } });
+    }
+
+    const productIdList = [...new Set(allBatches.map(b => b.productId))];
+
+    // Haal producten op — geen installationId filter hier want product kan aan andere installatie hangen
     const productWhere = {
-      installationId: { in: installationIds },
+      id: { in: productIdList },
       archived: false,
       ...(search && {
         OR: [
@@ -88,23 +170,9 @@ export const getInventory = async (req, res) => {
       }),
     };
 
-    const productIds = await prisma.stockBatch.findMany({
-      where: { installationId: { in: installationIds } },
-      select: { productId: true },
-      distinct: ['productId'],
-    });
-    const productIdList = productIds.map(p => p.productId);
-
-    if (productIdList.length > 0) {
-      productWhere.id = { in: productIdList };
-    } else {
-      return res.json({ items: [], stats: { total: 0, totalAvailable: 0, totalReserved: 0 } });
-    }
-
     const products = await prisma.product.findMany({
       where: productWhere,
       include: {
-        locations: true,
         installation: { select: { id: true, name: true } },
       },
       orderBy: sort === 'naam-asc' ? { name: 'asc' }
@@ -112,43 +180,84 @@ export const getInventory = async (req, res) => {
         : { createdAt: 'desc' },
     });
 
-    const stockMap = await calculateStockForProducts(products.map(p => p.id), installationIds);
+    const productMap = Object.fromEntries(products.map(p => [p.id, p]));
 
-    const batches = await prisma.stockBatch.findMany({
-      where: { productId: { in: products.map(p => p.id) }, installationId: { in: installationIds } },
-      select: { productId: true, locationId: true },
-      distinct: ['productId', 'locationId'],
-    });
-
-    const locationIds = [...new Set(batches.map(b => b.locationId))];
+    // Haal locatie namen op
+    const locationIds = [...new Set(allBatches.map(b => b.locationId))];
     const locations = await prisma.warehouseLocation.findMany({
       where: { id: { in: locationIds } },
       select: { id: true, code: true },
     });
     const locationMap = Object.fromEntries(locations.map(l => [l.id, l.code]));
 
-    let items = products.map(product => {
-      const stock = stockMap[product.id] || { totaal: 0, gereserveerd: 0, beschikbaar: 0 };
-      const productBatches = batches.filter(b => b.productId === product.id);
-      const locatieCodes = [...new Set(productBatches.map(b => locationMap[b.locationId]).filter(Boolean))];
+    // Haal installatie namen op voor batch installaties
+    const batchInstallationIds = [...new Set(allBatches.map(b => b.installationId))];
+    const batchInstallations = await prisma.installation.findMany({
+      where: { id: { in: batchInstallationIds } },
+      select: { id: true, name: true },
+    });
+    const installationMap = Object.fromEntries(batchInstallations.map(i => [i.id, i.name]));
+
+    // Bereken voorraad per product per installatie
+    const stockPerProductPerInstallation = await calculateStockPerProductPerInstallation(
+      productIdList,
+      allInstallations,
+    );
+
+    // Groepeer batches per product per installatie
+    const groupMap = {}; // key: `${productId}_${installationId}`
+    for (const batch of allBatches) {
+      const product = productMap[batch.productId];
+      if (!product) continue;
+
+      // Filter op search (al gedaan in productWhere maar dubbele check voor veiligheid)
+      const key = `${batch.productId}_${batch.installationId}`;
+      if (!groupMap[key]) {
+        groupMap[key] = {
+          productId: batch.productId,
+          batchInstallationId: batch.installationId,
+          locationIds: new Set(),
+        };
+      }
+      groupMap[key].locationIds.add(batch.locationId);
+    }
+
+    let items = Object.values(groupMap).map(group => {
+      const product = productMap[group.productId];
+      if (!product) return null;
+
+      const stockForThisInstallation = stockPerProductPerInstallation[group.productId]?.[group.batchInstallationId] || {
+        totaal: 0,
+        gereserveerd: 0,
+        beschikbaar: 0,
+      };
+
+      const locatieCodes = [...group.locationIds]
+        .map(lid => locationMap[lid])
+        .filter(Boolean);
+
+      const klantNaam = installationMap[group.batchInstallationId] || `Installatie ${group.batchInstallationId}`;
 
       return {
         id: product.id,
-        installationId: product.installationId,
+        installationId: group.batchInstallationId, // klant installatie van de batch
         foto: product.image,
         artikel_naam: product.name,
         ean: product.ean || '',
         brand: product.brand,
         sizeCategory: product.sizeCategory,
         locaties: locatieCodes,
-        klant: product.installation?.name || '',
+        klant: klantNaam,
         aangemeld: 0,
         in_behandeling: 0,
-        gereserveerd: stock.gereserveerd,
-        beschikbaar: stock.beschikbaar,
-        totaal: stock.totaal,
+        gereserveerd: stockForThisInstallation.gereserveerd,
+        beschikbaar: stockForThisInstallation.beschikbaar,
+        totaal: stockForThisInstallation.totaal,
       };
-    });
+    }).filter(Boolean);
+
+    // Filter items zonder voorraad eruit (totaal === 0)
+    items = items.filter(i => i.totaal > 0 || i.gereserveerd > 0);
 
     if (status === 'gereserveerd') items = items.filter(i => i.gereserveerd > 0);
     if (status === 'laag-voorraad') items = items.filter(i => i.beschikbaar <= 5 && i.beschikbaar >= 0);
@@ -172,7 +281,8 @@ export const getInventory = async (req, res) => {
 
 export const inboundStock = async (req, res) => {
   try {
-    const { installationId, productId, locationId, quantity, reference, notes, receivedAt } = req.body;
+    const { installationId, warehouseInstallationId, productId, locationId, quantity, reference, notes, receivedAt } = req.body;
+    const batchInstallationId = warehouseInstallationId || installationId;
 
     const parsedInstallationId = parseInt(installationId, 10);
     const parsedProductId = parseInt(productId, 10);
@@ -187,9 +297,11 @@ export const inboundStock = async (req, res) => {
     const installationIds = await getInstallationIds(req, parsedInstallationId);
     if (!installationIds) return res.status(403).json({ error: 'Access denied' });
 
+    const parsedWarehouseInstallationId = parseInt(batchInstallationId, 10);
+
     const batch = await prisma.stockBatch.create({
       data: {
-        installationId: parsedInstallationId,
+        installationId: parsedWarehouseInstallationId,
         productId: parsedProductId,
         locationId: parsedLocationId,
         quantity: parsedQuantity,
@@ -202,7 +314,7 @@ export const inboundStock = async (req, res) => {
 
     await prisma.stockMutation.create({
       data: {
-        installationId: parsedInstallationId,
+        installationId: parsedWarehouseInstallationId,
         productId: parsedProductId,
         batchId: batch.id,
         type: 'inbound',
@@ -352,7 +464,6 @@ export const adjustStock = async (req, res) => {
 };
 
 // ─── GET /api/stock/mutations ─────────────────────────────────────────────────
-// Alle mutaties gefilterd op datum periode (globale historie)
 
 export const getAllMutations = async (req, res) => {
   try {
@@ -388,7 +499,6 @@ export const getAllMutations = async (req, res) => {
       take: 500,
     });
 
-    // Haal producten apart op — StockMutation heeft geen directe relatie met Product
     const productIds = [...new Set(mutations.map(m => m.productId).filter(Boolean))];
     const products = await prisma.product.findMany({
       where: { id: { in: productIds } },
@@ -598,7 +708,6 @@ export const addEanAlias = async (req, res) => {
 
     const normalizedEan = String(ean).trim();
 
-    // Check of EAN al bestaat als alias
     const existingAlias = await prisma.productEanAlias.findFirst({
       where: { ean: normalizedEan, installationId: parsedInstallationId },
     });
