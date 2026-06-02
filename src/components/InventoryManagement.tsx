@@ -202,11 +202,12 @@ export function InventoryManagement({ activeProfile, isGlobalAdmin = false }: In
   }, [isGlobalAdmin, showInboundDialog]);
 
   useEffect(() => {
-    if (!inboundForm.installationId) { setLocations([]); return; }
-    api.getLocations(inboundForm.installationId)
+    const warehouseInstallationId = activeProfile || inboundForm.installationId;
+    if (!warehouseInstallationId) { setLocations([]); return; }
+    api.getLocations(warehouseInstallationId)
       .then(data => setLocations((data.locations || []).filter((l: any) => l.type === 'case' && l.active)))
       .catch(() => setLocations([]));
-  }, [inboundForm.installationId]);
+  }, [inboundForm.installationId, activeProfile]);
 
   useEffect(() => {
     if (!productSearch || productSearch.length < 2) { setProductSearchResults([]); return; }
@@ -273,6 +274,7 @@ export function InventoryManagement({ activeProfile, isGlobalAdmin = false }: In
       setInboundSaving(true);
       await api.inboundStock({
         installationId: parseInt(inboundForm.installationId),
+        warehouseInstallationId: parseInt(inboundForm.installationId),
         productId: selectedProduct.id,
         locationId: parseInt(inboundForm.locationId),
         quantity: parseInt(inboundForm.quantity),
@@ -988,11 +990,11 @@ export function InventoryManagement({ activeProfile, isGlobalAdmin = false }: In
             </div>
             <div className="space-y-2">
               <Label>Locatie <span className="text-red-500">*</span></Label>
-              <Select value={inboundForm.locationId} onValueChange={(v) => setInboundForm(prev => ({ ...prev, locationId: v }))} disabled={!inboundForm.installationId}>
+              <Select value={inboundForm.locationId} onValueChange={(v) => setInboundForm(prev => ({ ...prev, locationId: v }))}>
                 <SelectTrigger><SelectValue placeholder={inboundForm.installationId ? 'Selecteer locatie...' : 'Selecteer eerst een klant'} /></SelectTrigger>
                 <SelectContent>{locations.map((loc: any) => <SelectItem key={loc.id} value={String(loc.id)}><span className="font-mono">{loc.code}</span></SelectItem>)}</SelectContent>
               </Select>
-              {inboundForm.installationId && locations.length === 0 && <p className="text-xs text-amber-600">Geen actieve locaties gevonden voor deze klant.</p>}
+              {inboundForm.installationId && locations.length === 0 && <p className="text-xs text-amber-600">Geen actieve locaties gevonden in het magazijn.</p>}
             </div>
             <div className="space-y-2">
               <Label>Aantal <span className="text-red-500">*</span></Label>

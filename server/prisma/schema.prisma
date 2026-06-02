@@ -133,6 +133,7 @@ model OrderItem {
   price        Float    @db.Float
   weight       String?
   supplier     String?
+  externalId   String?
   createdAt    DateTime @default(now())
   unitPrice    Float    @default(0) @db.Float
   order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)

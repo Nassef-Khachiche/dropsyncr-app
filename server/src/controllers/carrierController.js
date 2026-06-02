@@ -1,5 +1,6 @@
 import prisma from '../config/database.js';
 import fetch from 'node-fetch';
+import { sendKauflandTracking } from './kauflandController.js';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -225,7 +226,7 @@ export const getCarriers = async (req, res) => {
     }
 
     const carriers = await prisma.carrier.findMany({
-      where: { installationId: parseInt(installationId) },
+      where: req.user.isGlobalAdmin ? {} : { installationId: parseInt(installationId) },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -611,6 +612,24 @@ export const generateCarrierLabels = async (req, res) => {
       });
 
       await prisma.$transaction(operations);
+
+      if (!isReturnBatch) {
+        for (const { orderId, generatedLabel } of resolvedPackages) {
+          const orderRecord = await prisma.order.findUnique({
+            where: { id: orderId },
+            select: { platform: true, orderNumber: true, installationId: true },
+          });
+          if (orderRecord?.platform === 'kaufland' && generatedLabel?.trackingCode) {
+            await sendKauflandTracking(
+              String(orderRecord.installationId),
+              orderRecord.orderNumber,
+              generatedLabel.trackingCode,
+              carrier.carrierType,
+              selectedShippingMethod,
+            ).catch(err => console.error('[KAUFLAND TRACKING] Async error:', err.message));
+          }
+        }
+      }
     };
 
     const parseAddress = (address = '') => {

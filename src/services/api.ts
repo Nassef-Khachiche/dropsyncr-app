@@ -135,6 +135,7 @@ class ApiService {
     limit?: number;
     fulfillmentType?: string;
     expiringTomorrow?: boolean;
+    storeName?: string;
   }) {
     const queryParams = new URLSearchParams();
     if (params?.installationId) queryParams.append('installationId', params.installationId);
@@ -145,6 +146,7 @@ class ApiService {
     if (params?.limit) queryParams.append('limit', params.limit.toString());
     if (params?.fulfillmentType) queryParams.append('fulfillmentType', params.fulfillmentType);
     if (params?.expiringTomorrow) queryParams.append('expiringTomorrow', 'true');
+    if (params?.storeName && params.storeName !== 'all') queryParams.append('storeName', params.storeName);
 
     return this.request<{ orders: any[]; pagination: any; stats: any }>(
       `/orders?${queryParams.toString()}`

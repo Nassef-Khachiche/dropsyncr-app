@@ -587,7 +587,7 @@ export function Retouren({ activeProfile }: RetourenProps) {
                 <Select value={newReturnForm.country} onValueChange={(v) => setNewReturnForm({ ...newReturnForm, country: v })}>
                   <SelectTrigger className="border-slate-200"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {['NL','BE','DE','FR','GB','ES','IT','PL','CZ','AT','CH','SE','DK','NO','FI'].map((c) => (
+                    {['NL','BE','DE','FR','GB','ES','IT','PL','CZ','SK','AT','CH','SE','DK','NO','FI'].map((c) => (
                       <SelectItem key={c} value={c}>{c}</SelectItem>
                     ))}
                   </SelectContent>

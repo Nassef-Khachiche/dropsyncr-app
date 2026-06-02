@@ -29,6 +29,7 @@ import {
   Download, 
   Eye,
   MoreHorizontal,
+  Pencil,
   RefreshCw,
   ChevronLeft,
   ChevronDown,
@@ -49,6 +50,8 @@ import {
   Star,
   ClipboardList,
   CheckSquare,
+  SlidersHorizontal,
+  X,
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
@@ -382,6 +385,13 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   const [filterFulfillmentType, setFilterFulfillmentType] = useState<string | null>(null);
   const [filterExpiringTomorrow, setFilterExpiringTomorrow] = useState(false);
+  const [showFilterPanel, setShowFilterPanel] = useState(false);
+  const [filterKanalen, setFilterKanalen] = useState<string[]>([]);
+  const [filterLanden, setFilterLanden] = useState<string[]>([]);
+  const [filterVerzendVia, setFilterVerzendVia] = useState<string[]>([]);
+  const [sortField, setSortField] = useState<string>('orderDate');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [pendingFilters, setPendingFilters] = useState<any>(null);
   const [statsOpenOrders, setStatsOpenOrders] = useState(0);
   const [statsNeedsPicking, setStatsNeedsPicking] = useState(0);
   const [statsExpiringTomorrow, setStatsExpiringTomorrow] = useState(0);
@@ -431,6 +441,8 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
 
   const [shippingMethodDrafts, setShippingMethodDrafts] = useState<Record<number, string>>({});
   const [savingShippingMethodOrderId, setSavingShippingMethodOrderId] = useState<number | null>(null);
+  const [editingOrderId, setEditingOrderId] = useState<number | null>(null);
+  const [editForm, setEditForm] = useState({ customerName: '', address: '' });
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalOrders, setTotalOrders] = useState(0);
@@ -439,11 +451,11 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
     if (activeProfile) {
       loadOrders();
     }
-  }, [activeProfile, filterStatus, searchQuery, currentPage, filterFulfillmentType, filterExpiringTomorrow]);
+  }, [activeProfile, filterStatus, searchQuery, currentPage, filterFulfillmentType, filterExpiringTomorrow, filterStore]);
 
   useEffect(() => {
     setCurrentPage(1);
-}, [activeProfile, filterStatus, searchQuery, filterFulfillmentType, filterExpiringTomorrow]);
+}, [activeProfile, filterStatus, searchQuery, filterFulfillmentType, filterExpiringTomorrow, filterStore]);
 
   useEffect(() => {
     setFilterStore('all');
@@ -547,6 +559,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
           limit: ORDERS_PER_PAGE,
           fulfillmentType: filterFulfillmentType || undefined,
           expiringTomorrow: filterExpiringTomorrow || undefined,
+          storeName: filterStore !== 'all' ? filterStore : undefined,
         }),
         isAllStoresSelected ? api.getIntegrations(undefined, true) : Promise.resolve(null),
       ]);
@@ -1135,6 +1148,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
       const label = (result.labels || [])[0];
       if (label?.labelUrl) {
         setLabelPreviewUrl(label.labelUrl);
+        window.open(label.labelUrl, '_blank', 'noreferrer');
       }
       setGeneratedLabelMeta({
         shipmentId: label?.shipmentId || null,
@@ -1210,13 +1224,26 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
         : (filterStore === 'all' || order.storeName === filterStore);
 
       if (filterFulfillmentType && order.fulfillmentType !== filterFulfillmentType) return false;
+      if (filterKanalen.length > 0 && !filterKanalen.includes(String(order.platform || ''))) return false;
+      if (filterLanden.length > 0 && !filterLanden.includes(String(order.country || ''))) return false;
+      if (filterVerzendVia.length > 0) {
+        const isVvb = String(order.shippingMethod || '').toLowerCase().includes('bol');
+        const verzendViaValue = isVvb ? 'bol' : 'eigen';
+        if (!filterVerzendVia.includes(verzendViaValue)) return false;
+      }
       return matchesIntegrationScope && matchesStore;
     })
     .sort((a, b) => {
-      const aDate = a.orderDate ? new Date(a.orderDate).getTime() : 0;
-      const bDate = b.orderDate ? new Date(b.orderDate).getTime() : 0;
-      return bDate - aDate;
+      let aVal: any, bVal: any;
+      if (sortField === 'orderDate') { aVal = a.orderDate ? new Date(a.orderDate).getTime() : 0; bVal = b.orderDate ? new Date(b.orderDate).getTime() : 0; }
+      else if (sortField === 'deliveryDate') { aVal = a.deliveryDate ? new Date(a.deliveryDate).getTime() : 0; bVal = b.deliveryDate ? new Date(b.deliveryDate).getTime() : 0; }
+      else if (sortField === 'storeName') { aVal = String(a.storeName || ''); bVal = String(b.storeName || ''); }
+      else { aVal = a.orderDate ? new Date(a.orderDate).getTime() : 0; bVal = b.orderDate ? new Date(b.orderDate).getTime() : 0; }
+      if (typeof aVal === 'string') return sortDir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
     });
+  const uniqueKanalen = Array.from(new Set(orders.map(o => String(o.platform || '')).filter(Boolean)));
+  const uniqueLanden = Array.from(new Set(orders.map(o => String(o.country || '')).filter(Boolean))); 
 
   const storeFilterOptions = isAllStoresSelected
     ? integrationStoreOptions
@@ -1625,40 +1652,164 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
         </CardHeader>
         <CardContent>
           {/* Filters */}
-          <div className="flex gap-4 mb-6">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <Input
-                placeholder="Zoek op ordernummer, klant of tracking..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 border-slate-200 shadow-sm"
-              />
+          <div className="space-y-3 mb-6">
+            <div className="flex gap-3 items-center">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <Input
+                  placeholder="Zoek op ordernummer, klant of tracking..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10 border-slate-200 shadow-sm"
+                />
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className={`gap-2 border-slate-200 shadow-sm h-10 px-4 ${showFilterPanel ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : ''}`}
+                onClick={() => setShowFilterPanel(v => !v)}
+              >
+                <SlidersHorizontal className="w-4 h-4" />
+                Filters
+                {(filterKanalen.length + filterLanden.length + filterVerzendVia.length) > 0 && (
+                  <span className="ml-1 bg-indigo-600 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
+                    {filterKanalen.length + filterLanden.length + filterVerzendVia.length}
+                  </span>
+                )}
+              </Button>
+              <Select value={filterStore} onValueChange={setFilterStore}>
+                <SelectTrigger className="w-48 border-slate-200 shadow-sm"><SelectValue placeholder="Store" /></SelectTrigger>
+                <SelectContent className="border-slate-200 shadow-lg">
+                  <SelectItem value="all">Alle stores</SelectItem>
+                  {storeFilterOptions.map((storeOption) => (
+                    <SelectItem key={storeOption.id} value={storeOption.id}>{storeOption.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={filterStatus} onValueChange={setFilterStatus}>
+                <SelectTrigger className="w-48 border-slate-200 shadow-sm"><SelectValue placeholder="Status" /></SelectTrigger>
+                <SelectContent className="border-slate-200 shadow-lg">
+                  <SelectItem value="all">Alle statussen</SelectItem>
+                  <SelectItem value="openstaand">Openstaand</SelectItem>
+                  <SelectItem value="gepickt">Gepickt</SelectItem>
+                  <SelectItem value="verzonden">Verzonden</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <Select value={filterStore} onValueChange={setFilterStore}>
-              <SelectTrigger className="w-48 border-slate-200 shadow-sm">
-                <SelectValue placeholder="Store" />
-              </SelectTrigger>
-              <SelectContent className="border-slate-200 shadow-lg">
-                <SelectItem value="all">Alle stores</SelectItem>
-                {storeFilterOptions.map((storeOption) => (
-                  <SelectItem key={storeOption.id} value={storeOption.id}>
-                    {storeOption.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="w-48 border-slate-200 shadow-sm">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent className="border-slate-200 shadow-lg">
-                <SelectItem value="all">Alle statussen</SelectItem>
-                <SelectItem value="openstaand">Openstaand</SelectItem>
-                <SelectItem value="gepickt">Gepickt</SelectItem>
-                <SelectItem value="verzonden">Verzonden</SelectItem>
-              </SelectContent>
-            </Select>
+
+            {/* Sortering — altijd zichtbaar */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-sm text-slate-600 font-medium">Sorteren:</span>
+              {[
+                { value: 'storeName', label: 'Store' },
+                { value: 'deliveryDate', label: 'Uiterste leverdatum' },
+                { value: 'orderDate', label: 'Besteldatum' },
+              ].map(opt => (
+                <button
+                  key={opt.value}
+                  onClick={() => { if (sortField === opt.value) { setSortDir(d => d === 'asc' ? 'desc' : 'asc'); } else { setSortField(opt.value); setSortDir('asc'); } }}
+                  className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-sm border transition-all ${sortField === opt.value ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white border-indigo-500 shadow-sm' : 'bg-white border-slate-200 text-slate-700 hover:border-indigo-300 hover:text-indigo-600'}`}
+                >
+                  {opt.label}
+                  {sortField === opt.value && <span className="text-xs">{sortDir === 'asc' ? '↑' : '↓'}</span>}
+                </button>
+              ))}
+            </div>
+
+            {/* Uitklap filter paneel */}
+            {showFilterPanel && (
+              <div className="border border-slate-200 rounded-xl p-4 bg-gradient-to-br from-slate-50 to-indigo-50/30 space-y-4">
+
+                {/* Filter kolommen */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                  {/* Store */}
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Store</p>
+                    <div className="space-y-1.5">
+                      {storeFilterOptions.map(opt => (
+                        <label key={opt.id} className="flex items-center gap-2 cursor-pointer">
+                          <input type="checkbox" checked={filterStore === opt.id} onChange={() => setFilterStore(filterStore === opt.id ? 'all' : opt.id)} className="accent-indigo-600" />
+                          <span className="text-sm text-slate-700">{opt.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Ordertype */}
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Ordertype</p>
+                    <div className="space-y-1.5">
+                      {[{ value: 'fulfillment', label: 'Voorraadorders' }, { value: 'dropship', label: 'Dropshiporders' }].map(opt => (
+                        <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                          <input type="checkbox" checked={filterFulfillmentType === opt.value} onChange={() => setFilterFulfillmentType(filterFulfillmentType === opt.value ? null : opt.value)} className="accent-indigo-600" />
+                          <span className="text-sm text-slate-700">{opt.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Kanaal */}
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Kanaal</p>
+                    <div className="space-y-1.5">
+                      {uniqueKanalen.map(kanaal => (
+                        <label key={kanaal} className="flex items-center gap-2 cursor-pointer">
+                          <input type="checkbox" checked={filterKanalen.includes(kanaal)} onChange={() => setFilterKanalen(prev => prev.includes(kanaal) ? prev.filter(k => k !== kanaal) : [...prev, kanaal])} className="accent-indigo-600" />
+                          <span className="text-sm text-slate-700 capitalize">{kanaal}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Verzenden via */}
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Verzenden via</p>
+                    <div className="space-y-1.5">
+                      {[{ value: 'bol', label: 'Bol' }, { value: 'eigen', label: 'Eigen verzendwijze' }].map(opt => (
+                        <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                          <input type="checkbox" checked={filterVerzendVia.includes(opt.value)} onChange={() => setFilterVerzendVia(prev => prev.includes(opt.value) ? prev.filter(v => v !== opt.value) : [...prev, opt.value])} className="accent-indigo-600" />
+                          <span className="text-sm text-slate-700">{opt.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Land */}
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Land</p>
+                    <div className="space-y-1.5">
+                      {uniqueLanden.map(land => (
+                        <label key={land} className="flex items-center gap-2 cursor-pointer">
+                          <input type="checkbox" checked={filterLanden.includes(land)} onChange={() => setFilterLanden(prev => prev.includes(land) ? prev.filter(l => l !== land) : [...prev, land])} className="accent-indigo-600" />
+                          <span className="text-sm text-slate-700">{land}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Status */}
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Status</p>
+                    <div className="space-y-1.5">
+                      {[{ value: 'openstaand', label: 'Openstaand' }, { value: 'gepickt', label: 'Gepickt' }, { value: 'verzonden', label: 'Verzonden' }].map(opt => (
+                        <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                          <input type="checkbox" checked={filterStatus === opt.value} onChange={() => setFilterStatus(filterStatus === opt.value ? 'all' : opt.value)} className="accent-indigo-600" />
+                          <span className="text-sm text-slate-700">{opt.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Reset */}
+                <div className="flex justify-end border-t border-slate-200 pt-3">
+                  <Button variant="outline" size="sm" className="gap-2 border-slate-200" onClick={() => { setFilterKanalen([]); setFilterLanden([]); setFilterVerzendVia([]); setFilterFulfillmentType(null); setFilterStatus('all'); setFilterStore('all'); setSortField('orderDate'); setSortDir('desc'); }}>
+                    <X className="w-3.5 h-3.5" />
+                    Reset filters
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Orders Table */}
@@ -1920,6 +2071,18 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                                   <Package className="w-4 h-4" />
                                   Label genereren
                                 </DropdownMenuItem>
+                                {order?.label?.labelUrl && (
+                                  <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      className="cursor-pointer"
+                                      onSelect={() => window.open(order.label.labelUrl, '_blank', 'noreferrer')}
+                                    >
+                                      <Download className="w-4 h-4" />
+                                      Label downloaden
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
                                 {returnCarrierContracts.length > 0 && (
                                   <>
                                     <DropdownMenuSeparator />
@@ -1952,6 +2115,35 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                                     </Badge>
                                     <span className="text-slate-600">{order.orderNumber}</span>
                                   </div>
+                                  <div className="flex items-center gap-2">
+                                    {editingOrderId === order.id ? (
+                                      <>
+                                        <Button size="sm" variant="outline" className="h-7 text-xs border-slate-200" onClick={() => setEditingOrderId(null)}>
+                                          Annuleren
+                                        </Button>
+                                        <Button size="sm" className="h-7 text-xs bg-gradient-to-r from-indigo-500 to-purple-500" onClick={async () => {
+                                          try {
+                                            await api.updateOrder(order.id, { customerName: editForm.customerName, address: editForm.address });
+                                            setOrders(prev => prev.map(o => o.id === order.id ? { ...o, customerName: editForm.customerName, address: editForm.address } : o));
+                                            setEditingOrderId(null);
+                                            toast.success('Order bijgewerkt');
+                                          } catch {
+                                            toast.error('Kon order niet bijwerken');
+                                          }
+                                        }}>
+                                          Opslaan
+                                        </Button>
+                                      </>
+                                    ) : (
+                                      <Button size="sm" variant="outline" className="h-7 text-xs border-slate-200" onClick={() => {
+                                        setEditForm({ customerName: order.customerName, address: order.address });
+                                        setEditingOrderId(order.id);
+                                      }}>
+                                        <Pencil className="w-3 h-3 mr-1" />
+                                        Bewerken
+                                      </Button>
+                                    )}
+                                  </div>
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-6">
@@ -1960,7 +2152,15 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                                       <MapPin className="w-4 h-4" />
                                       <span>Ontvanger</span>
                                     </div>
-                                    <p className="text-sm text-slate-900">{order.customerName}</p>
+                                    {editingOrderId === order.id ? (
+                                      <Input
+                                        value={editForm.customerName}
+                                        onChange={(e) => setEditForm(prev => ({ ...prev, customerName: e.target.value }))}
+                                        className="border-slate-200 h-8 text-sm"
+                                      />
+                                    ) : (
+                                      <p className="text-sm text-slate-900">{order.customerName}</p>
+                                    )}
                                   </div>
 
                                   <div className="space-y-1">
@@ -1968,7 +2168,15 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                                       <MapPin className="w-4 h-4" />
                                       <span>Adres</span>
                                     </div>
-                                    <p className="text-sm text-slate-900">{order.address}</p>
+                                    {editingOrderId === order.id ? (
+                                      <Input
+                                        value={editForm.address}
+                                        onChange={(e) => setEditForm(prev => ({ ...prev, address: e.target.value }))}
+                                        className="border-slate-200 h-8 text-sm"
+                                      />
+                                    ) : (
+                                      <p className="text-sm text-slate-900">{order.address}</p>
+                                    )}
                                   </div>
 
                                   <div className="space-y-1">
@@ -2268,35 +2476,62 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
               ) : labelDialogContracts.length === 0 ? (
                 <div className="text-sm text-slate-500">Geen actieve contracten</div>
               ) : (
-                <RadioGroup
-                  value={selectedContractId}
-                  onValueChange={(value: string) => {
-                    setSelectedContractId(value);
-                    const contract = labelDialogContracts.find((entry) => String(entry.id) === value);
-                    if (contract?.carrierType !== 'wegrow') {
-                      setSelectedWeGrowCarrier('');
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {labelDialogContracts.flatMap((contract) => {
+                    // WeGrow uitklappen als losse opties
+                    if (contract.carrierType === 'wegrow') {
+                      return wegrowCarrierOptions.map((option) => {
+                        const syntheticId = `wegrow-${contract.id}-${option.id}`;
+                        const isSelected = selectedContractId === String(contract.id) && selectedWeGrowCarrier === option.id;
+                        return (
+                          <label
+                            key={syntheticId}
+                            htmlFor={`contract-${syntheticId}`}
+                            className={`flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
+                              isSelected
+                                ? 'border-indigo-300 bg-indigo-50 ring-1 ring-indigo-200'
+                                : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/70'
+                            }`}
+                            onClick={() => {
+                              setSelectedContractId(String(contract.id));
+                              setSelectedWeGrowCarrier(option.id);
+                            }}
+                          >
+                            <input
+                              type="radio"
+                              checked={isSelected}
+                              onChange={() => {}}
+                              className="mt-0.5 accent-indigo-600"
+                            />
+                            <div className="w-8 h-8 rounded-md bg-white border border-slate-200 p-1 flex items-center justify-center">
+                              <img src={option.logo} alt={option.name} className="w-full h-full object-contain" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-sm text-slate-900 truncate">{option.name}</div>
+                            </div>
+                          </label>
+                        );
+                      });
                     }
-                  }}
-                  className="grid grid-cols-1 md:grid-cols-2 gap-3"
-                >
-                  {labelDialogContracts.map((contract) => {
+
+                    // Normale contracten
                     const logo = carrierLogoMap[contract.carrierType] || null;
                     const isSelected = selectedContractId === String(contract.id);
-
-                    return (
+                    return [(
                       <label
                         key={contract.id}
-                        htmlFor={`contract-${contract.id}`}
+                        onClick={() => { setSelectedContractId(String(contract.id)); setSelectedWeGrowCarrier(''); }}
                         className={`flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
                           isSelected
                             ? 'border-indigo-300 bg-indigo-50 ring-1 ring-indigo-200'
                             : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/70'
                         }`}
                       >
-                        <RadioGroupItem
-                          id={`contract-${contract.id}`}
-                          value={String(contract.id)}
-                          className="mt-0.5"
+                        <input
+                          type="radio"
+                          checked={isSelected}
+                          onChange={() => {}}
+                          className="mt-0.5 accent-indigo-600"
                         />
                         {logo && (
                           <div className="w-8 h-8 rounded-md bg-white border border-slate-200 p-1 flex items-center justify-center">
@@ -2310,34 +2545,11 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                           </div>
                         </div>
                       </label>
-                    );
+                    )];
                   })}
-                </RadioGroup>
+                </div>
               )}
             </div>
-
-            {isWeGrowContractSelected && (
-              <div className="space-y-2">
-                <label className="text-sm text-slate-700">WeGrow vervoerder</label>
-                <Select value={selectedWeGrowCarrier} onValueChange={setSelectedWeGrowCarrier}>
-                  <SelectTrigger className="border-slate-200 shadow-sm">
-                    <SelectValue placeholder="Kies een WeGrow verzendoptie" />
-                  </SelectTrigger>
-                  <SelectContent className="border-slate-200 shadow-lg">
-                    {wegrowCarrierOptions.map((option) => (
-                      <SelectItem key={option.id} value={option.id}>
-                        <div className="flex items-center gap-2">
-                          <div className="w-6 h-6 rounded bg-white border border-slate-200 p-1 flex items-center justify-center">
-                            <img src={option.logo} alt={option.name} className="w-full h-full object-contain" />
-                          </div>
-                          <span>{option.name}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
 
             {isVvbContractSelected && (
               <div className="space-y-3 rounded-xl border border-sky-200 bg-gradient-to-br from-sky-50 to-indigo-50/60 p-4">

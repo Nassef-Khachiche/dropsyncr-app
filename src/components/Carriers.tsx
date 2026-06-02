@@ -142,9 +142,16 @@ const availableCarriers: CarrierOption[] = [
       { name: 'dhlForYouServiceCode', label: 'DHL For You Service Code', type: 'text', placeholder: 'Specifieke WeGrow service code voor DHL For You', required: false },
       { name: 'postnlNederlandBrievenbuspakketje02kgServiceCode', label: 'PostNL Brievenbuspakketje 0-2kg Service Code', type: 'text', placeholder: 'Specifieke WeGrow service code voor PostNL Brievenbuspakketje 0-2kg', required: false },
       { name: 'postnlBelgieStandaard023kgServiceCode', label: 'PostNL België Standaard 0-23kg Service Code', type: 'text', placeholder: 'Specifieke WeGrow service code voor PostNL België Standaard 0-23kg', required: false },
-      { name: 'returnServiceCode', label: 'Return Service Code', type: 'text',  placeholder: 'Bijv. wegrow_direct_return', required: false },
+      { name: 'returnServiceCode', label: 'Return Service Code', type: 'text', placeholder: 'Bijv. wegrow_direct_return', required: false },
       { name: 'baseUrl', label: 'Base URL', type: 'text', placeholder: 'Bijv. https://api-sandbox.wegrow.eu', required: false },
       { name: 'apiVersion', label: 'API Version', type: 'text', placeholder: 'Bijv. v1', required: false },
+      { name: 'senderName', label: 'Afzender naam', type: 'text', placeholder: 'Bijv. Dropsyncr Warehouse', required: false },
+      { name: 'senderStreet', label: 'Afzender straat', type: 'text', placeholder: 'Bijv. Stuartweg 8a', required: false },
+      { name: 'senderZipCode', label: 'Afzender postcode', type: 'text', placeholder: 'Bijv. 4131NH', required: false },
+      { name: 'senderCity', label: 'Afzender stad', type: 'text', placeholder: 'Bijv. Vianen', required: false },
+      { name: 'senderCountry', label: 'Afzender land', type: 'text', placeholder: 'Bijv. NL', required: false },
+      { name: 'senderEmail', label: 'Afzender e-mail', type: 'text', placeholder: 'Bijv. info@bedrijf.nl', required: false },
+      { name: 'senderPhone', label: 'Afzender telefoon', type: 'text', placeholder: 'Bijv. +31612345678', required: false },
     ],
     checkboxes: [
       {
@@ -601,7 +608,7 @@ export function Carriers({ activeProfile }: CarriersProps) {
 
       {/* Add / Edit Contract Dialog */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>{editingContract ? 'Contract Instellingen' : 'Contract Toevoegen'}</DialogTitle>
             <DialogDescription>
@@ -611,7 +618,7 @@ export function Carriers({ activeProfile }: CarriersProps) {
             </DialogDescription>
           </DialogHeader>
           
-          <div className="space-y-4 py-2">
+          <div className="space-y-4 py-2 overflow-y-auto flex-1 pr-1">
             {/* Carrier Selection */}
             <div className="space-y-2">
               <Label htmlFor="carrier">Vervoerder</Label>
