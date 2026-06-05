@@ -121,6 +121,9 @@ export function InventoryManagement({ activeProfile, isGlobalAdmin = false }: In
   const [installations, setInstallations] = useState<any[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
   const [inboundForm, setInboundForm] = useState({ installationId: '', locationId: '', quantity: '', notes: '', receivedAt: '' });
+  // Zoekbaar locatieveld
+  const [locationSearch, setLocationSearch] = useState('');
+  const [showLocationDropdown, setShowLocationDropdown] = useState(false);
 
   // Print EAN dialog
   const [showPrintDialog, setShowPrintDialog] = useState(false);
@@ -163,6 +166,12 @@ export function InventoryManagement({ activeProfile, isGlobalAdmin = false }: In
   const allSelected = items.length > 0 && items.every(item => item.selected);
   const someSelected = items.some(item => item.selected) && !allSelected;
   const uniqueClients = Array.from(new Set(items.map(i => i.klant).filter(Boolean)));
+
+  // Locatie helpers (client-side filteren op code)
+  const selectedLocation = locations.find((l: any) => String(l.id) === inboundForm.locationId) || null;
+  const filteredLocations = locationSearch.trim()
+    ? locations.filter((l: any) => String(l.code || '').toLowerCase().includes(locationSearch.trim().toLowerCase()))
+    : locations;
 
   // Pagination helpers
   const paginatedMutations = mutations.slice((historyPage - 1) * PAGE_SIZE, historyPage * PAGE_SIZE);
@@ -256,6 +265,8 @@ export function InventoryManagement({ activeProfile, isGlobalAdmin = false }: In
     setProductSearch('');
     setProductSearchResults([]);
     setInboundForm({ installationId: '', locationId: '', quantity: '', notes: '', receivedAt: '' });
+    setLocationSearch('');
+    setShowLocationDropdown(false);
   };
 
   const handleSelectProduct = (product: any) => {
@@ -263,6 +274,23 @@ export function InventoryManagement({ activeProfile, isGlobalAdmin = false }: In
     setProductSearch('');
     setProductSearchResults([]);
     if (product.installationId) setInboundForm(prev => ({ ...prev, installationId: String(product.installationId) }));
+  };
+
+  const handleSelectInstallation = (value: string) => {
+    setInboundForm(prev => ({ ...prev, installationId: value, locationId: '' }));
+    setLocationSearch('');
+    setShowLocationDropdown(false);
+  };
+
+  const handleSelectLocation = (loc: any) => {
+    setInboundForm(prev => ({ ...prev, locationId: String(loc.id) }));
+    setLocationSearch('');
+    setShowLocationDropdown(false);
+  };
+
+  const handleClearLocation = () => {
+    setInboundForm(prev => ({ ...prev, locationId: '' }));
+    setLocationSearch('');
   };
 
   const handleInboundSubmit = async () => {
@@ -467,7 +495,7 @@ export function InventoryManagement({ activeProfile, isGlobalAdmin = false }: In
               <span className="text-xs font-semibold">{config.label}</span>
               {showProduct && mutation.productName && <span className="text-xs opacity-70 truncate max-w-[180px]">{mutation.productName}</span>}
               <span className="text-xs opacity-60">{formatDate(mutation.performedAt)}</span>
-              {mutation.performedByName && <span className="text-xs opacity-60">· {mutation.performedByName}</span>}
+              {isGlobalAdmin && mutation.performedByName && <span className="text-xs opacity-60">· {mutation.performedByName}</span>}
               {mutation.orderId && <span className="text-xs opacity-60">· Order #{mutation.orderId}</span>}
               {mutation.notes && <span className="text-xs opacity-60 italic truncate max-w-[200px]">{mutation.notes}</span>}
             </div>
@@ -591,10 +619,12 @@ export function InventoryManagement({ activeProfile, isGlobalAdmin = false }: In
             </SelectContent>
           </Select>
         </div>
-        <Button variant="outline" className="h-10 px-4 gap-2 border-slate-300 hover:bg-slate-50">
-          <ArrowDownToLine className="w-4 h-4" />{t('incomingShipments')}
-          <Badge className="ml-1 bg-gradient-to-r from-indigo-500 to-purple-500 text-white border-0">0</Badge>
-        </Button>
+        {isGlobalAdmin && (
+          <Button variant="outline" className="h-10 px-4 gap-2 border-slate-300 hover:bg-slate-50">
+            <ArrowDownToLine className="w-4 h-4" />{t('incomingShipments')}
+            <Badge className="ml-1 bg-gradient-to-r from-indigo-500 to-purple-500 text-white border-0">0</Badge>
+          </Button>
+        )}
       </div>
 
       {/* Filter Pills */}
@@ -688,7 +718,9 @@ export function InventoryManagement({ activeProfile, isGlobalAdmin = false }: In
                   <TableCell>
                     <div className="flex items-center gap-1">
                       <Button variant="ghost" size="sm" onClick={() => handleOpenAliasDialog(item)} className="h-8 w-8 p-0 text-slate-400 hover:text-purple-600" title="EAN aliassen beheren"><Link className="w-4 h-4" /></Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleOpenCorrectie(item)} className="h-8 w-8 p-0 text-slate-400 hover:text-amber-600" title="Voorraad corrigeren"><SlidersHorizontal className="w-4 h-4" /></Button>
+                      {isGlobalAdmin && (
+                        <Button variant="ghost" size="sm" onClick={() => handleOpenCorrectie(item)} className="h-8 w-8 p-0 text-slate-400 hover:text-amber-600" title="Voorraad corrigeren"><SlidersHorizontal className="w-4 h-4" /></Button>
+                      )}
                       <Button variant="ghost" size="sm" onClick={() => handleOpenHistory(item)} className="h-8 w-8 p-0 text-slate-400 hover:text-indigo-600" title="Historie bekijken"><History className="w-4 h-4" /></Button>
                     </div>
                   </TableCell>
@@ -983,17 +1015,47 @@ export function InventoryManagement({ activeProfile, isGlobalAdmin = false }: In
             </div>
             <div className="space-y-2">
               <Label>Klant <span className="text-red-500">*</span></Label>
-              <Select value={inboundForm.installationId} onValueChange={(v) => setInboundForm(prev => ({ ...prev, installationId: v, locationId: '' }))}>
+              <Select value={inboundForm.installationId} onValueChange={handleSelectInstallation}>
                 <SelectTrigger><SelectValue placeholder="Selecteer klant..." /></SelectTrigger>
                 <SelectContent>{installations.map((inst: any) => <SelectItem key={inst.id} value={String(inst.id)}>{inst.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
               <Label>Locatie <span className="text-red-500">*</span></Label>
-              <Select value={inboundForm.locationId} onValueChange={(v) => setInboundForm(prev => ({ ...prev, locationId: v }))}>
-                <SelectTrigger><SelectValue placeholder={inboundForm.installationId ? 'Selecteer locatie...' : 'Selecteer eerst een klant'} /></SelectTrigger>
-                <SelectContent>{locations.map((loc: any) => <SelectItem key={loc.id} value={String(loc.id)}><span className="font-mono">{loc.code}</span></SelectItem>)}</SelectContent>
-              </Select>
+              {selectedLocation ? (
+                <div className="flex items-center gap-3 p-3 rounded-lg border border-indigo-200 bg-indigo-50">
+                  <span className="flex-1 text-sm font-mono font-medium text-slate-900">{selectedLocation.code}</span>
+                  <button onClick={handleClearLocation} className="p-1 rounded hover:bg-indigo-100"><X className="w-4 h-4 text-slate-500" /></button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <Input
+                    placeholder={inboundForm.installationId ? 'Zoek locatie...' : 'Selecteer eerst een klant'}
+                    value={locationSearch}
+                    disabled={!inboundForm.installationId}
+                    onChange={(e) => { setLocationSearch(e.target.value); setShowLocationDropdown(true); }}
+                    onFocus={() => setShowLocationDropdown(true)}
+                    onBlur={() => setTimeout(() => setShowLocationDropdown(false), 150)}
+                    className="pl-10 font-mono"
+                  />
+                  {showLocationDropdown && inboundForm.installationId && (
+                    <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                      {filteredLocations.length === 0 ? (
+                        <div className="px-3 py-3 text-sm text-slate-400 text-center">Geen locaties gevonden</div>
+                      ) : filteredLocations.map((loc: any) => (
+                        <button
+                          key={loc.id}
+                          onClick={() => handleSelectLocation(loc)}
+                          className="w-full flex items-center px-3 py-2 hover:bg-slate-50 text-left transition-colors"
+                        >
+                          <span className="text-sm font-mono text-slate-900">{loc.code}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               {inboundForm.installationId && locations.length === 0 && <p className="text-xs text-amber-600">Geen actieve locaties gevonden in het magazijn.</p>}
             </div>
             <div className="space-y-2">

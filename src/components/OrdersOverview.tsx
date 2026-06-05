@@ -80,6 +80,7 @@ const bolLogo = new URL('../assets/bol-vvb.png', import.meta.url).href;
 
 interface OrdersOverviewProps {
   activeProfile: string;
+  isGlobalAdmin?: boolean;
 }
 
 interface CarrierContract {
@@ -354,12 +355,11 @@ const downloadLabelFile = async (url: string, filename = 'label.pdf') => {
     document.body.removeChild(anchor);
     URL.revokeObjectURL(objectUrl);
   } catch {
-    // Fallback: open in new tab
     window.open(url, '_blank', 'noreferrer');
   }
 };
 
-export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
+export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersOverviewProps) {
   const ORDERS_PER_PAGE = 50;
 
   const carrierLogoMap: Record<string, string> = {
@@ -434,7 +434,6 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
   } | null>(null);
   const [warehouseAddress, setWarehouseAddress] = useState<any | null>(null);
 
-  // Carriers that have supportsReturns === true
   const returnCarrierContracts = carrierContracts.filter(
     (contract) => contract.credentials?.supportsReturns === true
   );
@@ -745,7 +744,6 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
     setShowLabelDialog(true);
   };
 
-  // --- Return label dialog handlers ---
   const handleOpenReturnLabelDialog = (order: any) => {
     setReturnLabelOrder(order);
     setSelectedReturnContractId('');
@@ -768,11 +766,9 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
 
     const selectedShippingMethod = selectedReturnContractId;
 
-    // Build return package: sender = customer, receiver = warehouse (from DB or carrier credentials)
     const basePackage = buildOrderLabelPackage(returnLabelOrder);
     const credentials = selectedContract.credentials || {};
 
-    // Warehouse address: prefer DB, fall back to carrier credentials
     const warehouseName = warehouseAddress?.name || credentials.senderName || credentials.senderName1 || 'Warehouse';
     const warehouseStreet = warehouseAddress
       ? [warehouseAddress.street, warehouseAddress.houseNumber].filter(Boolean).join(' ')
@@ -783,12 +779,10 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
     const warehouseEmail = warehouseAddress?.email || credentials.senderEmail || null;
     const warehousePhone = warehouseAddress?.phone || credentials.senderPhone || null;
 
-    // Parse street from combined address if street field is empty
     const resolveCustomerStreet = () => {
       if (basePackage.street) return basePackage.street;
       const addr = String(basePackage.address || '').trim();
       if (!addr) return '';
-      // Take everything before the first comma as the street
       const parts = addr.split(',');
       return parts[0].trim();
     };
@@ -811,7 +805,6 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
     const returnPackage = {
       ...basePackage,
       isReturn: true,
-      // Sender = customer
       senderName: basePackage.customerName,
       senderAddress: basePackage.address,
       senderStreet: resolveCustomerStreet(),
@@ -820,7 +813,6 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
       senderCountry: basePackage.country,
       senderEmail: basePackage.email,
       senderPhone: basePackage.phone,
-      // Receiver = warehouse
       customerName: warehouseName,
       street: warehouseStreet,
       zipCode: warehouseZip,
@@ -850,7 +842,6 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
 
       toast.success('Retourlabel succesvol gegenereerd');
 
-      // Create return record in DB
       try {
         const installationId = String(
           returnLabelOrder.installation?.id ?? returnLabelOrder.installationId ?? activeProfile
@@ -1014,8 +1005,6 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
           preferredDeliveryOptionId,
         );
         const deliveryOptionValidation = bolLabelResult?.deliveryOptionValidation || null;
-        // Prefer the explicit labelUrl property (set by backend after saving PDF to disk),
-        // then fall back to scanning the whole response for any URL or base64 PDF.
         const directLabelUrl = typeof bolLabelResult?.labelUrl === 'string' && isLikelyUrl(bolLabelResult.labelUrl.trim())
           ? bolLabelResult.labelUrl.trim()
           : null;
@@ -1572,19 +1561,24 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
             </div>
           </CardContent>
         </Card>
-        <Card className={`border-slate-200 shadow-sm cursor-pointer hover:shadow-md transition-shadow ${filterStatus === 'openstaand' && filterFulfillmentType === 'fulfillment' ? 'ring-2 ring-indigo-500 border-indigo-300' : ''}`} onClick={() => { if (filterStatus === 'openstaand' && filterFulfillmentType === 'fulfillment') { setFilterStatus('all'); setFilterFulfillmentType(null); } else { setFilterStatus('openstaand'); setFilterFulfillmentType('fulfillment'); setFilterExpiringTomorrow(false); } }}>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-500 mb-1">{t('needsPicking')}</p>
-                <p className="text-3xl font-bold text-emerald-600">{statsNeedsPicking}</p>
+
+        {/* Needs picking — alleen voor global admins */}
+        {isGlobalAdmin && (
+          <Card className={`border-slate-200 shadow-sm cursor-pointer hover:shadow-md transition-shadow ${filterStatus === 'openstaand' && filterFulfillmentType === 'fulfillment' ? 'ring-2 ring-indigo-500 border-indigo-300' : ''}`} onClick={() => { if (filterStatus === 'openstaand' && filterFulfillmentType === 'fulfillment') { setFilterStatus('all'); setFilterFulfillmentType(null); } else { setFilterStatus('openstaand'); setFilterFulfillmentType('fulfillment'); setFilterExpiringTomorrow(false); } }}>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-slate-500 mb-1">{t('needsPicking')}</p>
+                  <p className="text-3xl font-bold text-emerald-600">{statsNeedsPicking}</p>
+                </div>
+                <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center">
+                  <PackageCheck className="w-6 h-6 text-emerald-600" />
+                </div>
               </div>
-              <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center">
-                <PackageCheck className="w-6 h-6 text-emerald-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
+
         <Card className="border-slate-200 shadow-sm cursor-pointer hover:shadow-md transition-shadow" onClick={() => { setFilterStatus('openstaand'); setFilterFulfillmentType(null); setFilterExpiringTomorrow(true); }}>
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
@@ -1627,7 +1621,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                 <Download className="w-4 h-4" />
                 Exporteren
               </Button>
-              {selectedOrders.length > 0 && (
+              {isGlobalAdmin && selectedOrders.length > 0 && (
                 <Button
                   size="sm"
                   className="gap-2 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600"
@@ -1735,18 +1729,20 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                     </div>
                   </div>
 
-                  {/* Ordertype */}
-                  <div>
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Ordertype</p>
-                    <div className="space-y-1.5">
-                      {[{ value: 'fulfillment', label: 'Voorraadorders' }, { value: 'dropship', label: 'Dropshiporders' }].map(opt => (
-                        <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
-                          <input type="checkbox" checked={filterFulfillmentType === opt.value} onChange={() => setFilterFulfillmentType(filterFulfillmentType === opt.value ? null : opt.value)} className="accent-indigo-600" />
-                          <span className="text-sm text-slate-700">{opt.label}</span>
-                        </label>
-                      ))}
+                  {/* Ordertype — alleen voor admins (voorraad/dropship onderscheid) */}
+                  {isGlobalAdmin && (
+                    <div>
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Ordertype</p>
+                      <div className="space-y-1.5">
+                        {[{ value: 'fulfillment', label: 'Voorraadorders' }, { value: 'dropship', label: 'Dropshiporders' }].map(opt => (
+                          <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" checked={filterFulfillmentType === opt.value} onChange={() => setFilterFulfillmentType(filterFulfillmentType === opt.value ? null : opt.value)} className="accent-indigo-600" />
+                            <span className="text-sm text-slate-700">{opt.label}</span>
+                          </label>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Kanaal */}
                   <div>
@@ -1818,7 +1814,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
               <TableHeader>
                 <TableRow className="bg-slate-50/50">
                   <TableHead className="w-8">
-                    {filterFulfillmentType === 'fulfillment' && filteredOrders.length > 0 && (
+                    {isGlobalAdmin && filterFulfillmentType === 'fulfillment' && filteredOrders.length > 0 && (
                       <input
                         type="checkbox"
                         className="w-4 h-4 accent-indigo-600 cursor-pointer"
@@ -1865,7 +1861,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                         onClick={() => toggleOrderDetails(order.orderNumber)}
                       >
                         <TableCell onClick={(e) => e.stopPropagation()}>
-                          {order.fulfillmentType === 'fulfillment' && normalizeOrderStatus(order) === 'openstaand' && String(order.status || '').toLowerCase() !== 'gepickt' && String(order.orderStatus || '').toLowerCase() !== 'gepickt' && (
+                          {isGlobalAdmin && order.fulfillmentType === 'fulfillment' && normalizeOrderStatus(order) === 'openstaand' && String(order.status || '').toLowerCase() !== 'gepickt' && String(order.orderStatus || '').toLowerCase() !== 'gepickt' && (
                             <input
                               type="checkbox"
                               checked={selectedOrders.includes(order.id)}
@@ -1929,7 +1925,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                           <span className="font-mono text-sm text-slate-900">{order.supplierTracking || order?.tracking?.trackingCode || '-'}</span>
                         </TableCell>
                         <TableCell className="text-center" onClick={(event) => event.stopPropagation()}>
-                          {(() => {
+                          {isGlobalAdmin && (() => {
                             const shippingSelection = getOrderShippingContractId(order);
                             const shippingMeta = resolveShippingSelectionMeta(shippingSelection);
                             const isDisabled = normalizeOrderStatus(order) === 'verzonden' || savingShippingMethodOrderId === order.id;
@@ -2050,54 +2046,56 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                           </div>
                         </TableCell>
                         <TableCell className="text-right" onClick={(event) => event.stopPropagation()}>
-                          <div className="flex items-center justify-end">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="border border-slate-200 shadow-sm hover:bg-slate-100 hover:shadow cursor-pointer"
-                                  aria-label="Meer acties"
-                                  title="Meer acties"
-                                >
-                                  <MoreHorizontal className="w-4 h-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="border-slate-200 shadow-lg">
-                                <DropdownMenuItem
-                                  className="cursor-pointer"
-                                  onSelect={() => handleOpenLabelDialog(order)}
-                                >
-                                  <Package className="w-4 h-4" />
-                                  Label genereren
-                                </DropdownMenuItem>
-                                {order?.label?.labelUrl && (
-                                  <>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem
-                                      className="cursor-pointer"
-                                      onSelect={() => window.open(order.label.labelUrl, '_blank', 'noreferrer')}
-                                    >
-                                      <Download className="w-4 h-4" />
-                                      Label downloaden
-                                    </DropdownMenuItem>
-                                  </>
-                                )}
-                                {returnCarrierContracts.length > 0 && (
-                                  <>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem
-                                      className="cursor-pointer text-violet-700 focus:text-violet-700 focus:bg-violet-50"
-                                      onSelect={() => handleOpenReturnLabelDialog(order)}
-                                    >
-                                      <RotateCcw className="w-4 h-4" />
-                                      Retourlabel genereren
-                                    </DropdownMenuItem>
-                                  </>
-                                )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
+                          {isGlobalAdmin && (
+                            <div className="flex items-center justify-end">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="border border-slate-200 shadow-sm hover:bg-slate-100 hover:shadow cursor-pointer"
+                                    aria-label="Meer acties"
+                                    title="Meer acties"
+                                  >
+                                    <MoreHorizontal className="w-4 h-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="border-slate-200 shadow-lg">
+                                  <DropdownMenuItem
+                                    className="cursor-pointer"
+                                    onSelect={() => handleOpenLabelDialog(order)}
+                                  >
+                                    <Package className="w-4 h-4" />
+                                    Label genereren
+                                  </DropdownMenuItem>
+                                  {order?.label?.labelUrl && (
+                                    <>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem
+                                        className="cursor-pointer"
+                                        onSelect={() => window.open(order.label.labelUrl, '_blank', 'noreferrer')}
+                                      >
+                                        <Download className="w-4 h-4" />
+                                        Label downloaden
+                                      </DropdownMenuItem>
+                                    </>
+                                  )}
+                                  {returnCarrierContracts.length > 0 && (
+                                    <>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem
+                                        className="cursor-pointer text-violet-700 focus:text-violet-700 focus:bg-violet-50"
+                                        onSelect={() => handleOpenReturnLabelDialog(order)}
+                                      >
+                                        <RotateCcw className="w-4 h-4" />
+                                        Retourlabel genereren
+                                      </DropdownMenuItem>
+                                    </>
+                                  )}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          )}
                         </TableCell>
                       </TableRow>
                     
@@ -2239,6 +2237,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                                     <p className="text-sm text-slate-900">€ {order.orderValue?.toFixed(2) || '0.00'}</p>
                                   </div>
 
+                                  {isGlobalAdmin && (
                                   <div className="space-y-2 col-span-2">
                                     <div className="flex items-center gap-2 text-sm text-slate-500">
                                       <Package className="w-4 h-4" />
@@ -2335,6 +2334,7 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                                       </div>
                                     )}
                                   </div>
+                                  )}
                                 </div>
                               </div>
 
@@ -2478,7 +2478,6 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {labelDialogContracts.flatMap((contract) => {
-                    // WeGrow uitklappen als losse opties
                     if (contract.carrierType === 'wegrow') {
                       return wegrowCarrierOptions.map((option) => {
                         const syntheticId = `wegrow-${contract.id}-${option.id}`;
@@ -2514,7 +2513,6 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                       });
                     }
 
-                    // Normale contracten
                     const logo = carrierLogoMap[contract.carrierType] || null;
                     const isSelected = selectedContractId === String(contract.id);
                     return [(
@@ -2862,9 +2860,6 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
               )}
             </div>
 
-            {/* WeGrow sub-carrier selection */}
-
-
             {/* Return label preview */}
             {returnLabelPreviewUrl && (
               <div className="space-y-2">
@@ -3004,7 +2999,6 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                           <p className="text-xs text-slate-500 font-mono mt-0.5">{item.ean || '-'}</p>
                         </div>
                         <div className="flex items-center gap-4 shrink-0">
-                          {/* Locatie */}
                           <div className="flex flex-col gap-1">
                             {item.product?.locations?.length > 0 ? (
                               item.product.locations.map((loc: any, i: number) => (
@@ -3016,7 +3010,6 @@ export function OrdersOverview({ activeProfile }: OrdersOverviewProps) {
                               <span className="text-slate-400 text-sm">Geen locatie</span>
                             )}
                           </div>
-                          {/* Aantal */}
                           <div className="flex flex-col items-center gap-0.5">
                             <span className="text-xs text-slate-400">Aantal</span>
                             <span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 font-bold text-lg">

@@ -42,25 +42,25 @@ const menuItems: { sectionKey: 'orderManagement' | 'warehouseManagement' | 'anal
     sectionKey: 'orderManagement',
     items: [
       { id: 'orders', labelKey: 'orders', icon: ShoppingCart },
-      { id: 'tracking', labelKey: 'tracking', icon: QrCode },
-      { id: 'labels', labelKey: 'labels', icon: FileText },
-      { id: 'returns', labelKey: 'returns', icon: RotateCcw },
+      { id: 'tracking', labelKey: 'tracking', icon: QrCode, adminOnly: true },
+      { id: 'labels', labelKey: 'labels', icon: FileText, adminOnly: true },
+      { id: 'returns', labelKey: 'returns', icon: RotateCcw, adminOnly: true },
     ],
   },
   {
     sectionKey: 'warehouseManagement',
     items: [
       { id: 'inventory-management', labelKey: 'inventoryManagement', icon: Warehouse },
-      { id: 'inventory-analysis', labelKey: 'inventoryAnalysis', icon: BarChart3 },
-      { id: 'location-management', labelKey: 'locationManagement', icon: MapPin },
+      { id: 'inventory-analysis', labelKey: 'inventoryAnalysis', icon: BarChart3, adminOnly: true },
+      { id: 'location-management', labelKey: 'locationManagement', icon: MapPin, adminOnly: true },
       { id: 'product-management', labelKey: 'productManagement', icon: Package },
-      { id: 'carriers', labelKey: 'carriers', icon: Truck },
+      { id: 'carriers', labelKey: 'carriers', icon: Truck, adminOnly: true },
     ],
   },
   {
     sectionKey: 'analytics',
     items: [
-      { id: 'dashboard', labelKey: 'dashboard', icon: BarChart2 },
+      { id: 'dashboard', labelKey: 'dashboard', icon: BarChart2, adminOnly: true },
       { id: 'klk-analytics', labelKey: 'klkAnalytics', icon: TrendingUp, adminOnly: true },
       { id: 'fulfillment-analytics', labelKey: 'fulfillmentAnalytics', icon: Package, adminOnly: true },
     ],
@@ -69,8 +69,8 @@ const menuItems: { sectionKey: 'orderManagement' | 'warehouseManagement' | 'anal
     sectionKey: 'system',
     items: [
       { id: 'integrations', labelKey: 'integrations', icon: Plug },
-      { id: 'automation-rules', labelKey: 'automationRules', icon: Workflow },
-      { id: 'settings', labelKey: 'settings', icon: Settings },
+      { id: 'automation-rules', labelKey: 'automationRules', icon: Workflow, adminOnly: true },
+      { id: 'settings', labelKey: 'settings', icon: Settings, adminOnly: true },
     ],
   },
   {

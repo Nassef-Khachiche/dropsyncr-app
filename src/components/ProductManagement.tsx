@@ -103,7 +103,10 @@ const truncate = (str: string, n: number) => str.length > n ? str.substring(0, n
 const PAGE_SIZE = 50;
 
 // ─── ProductFields ────────────────────────────────────────────────────────────
-function ProductFields({ data, onChange, t }: { data: any; onChange: (key: string, value: any) => void; t: (k: string) => string }) {
+// Size category en dimensions/weight zijn alleen zichtbaar voor global admins.
+function ProductFields({ data, onChange, t, isGlobalAdmin = false }: {
+  data: any; onChange: (key: string, value: any) => void; t: (k: string) => string; isGlobalAdmin?: boolean;
+}) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
@@ -120,44 +123,55 @@ function ProductFields({ data, onChange, t }: { data: any; onChange: (key: strin
         <Label>{t('productName')} <span className="text-red-500">*</span></Label>
         <Input placeholder="bijv. Draadloze Gaming Muis RGB" value={data.name || ''} onChange={e => onChange('name', e.target.value)} />
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-2">
-          <Label>{t('sizeCategory')}</Label>
-          <Select value={data.sizeCategory || ''} onValueChange={v => onChange('sizeCategory', v)}>
-            <SelectTrigger><SelectValue placeholder={t('selectSizeCategory')} /></SelectTrigger>
-            <SelectContent>
-              {SIZE_CATEGORIES.map(s => (
-                <SelectItem key={s} value={s}>
-                  <div className="flex items-center gap-2">
-                    <Badge className={`${getSizeCategoryColor(s)} border text-xs`}>{s}</Badge>
-                    <span className="text-xs text-slate-500">{SIZE_LABELS[s].split('—')[1]?.trim()}</span>
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+
+      {isGlobalAdmin ? (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-2">
+            <Label>{t('sizeCategory')}</Label>
+            <Select value={data.sizeCategory || ''} onValueChange={v => onChange('sizeCategory', v)}>
+              <SelectTrigger><SelectValue placeholder={t('selectSizeCategory')} /></SelectTrigger>
+              <SelectContent>
+                {SIZE_CATEGORIES.map(s => (
+                  <SelectItem key={s} value={s}>
+                    <div className="flex items-center gap-2">
+                      <Badge className={`${getSizeCategoryColor(s)} border text-xs`}>{s}</Badge>
+                      <span className="text-xs text-slate-500">{SIZE_LABELS[s].split('—')[1]?.trim()}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Inkoopprijs (€)</Label>
+            <Input type="number" step="0.01" placeholder="bijv. 12.50" value={data.purchasePrice ?? ''} onChange={e => onChange('purchasePrice', e.target.value)} />
+          </div>
         </div>
+      ) : (
         <div className="space-y-2">
           <Label>Inkoopprijs (€)</Label>
           <Input type="number" step="0.01" placeholder="bijv. 12.50" value={data.purchasePrice ?? ''} onChange={e => onChange('purchasePrice', e.target.value)} />
         </div>
-      </div>
-      <div className="space-y-2">
-        <Label className="text-slate-500 text-xs">{t('dimensionsOptional')}</Label>
-        <div className="grid grid-cols-4 gap-2">
-          <Input type="number" placeholder="L (cm)" value={data.dimensionL || ''} onChange={e => onChange('dimensionL', e.target.value)} />
-          <Input type="number" placeholder="W (cm)" value={data.dimensionW || ''} onChange={e => onChange('dimensionW', e.target.value)} />
-          <Input type="number" placeholder="H (cm)" value={data.dimensionH || ''} onChange={e => onChange('dimensionH', e.target.value)} />
-          <Input type="number" placeholder="kg" value={data.weight || ''} onChange={e => onChange('weight', e.target.value)} />
+      )}
+
+      {isGlobalAdmin && (
+        <div className="space-y-2">
+          <Label className="text-slate-500 text-xs">{t('dimensionsOptional')}</Label>
+          <div className="grid grid-cols-4 gap-2">
+            <Input type="number" placeholder="L (cm)" value={data.dimensionL || ''} onChange={e => onChange('dimensionL', e.target.value)} />
+            <Input type="number" placeholder="W (cm)" value={data.dimensionW || ''} onChange={e => onChange('dimensionW', e.target.value)} />
+            <Input type="number" placeholder="H (cm)" value={data.dimensionH || ''} onChange={e => onChange('dimensionH', e.target.value)} />
+            <Input type="number" placeholder="kg" value={data.weight || ''} onChange={e => onChange('weight', e.target.value)} />
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
 
 // ─── NewProductDialog ─────────────────────────────────────────────────────────
-function NewProductDialog({ open, onClose, onCreated, activeProfile, t }: {
-  open: boolean; onClose: () => void; onCreated: (p: any) => void; activeProfile: string | null; t: (k: string) => string;
+function NewProductDialog({ open, onClose, onCreated, activeProfile, t, isGlobalAdmin = false }: {
+  open: boolean; onClose: () => void; onCreated: (p: any) => void; activeProfile: string | null; t: (k: string) => string; isGlobalAdmin?: boolean;
 }) {
   const [form, setForm] = useState({ ean: '', name: '', brand: '', sizeCategory: '', price: '', purchasePrice: '', weight: '', dimensionL: '', dimensionW: '', dimensionH: '' });
   const [saving, setSaving] = useState(false);
@@ -194,7 +208,7 @@ function NewProductDialog({ open, onClose, onCreated, activeProfile, t }: {
       <DialogContent className="sm:max-w-[560px]">
         <DialogHeader><DialogTitle>{t('newProduct')}</DialogTitle><DialogDescription>{t('newProductSubtitle')}</DialogDescription></DialogHeader>
         <div className="pt-4">
-          <ProductFields t={t} data={form} onChange={(key, value) => setForm(prev => ({ ...prev, [key]: value }))} />
+          <ProductFields t={t} isGlobalAdmin={isGlobalAdmin} data={form} onChange={(key, value) => setForm(prev => ({ ...prev, [key]: value }))} />
           <div className="flex gap-3 pt-6">
             <Button variant="outline" onClick={onClose} className="flex-1">{t('cancel')}</Button>
             <Button onClick={handleSubmit} disabled={saving} className="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700">
@@ -208,8 +222,8 @@ function NewProductDialog({ open, onClose, onCreated, activeProfile, t }: {
 }
 
 // ─── EditProductDialog ────────────────────────────────────────────────────────
-function EditProductDialog({ open, product, onClose, onUpdated, t }: {
-  open: boolean; product: Product | null; onClose: () => void; onUpdated: (p: any) => void; t: (k: string) => string;
+function EditProductDialog({ open, product, onClose, onUpdated, t, isGlobalAdmin = false }: {
+  open: boolean; product: Product | null; onClose: () => void; onUpdated: (p: any) => void; t: (k: string) => string; isGlobalAdmin?: boolean;
 }) {
   const [form, setForm] = useState<any>({});
   const [saving, setSaving] = useState(false);
@@ -241,7 +255,7 @@ function EditProductDialog({ open, product, onClose, onUpdated, t }: {
         <DialogHeader><DialogTitle>{t('editProduct')}</DialogTitle><DialogDescription>{product?.name}</DialogDescription></DialogHeader>
         {product && (
           <div className="pt-4">
-            <ProductFields t={t} data={form} onChange={(key, value) => setForm((prev: any) => ({ ...prev, [key]: value }))} />
+            <ProductFields t={t} isGlobalAdmin={isGlobalAdmin} data={form} onChange={(key, value) => setForm((prev: any) => ({ ...prev, [key]: value }))} />
             <div className="flex gap-3 pt-6">
               <Button variant="outline" onClick={onClose} className="flex-1">{t('cancel')}</Button>
               <Button onClick={handleSubmit} disabled={saving} className="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700">
@@ -431,20 +445,22 @@ export function ProductManagement({ activeProfile, isGlobalAdmin = false }: Prod
                           {product.purchasePrice != null ? <span className="font-medium text-slate-900">€{product.purchasePrice.toFixed(2)}</span> : <span className="text-slate-400">—</span>}
                         </TableCell>
                         <TableCell>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100"><MoreVertical className="w-4 h-4" /></Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => setEditingProduct(product)}><Edit className="w-4 h-4 mr-2" />{t('edit')}</DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleArchiveProduct(product)}>
-                                {product.archived ? <ArchiveRestore className="w-4 h-4 mr-2" /> : <Archive className="w-4 h-4 mr-2" />}
-                                {product.archived ? t('restore') : t('archive')}
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem className="text-red-600" onClick={() => handleDeleteProduct(product)}><Trash2 className="w-4 h-4 mr-2" />{t('delete')}</DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          {isGlobalAdmin && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100"><MoreVertical className="w-4 h-4" /></Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => setEditingProduct(product)}><Edit className="w-4 h-4 mr-2" />{t('edit')}</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleArchiveProduct(product)}>
+                                  {product.archived ? <ArchiveRestore className="w-4 h-4 mr-2" /> : <Archive className="w-4 h-4 mr-2" />}
+                                  {product.archived ? t('restore') : t('archive')}
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem className="text-red-600" onClick={() => handleDeleteProduct(product)}><Trash2 className="w-4 h-4 mr-2" />{t('delete')}</DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -480,6 +496,7 @@ export function ProductManagement({ activeProfile, isGlobalAdmin = false }: Prod
         onCreated={(created) => { setProducts(prev => [created, ...prev]); setStats(prev => ({ ...prev, total: prev.total + 1, active: prev.active + 1 })); }}
         activeProfile={activeProfile}
         t={t}
+        isGlobalAdmin={isGlobalAdmin}
       />
 
       <EditProductDialog
@@ -488,6 +505,7 @@ export function ProductManagement({ activeProfile, isGlobalAdmin = false }: Prod
         onClose={() => setEditingProduct(null)}
         onUpdated={(updated) => { setProducts(prev => prev.map(p => p.id === updated.id ? updated : p)); setEditingProduct(null); loadProducts(currentPage); }}
         t={t}
+        isGlobalAdmin={isGlobalAdmin}
       />
     </div>
   );

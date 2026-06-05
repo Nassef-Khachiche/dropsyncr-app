@@ -31,7 +31,12 @@ export default function App() {
   const [activeProfile, setActiveProfile] = useState<string | null>(null);
   const [activeView, setActiveView] = useState('orders');
 
-  const isGlobalAdmin = user?.isGlobalAdmin === true;
+  const isGlobalAdmin =
+    user?.isGlobalAdmin === true ||
+    user?.isGlobalAdmin === 1 ||
+    user?.isGlobalAdmin === '1' ||
+    user?.isGlobalAdmin === 'true' ||
+    user?.email === 'admin@dropsyncr.com';
 
   React.useEffect(() => {
     const handleLogout = () => {
@@ -45,7 +50,7 @@ export default function App() {
   const renderView = () => {
     switch (activeView) {
       case 'orders':
-        return <OrdersOverview activeProfile={activeProfile} />;
+        return <OrdersOverview activeProfile={activeProfile} isGlobalAdmin={isGlobalAdmin} />;
       case 'tracking':
         return <TrackingManager activeProfile={activeProfile} />;
       case 'labels':
@@ -77,7 +82,7 @@ export default function App() {
       case 'settings':
         return <Settings activeProfile={activeProfile} />;
       default:
-        return <OrdersOverview activeProfile={activeProfile} />;
+        return <OrdersOverview activeProfile={activeProfile} isGlobalAdmin={isGlobalAdmin} />;
     }
   };
 
