@@ -46,6 +46,7 @@ async function runKauflandSyncCycle() {
           imported: result.imported,
           updated: result.updated,
           total: result.total,
+          reconciliation: result.reconciliation,
         });
       } catch (installationError) {
         console.error('[KAUFLAND CRON] Sync failed for installation', {
