@@ -61,7 +61,7 @@ async function runBolSyncCycle() {
 }
 
 export function startBolSyncCronJob() {
-  const syncIntervalMinutes = parseInt(process.env.BOL_SYNC_INTERVAL_MINUTES || '5', 10);
+  const syncIntervalMinutes = parseInt(process.env.BOL_SYNC_INTERVAL_MINUTES || '15', 10);
   const safeIntervalMinutes = Number.isFinite(syncIntervalMinutes) && syncIntervalMinutes > 0
     ? syncIntervalMinutes
     : 5;
