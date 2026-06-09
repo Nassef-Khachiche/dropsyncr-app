@@ -1542,6 +1542,8 @@ export const syncBolOrders = async (req, res) => {
         shipmentConfirmedByBol ? 'SHIPPED' : null,
       ].filter(Boolean);
 
+      console.log('[SHIP DEBUG]', bolOrder.orderId, 'candidates=', JSON.stringify(bolStatusCandidates), 'confirmed=', shipmentConfirmedByBol, 'tt=', resolvedTrackAndTrace, 'shipments=', JSON.stringify(shipmentList));
+
       const resolvedBolOrderStatus = resolvePrimaryBolStatus(bolStatusCandidates);
       const resolvedShippingStatus = resolvedBolOrderStatus || null;
 
@@ -1654,13 +1656,34 @@ export const syncBolOrders = async (req, res) => {
       // status update propagating back. Cancellations and deliveries from Bol still win.
       const localShipmentStatuses = new Set(['verzonden', 'label-aangemaakt']);
       const syncOpenStatuses = new Set(['openstaand', 'onderweg-ffm', 'binnengekomen-ffm']);
+      const existingHasShipmentProof =
+        Boolean(existingOrder?.supplierTracking) ||
+        Boolean(existingOrder?.tracking?.trackingCode) ||
+        Boolean(existingOrder?.label?.status);
+
       const bolIsDowngradingShipment =
         existingOrder &&
         localShipmentStatuses.has(existingOrder.status) &&
-        syncOpenStatuses.has(finalInternalStatus);
+        syncOpenStatuses.has(finalInternalStatus) &&
+        existingHasShipmentProof;
 
       const syncedStatus = bolIsDowngradingShipment ? existingOrder.status : finalInternalStatus;
       const syncedOrderStatus = bolIsDowngradingShipment ? existingOrder.orderStatus : finalOrderStatus;
+
+      if (syncedStatus === 'verzonden') {
+        console.log('[VERZONDEN TRACE]', JSON.stringify({
+          orderId: bolOrder.orderId,
+          reason: bolIsDowngradingShipment ? 'downgrade-protected (bleef verzonden)' : 'live bol status',
+          candidates: bolStatusCandidates,
+          confirmedByBol: shipmentConfirmedByBol,
+          trackAndTrace: resolvedTrackAndTrace || null,
+          shipmentCount: shipmentList.length,
+          shipmentRefs: shipmentList.map((s) => s?.shipmentReference || null),
+          existingStatus: existingOrder?.status || null,
+          existingHasShipmentProof,
+        }));
+      }
+
       const syncedOrderStatusCode = bolIsDowngradingShipment
         ? toOrderStatusCode(existingOrder.orderStatus)
         : finalOrderStatusCode;
@@ -1693,7 +1716,6 @@ export const syncBolOrders = async (req, res) => {
         itemCount: orderItems?.length || 1,
         ...(resolvedTrackAndTrace ? { supplierTracking: resolvedTrackAndTrace } : {}),
         status: syncedStatus,
-        fulfillmentType: null,
       };
 
       // Resolve handover window dates for VVB orders (drop-off dates only — not shipping status)
@@ -1733,7 +1755,7 @@ export const syncBolOrders = async (req, res) => {
             select: { id: true },
           })
         : await prisma.order.create({
-            data: orderData,
+            data: { ...orderData, fulfillmentType: null },
             select: { id: true },
           });
 
@@ -2307,9 +2329,11 @@ export const getBolDeliveryOptions = async (req, res) => {
       console.warn('[BOL DELIVERY OPTIONS] /orders/{id} failed', { orderId: normalizedOrderId, message: err?.message });
     }
 
+    let foundViaFallback = false;
     if (!orderItemsPayload) {
       const matchingListedOrder = await findOrderInFbrOrderPages(credentials, normalizedOrderId, 8);
       if (matchingListedOrder) {
+        foundViaFallback = true;
         orderItemsPayload = {
           orderItems: Array.isArray(matchingListedOrder.orderItems)
             ? matchingListedOrder.orderItems
@@ -2317,6 +2341,13 @@ export const getBolDeliveryOptions = async (req, res) => {
         };
       }
     }
+
+    console.log('[BOL DELIVERY OPTIONS DEBUG]', JSON.stringify({
+      orderId: normalizedOrderId,
+      directOrderFound: Boolean(orderItemsPayload) && !foundViaFallback,
+      foundViaFallback,
+      hasPayload: Boolean(orderItemsPayload),
+    }));
 
     if (!orderItemsPayload) {
       return res.status(404).json({ error: 'Order items not found for this Bol order' });
