@@ -94,7 +94,7 @@ const getShippingMethodMapForOrderIds = async (orderIds = []) => {
 
 export const getOrders = async (req, res) => {
   try {
-    const { installationId, userScoped, status, search, page = 1, limit = 50, fulfillmentType, storeName } = req.query;
+    const { installationId, userScoped, status, search, page = 1, limit = 50, fulfillmentType, storeName, vvbWindow } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const isAllStoresMode = !installationId || installationId === 'all';
     const forceUserScope = userScoped === 'true';
@@ -150,6 +150,33 @@ export const getOrders = async (req, res) => {
 
     if (fulfillmentType) andConditions.push({ fulfillmentType: String(fulfillmentType) });
     if (storeName && storeName !== 'all') andConditions.push({ storeName: String(storeName) });
+
+    if (vvbWindow === 'ochtend' || vvbWindow === 'avond') {
+      // Vandaag (UTC dag-range)
+      const dayStart = new Date();
+      dayStart.setUTCHours(0, 0, 0, 0);
+      const dayEnd = new Date(dayStart);
+      dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+
+      // Ochtend = 09:30 NL = 07:30 UTC ; Avond = 18:00 NL = 16:00 UTC
+      const windowStart = new Date(dayStart);
+      const windowEnd = new Date(dayStart);
+      if (vvbWindow === 'ochtend') {
+        windowStart.setUTCHours(7, 0, 0, 0);
+        windowEnd.setUTCHours(8, 0, 0, 0);
+      } else {
+        windowStart.setUTCHours(15, 30, 0, 0);
+        windowEnd.setUTCHours(16, 30, 0, 0);
+      }
+
+      andConditions.push({
+        AND: [
+          { latestDropOffDate: { gte: dayStart, lt: dayEnd } },
+          { latestDropOffDate: { gte: windowStart, lte: windowEnd } },
+          { OR: [{ isVVB: true }, { shippingMethod: { contains: 'bol' } }] },
+        ],
+      });
+    }
 
     if (req.query.expiringTomorrow === 'true') {
       const filterNow = new Date();

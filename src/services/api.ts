@@ -136,6 +136,7 @@ class ApiService {
     fulfillmentType?: string;
     expiringTomorrow?: boolean;
     storeName?: string;
+    vvbWindow?: string;
   }) {
     const queryParams = new URLSearchParams();
     if (params?.installationId) queryParams.append('installationId', params.installationId);
@@ -147,6 +148,7 @@ class ApiService {
     if (params?.fulfillmentType) queryParams.append('fulfillmentType', params.fulfillmentType);
     if (params?.expiringTomorrow) queryParams.append('expiringTomorrow', 'true');
     if (params?.storeName && params.storeName !== 'all') queryParams.append('storeName', params.storeName);
+    if (params?.vvbWindow) queryParams.append('vvbWindow', params.vvbWindow);
 
     return this.request<{ orders: any[]; pagination: any; stats: any }>(
       `/orders?${queryParams.toString()}`

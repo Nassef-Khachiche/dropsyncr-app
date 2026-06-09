@@ -389,6 +389,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
   const [filterKanalen, setFilterKanalen] = useState<string[]>([]);
   const [filterLanden, setFilterLanden] = useState<string[]>([]);
   const [filterVerzendVia, setFilterVerzendVia] = useState<string[]>([]);
+  const [filterVvbWindow, setFilterVvbWindow] = useState<'ochtend' | 'avond' | null>(null);
   const [sortField, setSortField] = useState<string>('orderDate');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [pendingFilters, setPendingFilters] = useState<any>(null);
@@ -450,7 +451,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
     if (activeProfile) {
       loadOrders();
     }
-  }, [activeProfile, filterStatus, searchQuery, currentPage, filterFulfillmentType, filterExpiringTomorrow, filterStore]);
+  }, [activeProfile, filterStatus, searchQuery, currentPage, filterFulfillmentType, filterExpiringTomorrow, filterStore, filterVvbWindow]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -559,6 +560,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
           fulfillmentType: filterFulfillmentType || undefined,
           expiringTomorrow: filterExpiringTomorrow || undefined,
           storeName: filterStore !== 'all' ? filterStore : undefined,
+          vvbWindow: filterVvbWindow || undefined,
         }),
         isAllStoresSelected ? api.getIntegrations(undefined, true) : Promise.resolve(null),
       ]);
@@ -1225,7 +1227,13 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
     .sort((a, b) => {
       let aVal: any, bVal: any;
       if (sortField === 'orderDate') { aVal = a.orderDate ? new Date(a.orderDate).getTime() : 0; bVal = b.orderDate ? new Date(b.orderDate).getTime() : 0; }
-      else if (sortField === 'deliveryDate') { aVal = a.deliveryDate ? new Date(a.deliveryDate).getTime() : 0; bVal = b.deliveryDate ? new Date(b.deliveryDate).getTime() : 0; }
+      else if (sortField === 'deliveryDate') {
+        const isVvb = (o: any) => Boolean(o.isVVB) || String(o.shippingMethod || '').toLowerCase().includes('bol');
+        const aDate = isVvb(a) && a.latestDropOffDate ? a.latestDropOffDate : a.deliveryDate;
+        const bDate = isVvb(b) && b.latestDropOffDate ? b.latestDropOffDate : b.deliveryDate;
+        aVal = aDate ? new Date(aDate).getTime() : 0;
+        bVal = bDate ? new Date(bDate).getTime() : 0;
+      }
       else if (sortField === 'storeName') { aVal = String(a.storeName || ''); bVal = String(b.storeName || ''); }
       else { aVal = a.orderDate ? new Date(a.orderDate).getTime() : 0; bVal = b.orderDate ? new Date(b.orderDate).getTime() : 0; }
       if (typeof aVal === 'string') return sortDir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
@@ -1795,11 +1803,26 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
                       ))}
                     </div>
                   </div>
+
+                  {/* VVB filtering — alleen admins */}
+                  {isGlobalAdmin && (
+                    <div>
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">VVB filtering</p>
+                      <div className="space-y-1.5">
+                        {[{ value: 'ochtend' as const, label: 'VVB Ochtend vandaag (09:30)' }, { value: 'avond' as const, label: 'VVB Avond vandaag (18:00)' }].map(opt => (
+                          <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" checked={filterVvbWindow === opt.value} onChange={() => setFilterVvbWindow(filterVvbWindow === opt.value ? null : opt.value)} className="accent-indigo-600" />
+                            <span className="text-sm text-slate-700">{opt.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Reset */}
                 <div className="flex justify-end border-t border-slate-200 pt-3">
-                  <Button variant="outline" size="sm" className="gap-2 border-slate-200" onClick={() => { setFilterKanalen([]); setFilterLanden([]); setFilterVerzendVia([]); setFilterFulfillmentType(null); setFilterStatus('all'); setFilterStore('all'); setSortField('orderDate'); setSortDir('desc'); }}>
+                  <Button variant="outline" size="sm" className="gap-2 border-slate-200" onClick={() => { setFilterKanalen([]); setFilterLanden([]); setFilterVerzendVia([]); setFilterFulfillmentType(null); setFilterStatus('all'); setFilterStore('all'); setFilterVvbWindow(null); setSortField('orderDate'); setSortDir('desc'); }}>
                     <X className="w-3.5 h-3.5" />
                     Reset filters
                   </Button>
@@ -1919,7 +1942,17 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
                           </div>
                         </TableCell>
                         <TableCell className="text-sm text-slate-600">
-                          {order.deliveryDate ? new Date(order.deliveryDate).toLocaleDateString('nl-NL') : '-'}
+                          {(() => {
+                            const isVvb = Boolean(order.isVVB) || String(order.shippingMethod || '').toLowerCase().includes('bol');
+                            if (isVvb && order.latestDropOffDate) {
+                              return new Date(order.latestDropOffDate).toLocaleString('nl-NL', {
+                                day: '2-digit', month: '2-digit', year: 'numeric',
+                                hour: '2-digit', minute: '2-digit',
+                                timeZone: 'Europe/Amsterdam',
+                              });
+                            }
+                            return order.deliveryDate ? new Date(order.deliveryDate).toLocaleDateString('nl-NL') : '-';
+                          })()}
                         </TableCell>
                         <TableCell>
                           <span className="font-mono text-sm text-slate-900">{order.supplierTracking || order?.tracking?.trackingCode || '-'}</span>
