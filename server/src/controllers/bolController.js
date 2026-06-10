@@ -2474,11 +2474,11 @@ export const getBolDeliveryOptions = async (req, res) => {
           orderNumber: normalizedOrderId,
           installationId: parseInt(installationId, 10),
         },
-        include: { items: true },
+        include: { orderItems: true },
       });
 
-      if (dbOrder && Array.isArray(dbOrder.items) && dbOrder.items.length > 0) {
-        const dbOrderItems = dbOrder.items
+      if (dbOrder && Array.isArray(dbOrder.orderItems) && dbOrder.orderItems.length > 0) {
+        const dbOrderItems = dbOrder.orderItems
           .filter((item) => item.externalId)
           .map((item) => ({
             orderItemId: item.externalId,
