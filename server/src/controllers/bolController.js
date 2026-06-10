@@ -892,6 +892,8 @@ async function getBolLabelWithFallbackInternal(
 
 async function fetchAllBolOrders(credentials) {
   const maxPages = 200;
+  // Delay between page requests to stay under Bol's rate limit.
+  const interPageDelayMs = 400;
   // Only fetch with status=ALL — querying individual statuses separately is redundant
   // and multiplies API calls by 7x, causing rate limit (429) errors.
   const statusesToFetch = ['ALL'];
@@ -899,6 +901,11 @@ async function fetchAllBolOrders(credentials) {
 
   for (const status of statusesToFetch) {
     for (let page = 1; page <= maxPages; page += 1) {
+      // Throttle between pages to avoid 429 bursts
+      if (page > 1) {
+        await new Promise((resolve) => setTimeout(resolve, interPageDelayMs));
+      }
+
       let response;
 
       try {
@@ -953,11 +960,20 @@ async function fetchAllBolOrders(credentials) {
  * which is the main cause of 429 rate-limit errors.
  */
 async function fetchAllBolShipmentsMap(credentials) {
-  const maxPages = 200;
+  // Cap at 20 pages (1000 shipments). Older shipments are for orders already fully
+  // settled in the DB; the per-order fallback handles any gaps beyond this window.
+  const maxPages = 20;
+  // Delay between page requests to stay well under Bol's rate limit.
+  const interPageDelayMs = 400;
   // shipmentsByOrderId: orderId string -> { shipments: [...] }
   const shipmentsByOrderId = new Map();
 
   for (let page = 1; page <= maxPages; page += 1) {
+    // Throttle between pages to avoid 429 bursts
+    if (page > 1) {
+      await new Promise((resolve) => setTimeout(resolve, interPageDelayMs));
+    }
+
     let response;
     try {
       response = await bolApiRequest(credentials, `/shipments?page=${page}`);
