@@ -2527,9 +2527,12 @@ export const getBolDeliveryOptions = async (req, res) => {
     const handoverWindow = await fetchBolDeliveryOptionHandoverWindow(credentials, orderItems);
 
     if (handoverWindow.notEligible) {
-      return res.status(422).json({
-        error: 'This order cannot be fulfilled by the retailer (FBB order or unknown order item IDs)',
-        details: handoverWindow.notEligibleReason,
+      // FBB orders or unknown item IDs — not an error, just no options available.
+      return res.json({
+        success: true,
+        orderItems,
+        deliveryOptions: [],
+        selectedDeliveryOption: null,
       });
     }
 
