@@ -2069,6 +2069,7 @@ export const syncBolOrders = async (req, res) => {
               quantity,
               price: effectiveUnitPrice,
               unitPrice: effectiveUnitPrice,
+              externalId: String(item?.orderItemId || item?.orderItemID || '').trim() || null,
             },
           });
         }
