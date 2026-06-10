@@ -2466,25 +2466,34 @@ export const getBolDeliveryOptions = async (req, res) => {
       console.warn('[BOL DELIVERY OPTIONS] /orders/{id} failed', { orderId: normalizedOrderId, message: err?.message });
     }
 
-    let foundViaFallback = false;
+    // Fallback: look up order items from the local DB (already synced from Bol).
+    // This avoids extra Bol API calls and works even when the order detail endpoint 403s/404s.
     if (!orderItemsPayload) {
-      const matchingListedOrder = await findOrderInFbrOrderPages(credentials, normalizedOrderId, 8);
-      if (matchingListedOrder) {
-        foundViaFallback = true;
-        orderItemsPayload = {
-          orderItems: Array.isArray(matchingListedOrder.orderItems)
-            ? matchingListedOrder.orderItems
-            : [],
-        };
+      const dbOrder = await prisma.order.findFirst({
+        where: {
+          orderNumber: normalizedOrderId,
+          installationId: parseInt(installationId, 10),
+        },
+        include: { items: true },
+      });
+
+      if (dbOrder && Array.isArray(dbOrder.items) && dbOrder.items.length > 0) {
+        const dbOrderItems = dbOrder.items
+          .filter((item) => item.externalId)
+          .map((item) => ({
+            orderItemId: item.externalId,
+            quantity: item.quantity || 1,
+          }));
+
+        if (dbOrderItems.length > 0) {
+          orderItemsPayload = { orderItems: dbOrderItems };
+          console.log('[BOL DELIVERY OPTIONS] Using DB fallback for order items', {
+            orderId: normalizedOrderId,
+            itemCount: dbOrderItems.length,
+          });
+        }
       }
     }
-
-    console.log('[BOL DELIVERY OPTIONS DEBUG]', JSON.stringify({
-      orderId: normalizedOrderId,
-      directOrderFound: Boolean(orderItemsPayload) && !foundViaFallback,
-      foundViaFallback,
-      hasPayload: Boolean(orderItemsPayload),
-    }));
 
     if (!orderItemsPayload) {
       return res.status(404).json({ error: 'Order items not found for this Bol order' });
