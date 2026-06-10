@@ -1628,16 +1628,10 @@ export const syncBolOrders = async (req, res) => {
         }
       }
 
-      // Use bulk-fetched shipments map first; only fall back to per-order call if not found
-      if (allShipmentsMap.has(currentBolOrderId)) {
-        bolShipmentDetails = allShipmentsMap.get(currentBolOrderId);
-      } else {
-        try {
-          bolShipmentDetails = await bolApiRequest(credentials, `/shipments?order-id=${bolOrder.orderId}`);
-        } catch (detailError) {
-          console.warn('[BOL SYNC] Failed to fetch shipment details:', detailError.message);
-        }
-      }
+      // Use bulk-fetched shipments map. No per-order fallback — open/new orders have no
+      // shipment yet so a per-order call returns empty anyway, and firing one per order
+      // is exactly what causes 429 rate-limit errors.
+      bolShipmentDetails = allShipmentsMap.get(currentBolOrderId) || null;
 
       const orderPayload = bolOrderDetails || bolOrder;
       const baseOrderItems = orderPayload.orderItems || bolOrder.orderItems || [];
