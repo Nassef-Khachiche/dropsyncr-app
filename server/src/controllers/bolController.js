@@ -101,6 +101,15 @@ async function getBolIntegrationCandidates(installationId, integrationId = null)
 // Token cache: keyed by "clientId:clientSecret" → { token, expiresAt }
 const bolTokenCache = new Map();
 
+// Persistent enrichment cache for product data (survives across sync runs)
+// Keyed by EAN/SKU → enrichment result. Clears itself after 6 hours to avoid stale data.
+const bolEnrichmentCache = new Map();
+const BOL_ENRICHMENT_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+
+// Tracks endpoints that returned 403 per credential set, so we don't retry them on every order.
+// Keyed by "clientId:endpoint" → true
+const bol403EndpointCache = new Set();
+
 async function getBolAccessToken(credentials) {
   const { clientId, clientSecret } = credentials;
   const cacheKey = `${clientId}:${clientSecret}`;
@@ -1451,13 +1460,11 @@ const enrichBolProductData = async ({ credentials, ean }) => {
 
     const { endpoint, data } = enrichmentResponse;
 
-    const [primaryAssets, additionalAssets, imageAssets] = await Promise.all([
-      fetchBolProductAssetsByUsage({ credentials, ean: eanValue, usage: 'PRIMARY' }),
-      fetchBolProductAssetsByUsage({ credentials, ean: eanValue, usage: 'ADDITIONAL' }),
-      fetchBolProductAssetsByUsage({ credentials, ean: eanValue, usage: 'IMAGE' }),
-    ]);
+    // Fetch asset types sequentially to avoid parallel bursts that trigger 429 rate limits
+    const primaryAssets = await fetchBolProductAssetsByUsage({ credentials, ean: eanValue, usage: 'PRIMARY' });
+    const additionalAssets = await fetchBolProductAssetsByUsage({ credentials, ean: eanValue, usage: 'ADDITIONAL' });
 
-    const assetResponses = [primaryAssets, additionalAssets, imageAssets].filter(Boolean);
+    const assetResponses = [primaryAssets, additionalAssets].filter(Boolean);
     const mergedEnrichmentData = {
       ...data,
       product: { ...(data?.product || {}) },
@@ -1530,10 +1537,19 @@ export const syncBolOrders = async (req, res) => {
         console.warn('[BOL SYNC] Failed to fetch order details:', detailError.message);
       }
 
-      try {
-        bolOrderItemsDetails = await bolApiRequest(credentials, `/orders/${bolOrder.orderId}/order-items`);
-      } catch (detailError) {
-        console.warn('[BOL SYNC] Failed to fetch order items details:', detailError.message);
+      const orderItemsEndpointKey = `${credentials.clientId}:/orders/*/order-items`;
+      if (!bol403EndpointCache.has(orderItemsEndpointKey)) {
+        try {
+          bolOrderItemsDetails = await bolApiRequest(credentials, `/orders/${bolOrder.orderId}/order-items`);
+        } catch (detailError) {
+          if (detailError.message.includes('403') || /unauthorized/i.test(detailError.message)) {
+            // This credential set lacks permission — skip for all orders in this sync
+            bol403EndpointCache.add(orderItemsEndpointKey);
+            console.warn('[BOL SYNC] /order-items endpoint returned 403, skipping for all orders with this credential set');
+          } else {
+            console.warn('[BOL SYNC] Failed to fetch order items details:', detailError.message);
+          }
+        }
       }
 
       try {
@@ -1898,9 +1914,14 @@ export const syncBolOrders = async (req, res) => {
 
           const enrichmentCacheKey = firstNonEmptyString(ean, sku, offerId, item?.orderItemId);
           if ((!resolvedProductImage || !resolvedProductBrand) && enrichmentCacheKey) {
-            if (!enrichmentCache.has(enrichmentCacheKey)) {
+            if (!bolEnrichmentCache.has(enrichmentCacheKey) || Date.now() > (bolEnrichmentCache.get(enrichmentCacheKey)?._expiresAt || 0)) {
               const enrichment = await enrichBolProductData({ credentials, ean });
-              enrichmentCache.set(enrichmentCacheKey, enrichment || null);
+              const entry = enrichment ? { ...enrichment, _expiresAt: Date.now() + BOL_ENRICHMENT_CACHE_TTL_MS } : { _expiresAt: Date.now() + BOL_ENRICHMENT_CACHE_TTL_MS };
+              bolEnrichmentCache.set(enrichmentCacheKey, entry);
+            }
+            // Also keep local per-run cache in sync for legacy reads below
+            if (!enrichmentCache.has(enrichmentCacheKey)) {
+              enrichmentCache.set(enrichmentCacheKey, bolEnrichmentCache.get(enrichmentCacheKey) || null);
             }
 
             const enrichmentResponse = enrichmentCache.get(enrichmentCacheKey);
