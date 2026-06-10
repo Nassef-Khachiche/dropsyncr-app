@@ -2181,6 +2181,8 @@ export const getBolShippingLabel = async (req, res) => {
     const normalizedOrderId = String(orderId).trim();
     const installationIdNumber = parseInt(installationId, 10);
 
+    console.log('[BOL LABEL] Request received', { normalizedOrderId, installationId, integrationId, shippingLabelOfferId: shippingLabelOfferId || null, bodyOrderItemsCount: Array.isArray(bodyOrderItems) ? bodyOrderItems.length : 0 });
+
     const matchingOrders = await prisma.order.findMany({
       where: { orderNumber: normalizedOrderId },
       select: { id: true, installationId: true, isVVB: true },
