@@ -24,6 +24,40 @@ const normalizeProductName = (value) => {
  */
 
 // Helper function to get Bol credentials for an installation/integration
+/**
+ * Resolves the best-matching Bol integration for an order.
+ * Matches by storeName first (most precise), then falls back to the supplied integrationId,
+ * and finally to the most-recently-updated active integration for the installation.
+ */
+async function resolveBolIntegrationForOrder(installationId, orderId, integrationId = null) {
+  const installationIdNumber = parseInt(installationId, 10);
+  if (!Number.isFinite(installationIdNumber)) throw new Error('Invalid installation ID');
+
+  const normalizedOrderId = String(orderId || '').trim();
+  let resolvedIntegrationId = integrationId ? parseInt(integrationId, 10) : null;
+
+  if (!resolvedIntegrationId && normalizedOrderId) {
+    const dbOrder = await prisma.order.findFirst({
+      where: { orderNumber: normalizedOrderId, installationId: installationIdNumber },
+      select: { storeName: true },
+    });
+
+    if (dbOrder?.storeName) {
+      const allIntegrations = await prisma.integration.findMany({
+        where: { installationId: installationIdNumber, platform: 'bol.com', active: true },
+      });
+      const matched = allIntegrations.find((intg) => {
+        const creds = JSON.parse(intg.credentials || '{}');
+        const shopName = creds.shopName || `Bol.com #${intg.id}`;
+        return shopName === dbOrder.storeName;
+      });
+      if (matched) resolvedIntegrationId = matched.id;
+    }
+  }
+
+  return getBolIntegration(installationId, resolvedIntegrationId);
+}
+
 async function getBolIntegration(installationId, integrationId = null) {
   const installationIdNumber = parseInt(installationId, 10);
 
@@ -2476,19 +2510,35 @@ export const getBolDeliveryOptions = async (req, res) => {
       return res.status(400).json({ error: 'Installation ID and Order ID are required' });
     }
 
-    const { credentials } = await getBolIntegration(installationId, integrationId);
     const normalizedOrderId = String(orderId || '').trim();
 
+    // Resolve the correct integration for this specific order.
+    // When no integrationId is supplied, match by storeName so we use the right
+    // credentials when multiple Bol integrations exist for the same installation.
+    let credentials;
+    try {
+      ({ credentials } = await resolveBolIntegrationForOrder(installationId, normalizedOrderId, integrationId));
+    } catch (credErr) {
+      console.error('[BOL DELIVERY OPTIONS] Failed to get integration:', credErr.message);
+      return res.status(400).json({ error: credErr.message });
+    }
+
     let orderItemsPayload = null;
+    let bolOrderNotFound = false;
     try {
       orderItemsPayload = await bolApiRequest(credentials, `/orders/${encodeURIComponent(normalizedOrderId)}`);
     } catch (err) {
-      console.warn('[BOL DELIVERY OPTIONS] /orders/{id} failed', { orderId: normalizedOrderId, message: err?.message });
+      const msg = String(err?.message || '');
+      if (/404/.test(msg) && /not found/i.test(msg)) {
+        bolOrderNotFound = true;
+      }
+      console.warn('[BOL DELIVERY OPTIONS] /orders/{id} failed', { orderId: normalizedOrderId, message: msg });
     }
 
     // Fallback: look up order items from the local DB (already synced from Bol).
-    // This avoids extra Bol API calls and works even when the order detail endpoint 403s/404s.
-    if (!orderItemsPayload) {
+    // Only use this when the API failed for a transient reason (403/timeout), NOT when
+    // Bol says the order doesn't exist — stale IDs won't work in that case.
+    if (!orderItemsPayload && !bolOrderNotFound) {
       const dbOrder = await prisma.order.findFirst({
         where: {
           orderNumber: normalizedOrderId,
@@ -2515,13 +2565,19 @@ export const getBolDeliveryOptions = async (req, res) => {
       }
     }
 
-    if (!orderItemsPayload) {
-      return res.status(404).json({ error: 'Order items not found for this Bol order' });
+    // If the order no longer exists in Bol, delivery options aren't applicable.
+    if (bolOrderNotFound || !orderItemsPayload) {
+      return res.json({
+        success: true,
+        orderItems: [],
+        deliveryOptions: [],
+        selectedDeliveryOption: null,
+      });
     }
 
     const orderItems = extractBolOrderItemsForLabel(orderItemsPayload);
     if (orderItems.length === 0) {
-      return res.status(404).json({ error: 'No order items available to resolve delivery options' });
+      return res.json({ success: true, orderItems: [], deliveryOptions: [], selectedDeliveryOption: null });
     }
 
     const handoverWindow = await fetchBolDeliveryOptionHandoverWindow(credentials, orderItems);
