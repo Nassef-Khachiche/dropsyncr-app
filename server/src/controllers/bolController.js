@@ -390,12 +390,31 @@ const fetchBolDeliveryOptionHandoverWindow = async (
     };
   }
 
-  const deliveryOptionsPayload = await bolApiRequest(
-    credentials,
-    '/shipping-labels/delivery-options',
-    'POST',
-    { orderItems: normalizedOrderItems },
-  );
+  let deliveryOptionsPayload;
+  try {
+    deliveryOptionsPayload = await bolApiRequest(
+      credentials,
+      '/shipping-labels/delivery-options',
+      'POST',
+      { orderItems: normalizedOrderItems },
+    );
+  } catch (err) {
+    // Bol returns 404 for FBB orders or unknown order item ids — not a retriable error.
+    // Treat it as "no delivery options available" rather than throwing.
+    const msg = String(err?.message || '');
+    if (/404|unknown order item|can not be fulfilled/i.test(msg)) {
+      console.warn('[BOL DELIVERY OPTIONS] Order items not eligible for FBR label (likely FBB):', msg);
+      return {
+        deliveryOptionsPayload: null,
+        selectedDeliveryOption: null,
+        earliestHandoverDateTime: null,
+        latestHandoverDateTime: null,
+        notEligible: true,
+        notEligibleReason: msg,
+      };
+    }
+    throw err;
+  }
 
   const deliveryOptions = Array.isArray(deliveryOptionsPayload?.deliveryOptions)
     ? deliveryOptionsPayload.deliveryOptions
@@ -2506,6 +2525,14 @@ export const getBolDeliveryOptions = async (req, res) => {
     }
 
     const handoverWindow = await fetchBolDeliveryOptionHandoverWindow(credentials, orderItems);
+
+    if (handoverWindow.notEligible) {
+      return res.status(422).json({
+        error: 'This order cannot be fulfilled by the retailer (FBB order or unknown order item IDs)',
+        details: handoverWindow.notEligibleReason,
+      });
+    }
+
     const deliveryOptions = Array.isArray(handoverWindow.deliveryOptionsPayload?.deliveryOptions)
       ? handoverWindow.deliveryOptionsPayload.deliveryOptions
       : [];
