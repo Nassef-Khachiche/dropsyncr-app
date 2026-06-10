@@ -1010,7 +1010,6 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
           preferredDeliveryOptionId,
           bolOrderItems.length > 0 ? bolOrderItems : undefined,
         );
-        console.log('[BOL LABEL] result keys:', Object.keys(bolLabelResult || {}), 'labelUrl:', bolLabelResult?.labelUrl);
         const deliveryOptionValidation = bolLabelResult?.deliveryOptionValidation || null;
         const directLabelUrl = typeof bolLabelResult?.labelUrl === 'string' && isLikelyUrl(bolLabelResult.labelUrl.trim())
           ? bolLabelResult.labelUrl.trim()

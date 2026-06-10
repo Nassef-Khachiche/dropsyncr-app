@@ -706,7 +706,6 @@ async function getBolLabelWithFallbackInternal(
   // --- Helper: create label from order items + delivery option ---
   const createLabelFromOrderItems = async (orderItemsPayload, preferredOfferId = null) => {
     const orderItems = extractBolOrderItemsForLabel(orderItemsPayload);
-    console.log('[BOL LABEL DEBUG] createLabelFromOrderItems', { itemCount: orderItems.length, preferredOfferId });
     if (orderItems.length === 0) return null;
 
     // If the caller already knows which delivery option to use, skip the API call
@@ -723,9 +722,6 @@ async function getBolLabelWithFallbackInternal(
       );
       selectedDeliveryOption = handoverWindow.selectedDeliveryOption;
       shippingLabelOfferId = String(selectedDeliveryOption?.shippingLabelOfferId || '').trim();
-      console.log('[BOL LABEL DEBUG] selectedDeliveryOption', { shippingLabelOfferId, transporter: selectedDeliveryOption?.transporterCode });
-    } else {
-      console.log('[BOL LABEL DEBUG] Using pre-supplied shippingLabelOfferId:', shippingLabelOfferId);
     }
 
     if (!shippingLabelOfferId) {
@@ -738,44 +734,33 @@ async function getBolLabelWithFallbackInternal(
       'POST',
       { orderItems, shippingLabelOfferId },
     );
-    console.log('[BOL LABEL DEBUG] createLabelPayload', JSON.stringify(createLabelPayload));
 
     let createdShippingLabelId = String(createLabelPayload?.entityId || '').trim();
     if (!createdShippingLabelId) {
       createdShippingLabelId = extractFirstLinkId(createLabelPayload, '/shipping-labels') || '';
     }
 
-    console.log('[BOL LABEL DEBUG] createdShippingLabelId after entityId/link', createdShippingLabelId);
-
-    // FIX: Use polling instead of single attempt — Bol label creation is async
     const processStatusId = createLabelPayload?.processStatusId
       || extractFirstLinkId(createLabelPayload, '/shared/process-status')
       || extractFirstLinkId(createLabelPayload, '/process-status');
     if (!createdShippingLabelId && processStatusId) {
-      console.log('[BOL LABEL DEBUG] polling processStatusId via process-status endpoint', processStatusId);
       createdShippingLabelId = await pollShippingLabelIdFromProcessStatus(credentials, processStatusId, { maxAttempts: 10, delayMs: 3000 }) || '';
-      console.log('[BOL LABEL DEBUG] createdShippingLabelId from process status polling', createdShippingLabelId);
     }
 
-    // Fallback: process was submitted (we have a processStatusId) but we couldn't extract the
-    // entity ID from the process status response. Try to find the newly created label via shipments.
     if (!createdShippingLabelId && processStatusId) {
-      console.log('[BOL LABEL DEBUG] falling back to shipments lookup for label ID');
       try {
         await new Promise((resolve) => setTimeout(resolve, 2000));
         const shipmentsPayload = await bolApiRequest(credentials, `/shipments?order-id=${encodeURIComponent(normalizedOrderId)}`);
         const shipmentLabelIds = extractShippingLabelIdsFromResponse(shipmentsPayload);
         if (shipmentLabelIds.length > 0) {
           createdShippingLabelId = shipmentLabelIds[0];
-          console.log('[BOL LABEL DEBUG] found shippingLabelId from shipments fallback', createdShippingLabelId);
         }
       } catch (fallbackErr) {
-        console.log('[BOL LABEL DEBUG] shipments fallback failed', fallbackErr.message);
+        console.warn('[BOL LABEL] Shipments fallback for label ID failed:', fallbackErr.message);
       }
     }
 
     if (!createdShippingLabelId) {
-      console.log('[BOL LABEL DEBUG] No shippingLabelId found, returning null');
       return null;
     }
 
@@ -828,7 +813,7 @@ async function getBolLabelWithFallbackInternal(
           .filter((item) => item.externalId)
           .map((item) => ({ orderItemId: item.externalId, quantity: item.quantity || 1 }));
         if (dbItems.length > 0) {
-          console.log('[BOL LABEL DEBUG] Using DB externalId fallback for order items', { count: dbItems.length });
+          console.log('[BOL LABEL] Using DB externalId fallback for order items', { count: dbItems.length });
           return { orderItems: dbItems };
         }
       }
@@ -2190,8 +2175,6 @@ export const getBolShippingLabel = async (req, res) => {
     const normalizedOrderId = String(orderId).trim();
     const installationIdNumber = parseInt(installationId, 10);
 
-    console.log('[BOL LABEL] Request received', { normalizedOrderId, installationId, integrationId, shippingLabelOfferId: shippingLabelOfferId || null, bodyOrderItemsCount: Array.isArray(bodyOrderItems) ? bodyOrderItems.length : 0 });
-
     const matchingOrders = await prisma.order.findMany({
       where: { orderNumber: normalizedOrderId },
       select: { id: true, installationId: true, isVVB: true },
@@ -2257,7 +2240,7 @@ export const getBolShippingLabel = async (req, res) => {
 
     // Determine if this is a VVB order so we can auto-supply the preferred offer ID
     const isVvbOrder = matchingOrders.some((o) => o.isVVB);
-    console.log('[BOL LABEL DEBUG] getBolShippingLabel called', { normalizedOrderId, installationId, integrationId, shippingLabelOfferId, isVvbOrder, matchingOrderCount: matchingOrders.length });
+    console.log('[BOL LABEL] getBolShippingLabel called', { normalizedOrderId, installationId, isVvbOrder, matchingOrderCount: matchingOrders.length });
 
     let labelData = null;
     let successfulIntegrationId = null;
