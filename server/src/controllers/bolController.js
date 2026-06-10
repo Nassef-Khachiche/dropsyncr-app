@@ -2427,6 +2427,7 @@ export const getBolShippingLabel = async (req, res) => {
         ...(hasConfirmedTrackingCode ? { orderStatusCode: 'SHIPPED' } : {}),
         ...(earliestDropOffDate ? { earliestDropOffDate } : {}),
         ...(latestDropOffDate ? { latestDropOffDate } : {}),
+        shippingMethod: 'Bol.com',
       },
     });
 

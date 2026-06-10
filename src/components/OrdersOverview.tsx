@@ -1041,9 +1041,8 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
         });
 
         if (typeof labelOrder.id === 'number') {
-          await api.updateOrder(labelOrder.id, {
-            shippingMethod: 'Bol.com',
-          });
+          // shippingMethod is set server-side in the same updateMany call that sets status,
+          // so no separate updateOrder call is needed (and it would fail if status is verzonden).
 
           setOrders((prevOrders) => prevOrders.map((entry) => (
             entry.id === labelOrder.id
