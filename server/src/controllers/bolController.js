@@ -97,8 +97,19 @@ async function getBolIntegrationCandidates(installationId, integrationId = null)
 }
 
 // Helper function to make authenticated Bol API requests
+
+// Token cache: keyed by "clientId:clientSecret" → { token, expiresAt }
+const bolTokenCache = new Map();
+
 async function getBolAccessToken(credentials) {
   const { clientId, clientSecret } = credentials;
+  const cacheKey = `${clientId}:${clientSecret}`;
+
+  const cached = bolTokenCache.get(cacheKey);
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached.token;
+  }
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
 
@@ -131,7 +142,12 @@ async function getBolAccessToken(credentials) {
     throw new Error(`Failed to authenticate with Bol.com API: ${tokenResponse.status} - ${errorText}`);
   }
 
-  const { access_token } = await tokenResponse.json();
+  const tokenData = await tokenResponse.json();
+  const { access_token, expires_in } = tokenData;
+  // Cache token with a 30-second safety buffer before expiry
+  const ttlMs = ((expires_in || 299) - 30) * 1000;
+  bolTokenCache.set(cacheKey, { token: access_token, expiresAt: Date.now() + ttlMs });
+
   return access_token;
 }
 
@@ -168,8 +184,9 @@ async function bolApiRequestRaw(
     ? endpoint
     : `https://api.bol.com/retailer${endpoint}`;
 
+  let response;
   try {
-    return await fetch(url, {
+    response = await fetch(url, {
       ...options,
       signal: controller.signal,
     });
@@ -181,6 +198,36 @@ async function bolApiRequestRaw(
   } finally {
     clearTimeout(timeout);
   }
+
+  // Handle 429 rate limit: wait for Retry-After and retry once
+  if (response.status === 429) {
+    const retryAfter = parseInt(response.headers.get('Retry-After') || '10', 10);
+    const waitMs = (Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 10) * 1000;
+    console.warn(`[BOL] Rate limited (429) on ${endpoint}, retrying after ${waitMs}ms`);
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+    // Invalidate cached token in case it was part of the problem
+    const { clientId, clientSecret } = credentials;
+    bolTokenCache.delete(`${clientId}:${clientSecret}`);
+    const freshToken = await getBolAccessToken(credentials);
+    const retryController = new AbortController();
+    const retryTimeout = setTimeout(() => retryController.abort(), 25000);
+    try {
+      return await fetch(url, {
+        ...options,
+        headers: { ...options.headers, 'Authorization': `Bearer ${freshToken}` },
+        signal: retryController.signal,
+      });
+    } catch (retryError) {
+      if (retryError?.name === 'AbortError') {
+        throw new Error(`Timeout bij Bol endpoint ${endpoint}`);
+      }
+      throw retryError;
+    } finally {
+      clearTimeout(retryTimeout);
+    }
+  }
+
+  return response;
 }
 
 async function bolApiRequest(credentials, endpoint, method = 'GET', body = null) {
@@ -836,15 +883,9 @@ async function getBolLabelWithFallbackInternal(
 
 async function fetchAllBolOrders(credentials) {
   const maxPages = 200;
-  const statusesToFetch = [
-    'ALL',
-    'OPEN',
-    'PROCESSING',
-    'PROCESSED',
-    'SHIPPED',
-    'DELIVERED',
-    'CANCELLED',
-  ];
+  // Only fetch with status=ALL — querying individual statuses separately is redundant
+  // and multiplies API calls by 7x, causing rate limit (429) errors.
+  const statusesToFetch = ['ALL'];
   const dedupedOrders = new Map();
 
   for (const status of statusesToFetch) {
