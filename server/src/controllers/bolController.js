@@ -947,6 +947,57 @@ async function fetchAllBolOrders(credentials) {
   return Array.from(dedupedOrders.values());
 }
 
+/**
+ * Bulk-fetch all shipments and return a Map<orderId, shipmentsPayload>.
+ * This avoids one /shipments?order-id=... call per order in the sync loop,
+ * which is the main cause of 429 rate-limit errors.
+ */
+async function fetchAllBolShipmentsMap(credentials) {
+  const maxPages = 200;
+  // shipmentsByOrderId: orderId string -> { shipments: [...] }
+  const shipmentsByOrderId = new Map();
+
+  for (let page = 1; page <= maxPages; page += 1) {
+    let response;
+    try {
+      response = await bolApiRequest(credentials, `/shipments?page=${page}`);
+    } catch (error) {
+      console.warn('[BOL SYNC] Failed to fetch bulk shipments page', { page, message: error.message });
+      break;
+    }
+
+    const shipments = Array.isArray(response?.shipments) ? response.shipments : [];
+    if (shipments.length === 0) break;
+
+    for (const shipment of shipments) {
+      // Each shipment may reference one or more order items with an orderId
+      const orderIds = new Set();
+
+      // Direct orderId on the shipment
+      const directOrderId = String(shipment?.orderId || shipment?.orderNumber || '').trim();
+      if (directOrderId) orderIds.add(directOrderId);
+
+      // orderId nested inside shipmentItems
+      const items = Array.isArray(shipment?.shipmentItems) ? shipment.shipmentItems : [];
+      for (const item of items) {
+        const itemOrderId = String(item?.orderId || item?.orderNumber || '').trim();
+        if (itemOrderId) orderIds.add(itemOrderId);
+      }
+
+      for (const orderId of orderIds) {
+        if (!shipmentsByOrderId.has(orderId)) {
+          shipmentsByOrderId.set(orderId, { shipments: [] });
+        }
+        shipmentsByOrderId.get(orderId).shipments.push(shipment);
+      }
+    }
+
+    if (shipments.length < 50) break;
+  }
+
+  return shipmentsByOrderId;
+}
+
 async function findOrderInFbrOrderPages(credentials, orderId, maxPages = 8) {
   const normalizedOrderId = String(orderId || '').trim();
   if (!normalizedOrderId) return null;
@@ -1520,6 +1571,15 @@ export const syncBolOrders = async (req, res) => {
 
     console.log('[BOL SYNC] Fetched orders from Bol.com:', { totalOrders: bolOrders.length });
 
+    // Bulk-fetch all shipments once and index by orderId to avoid per-order API calls (429)
+    let allShipmentsMap = new Map();
+    try {
+      allShipmentsMap = await fetchAllBolShipmentsMap(credentials);
+      console.log('[BOL SYNC] Bulk-fetched shipments index size:', allShipmentsMap.size);
+    } catch (shipmentsError) {
+      console.warn('[BOL SYNC] Could not bulk-fetch shipments, will fall back to per-order calls:', shipmentsError.message);
+    }
+
     let importedCount = 0;
     let updatedCount = 0;
     const enrichmentCache = new Map();
@@ -1552,10 +1612,15 @@ export const syncBolOrders = async (req, res) => {
         }
       }
 
-      try {
-        bolShipmentDetails = await bolApiRequest(credentials, `/shipments?order-id=${bolOrder.orderId}`);
-      } catch (detailError) {
-        console.warn('[BOL SYNC] Failed to fetch shipment details:', detailError.message);
+      // Use bulk-fetched shipments map first; only fall back to per-order call if not found
+      if (allShipmentsMap.has(currentBolOrderId)) {
+        bolShipmentDetails = allShipmentsMap.get(currentBolOrderId);
+      } else {
+        try {
+          bolShipmentDetails = await bolApiRequest(credentials, `/shipments?order-id=${bolOrder.orderId}`);
+        } catch (detailError) {
+          console.warn('[BOL SYNC] Failed to fetch shipment details:', detailError.message);
+        }
       }
 
       const orderPayload = bolOrderDetails || bolOrder;
