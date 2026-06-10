@@ -800,6 +800,7 @@ async function getBolLabelWithFallbackInternal(
       return { orderItems: prefetchedOrderItems };
     }
 
+    // Try Bol API (may 403 if credentials lack order-items scope)
     try {
       const payload = await bolApiRequest(credentials, `/orders/${encodeURIComponent(normalizedOrderId)}/order-items`);
       if (payload) return payload;
@@ -807,17 +808,23 @@ async function getBolLabelWithFallbackInternal(
       errors.push({ endpoint: `/orders/${normalizedOrderId}/order-items`, error });
     }
 
+    // DB fallback: use stored externalId values from last sync — avoids API page scanning
     try {
-      const matchingListedOrder = await findOrderInFbrOrderPages(credentials, normalizedOrderId, 8);
-      if (matchingListedOrder) {
-        return {
-          orderItems: Array.isArray(matchingListedOrder.orderItems)
-            ? matchingListedOrder.orderItems
-            : [],
-        };
+      const dbOrder = await prisma.order.findFirst({
+        where: { orderNumber: normalizedOrderId },
+        include: { orderItems: { select: { externalId: true, quantity: true } } },
+      });
+      if (dbOrder?.orderItems?.length > 0) {
+        const dbItems = dbOrder.orderItems
+          .filter((item) => item.externalId)
+          .map((item) => ({ orderItemId: item.externalId, quantity: item.quantity || 1 }));
+        if (dbItems.length > 0) {
+          console.log('[BOL LABEL DEBUG] Using DB externalId fallback for order items', { count: dbItems.length });
+          return { orderItems: dbItems };
+        }
       }
-    } catch (error) {
-      errors.push({ endpoint: '/orders?status=ALL&page=*', error });
+    } catch (dbError) {
+      errors.push({ endpoint: 'db:orderItems', error: dbError });
     }
 
     return null;
@@ -2263,12 +2270,19 @@ export const getBolShippingLabel = async (req, res) => {
                 `/orders/${encodeURIComponent(normalizedOrderId)}/order-items`,
               );
             } catch {
-              const listedOrder = await findOrderInFbrOrderPages(candidate.credentials, normalizedOrderId, 8);
-              if (listedOrder) {
-                orderItemsPayload = {
-                  orderItems: Array.isArray(listedOrder.orderItems) ? listedOrder.orderItems : [],
-                };
-              }
+              // DB fallback
+              try {
+                const dbOrder = await prisma.order.findFirst({
+                  where: { orderNumber: normalizedOrderId },
+                  include: { orderItems: { select: { externalId: true, quantity: true } } },
+                });
+                if (dbOrder?.orderItems?.length > 0) {
+                  const dbItems = dbOrder.orderItems
+                    .filter((item) => item.externalId)
+                    .map((item) => ({ orderItemId: item.externalId, quantity: item.quantity || 1 }));
+                  if (dbItems.length > 0) orderItemsPayload = { orderItems: dbItems };
+                }
+              } catch { /* non-fatal */ }
             }
 
             if (orderItemsPayload) {
@@ -2434,10 +2448,21 @@ export const getBolShippingLabel = async (req, res) => {
               `/orders/${encodeURIComponent(normalizedOrderId)}/order-items`,
             );
           } catch {
-            const listedOrder = await findOrderInFbrOrderPages(successfulCredentials, normalizedOrderId, 8);
-            if (listedOrder) {
-              orderItemsPayload = { orderItems: Array.isArray(listedOrder.orderItems) ? listedOrder.orderItems : [] };
-            }
+            // DB fallback: use stored externalId values
+            try {
+              const dbOrder = await prisma.order.findFirst({
+                where: { orderNumber: normalizedOrderId },
+                include: { orderItems: { select: { externalId: true, quantity: true } } },
+              });
+              if (dbOrder?.orderItems?.length > 0) {
+                const dbItems = dbOrder.orderItems
+                  .filter((item) => item.externalId)
+                  .map((item) => ({ orderItemId: item.externalId, quantity: item.quantity || 1 }));
+                if (dbItems.length > 0) {
+                  orderItemsPayload = { orderItems: dbItems };
+                }
+              }
+            } catch { /* non-fatal */ }
           }
           if (orderItemsPayload) {
             shipmentOrderItems = extractBolOrderItemsForLabel(orderItemsPayload);

@@ -418,6 +418,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
     trackingUrl?: string | null;
   } | null>(null);
   const [bolDeliveryOptions, setBolDeliveryOptions] = useState<BolDeliveryOption[]>([]);
+  const [bolOrderItems, setBolOrderItems] = useState<Array<{ orderItemId: string; quantity: number }>>([]);
   const [selectedBolDeliveryOptionId, setSelectedBolDeliveryOptionId] = useState<string>('');
   const [loadingBolDeliveryOptions, setLoadingBolDeliveryOptions] = useState(false);
 
@@ -497,6 +498,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
     const loadBolDeliveryOptions = async () => {
       if (!showLabelDialog || selectedContractId !== VVB_CONTRACT_ID || !labelOrder) {
         setBolDeliveryOptions([]);
+        setBolOrderItems([]);
         setSelectedBolDeliveryOptionId('');
         setLoadingBolDeliveryOptions(false);
         return;
@@ -524,6 +526,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
         const options = Array.isArray(optionsResult.deliveryOptions) ? optionsResult.deliveryOptions : [];
 
         setBolDeliveryOptions(options);
+        setBolOrderItems(Array.isArray(optionsResult.orderItems) ? optionsResult.orderItems : []);
 
         const defaultOption = options.find((option: BolDeliveryOption) => option?.recommended)
           || optionsResult.selectedDeliveryOption
@@ -1005,6 +1008,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
           bolOrderId,
           integrationId,
           preferredDeliveryOptionId,
+          bolOrderItems.length > 0 ? bolOrderItems : undefined,
         );
         const deliveryOptionValidation = bolLabelResult?.deliveryOptionValidation || null;
         const directLabelUrl = typeof bolLabelResult?.labelUrl === 'string' && isLikelyUrl(bolLabelResult.labelUrl.trim())

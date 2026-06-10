@@ -608,6 +608,7 @@ class ApiService {
     orderId: string,
     integrationId?: number | string,
     shippingLabelOfferId?: string,
+    orderItems?: Array<{ orderItemId: string; quantity: number }>,
   ) {
     return this.request<any>('/bol/shipping-label', {
       method: 'POST',
@@ -616,6 +617,7 @@ class ApiService {
         orderId,
         ...(integrationId !== undefined && integrationId !== null && String(integrationId).trim() ? { integrationId } : {}),
         ...(shippingLabelOfferId !== undefined && shippingLabelOfferId !== null && String(shippingLabelOfferId).trim() ? { shippingLabelOfferId } : {}),
+        ...(Array.isArray(orderItems) && orderItems.length > 0 ? { orderItems } : {}),
       }),
     });
   }
