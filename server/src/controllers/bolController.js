@@ -399,10 +399,10 @@ const fetchBolDeliveryOptionHandoverWindow = async (
       { orderItems: normalizedOrderItems },
     );
   } catch (err) {
-    // Bol returns 404 for FBB orders or unknown order item ids — not a retriable error.
-    // Treat it as "no delivery options available" rather than throwing.
+    // Bol returns 404 with a specific message for FBB orders or unknown order item ids.
+    // Only suppress that specific case — other errors should still throw.
     const msg = String(err?.message || '');
-    if (/404|unknown order item|can not be fulfilled/i.test(msg)) {
+    if (/unknown order item|can not be fulfilled by the retailer/i.test(msg)) {
       console.warn('[BOL DELIVERY OPTIONS] Order items not eligible for FBR label (likely FBB):', msg);
       return {
         deliveryOptionsPayload: null,
