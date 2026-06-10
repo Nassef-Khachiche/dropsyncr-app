@@ -709,15 +709,24 @@ async function getBolLabelWithFallbackInternal(
     console.log('[BOL LABEL DEBUG] createLabelFromOrderItems', { itemCount: orderItems.length, preferredOfferId });
     if (orderItems.length === 0) return null;
 
-    const handoverWindow = await fetchBolDeliveryOptionHandoverWindow(
-      credentials,
-      orderItems,
-      preferredOfferId || null,
-    );
+    // If the caller already knows which delivery option to use, skip the API call
+    // and use it directly — avoids a redundant /delivery-options call that may 404 for FBB orders.
+    let shippingLabelOfferId = String(preferredOfferId || '').trim();
+    let selectedDeliveryOption = null;
+    let handoverWindow = { selectedDeliveryOption: null, earliestHandoverDateTime: null, latestHandoverDateTime: null };
 
-    const selectedDeliveryOption = handoverWindow.selectedDeliveryOption;
-    const shippingLabelOfferId = String(selectedDeliveryOption?.shippingLabelOfferId || '').trim();
-    console.log('[BOL LABEL DEBUG] selectedDeliveryOption', { shippingLabelOfferId, transporter: selectedDeliveryOption?.transporterCode });
+    if (!shippingLabelOfferId) {
+      handoverWindow = await fetchBolDeliveryOptionHandoverWindow(
+        credentials,
+        orderItems,
+        null,
+      );
+      selectedDeliveryOption = handoverWindow.selectedDeliveryOption;
+      shippingLabelOfferId = String(selectedDeliveryOption?.shippingLabelOfferId || '').trim();
+      console.log('[BOL LABEL DEBUG] selectedDeliveryOption', { shippingLabelOfferId, transporter: selectedDeliveryOption?.transporterCode });
+    } else {
+      console.log('[BOL LABEL DEBUG] Using pre-supplied shippingLabelOfferId:', shippingLabelOfferId);
+    }
 
     if (!shippingLabelOfferId) {
       throw new Error('Geen Bol delivery option gevonden voor deze order items');
