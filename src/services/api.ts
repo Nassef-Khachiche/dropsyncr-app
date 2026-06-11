@@ -827,6 +827,15 @@ class ApiService {
     );
   }
 
+  async moveBatchLocation(batchId: number, data: { newLocationId: number; notes?: string }) {
+    return this.request<{ message: string; batchId: number; newLocationId: number }>(
+      `/stock/batch/${batchId}/location`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }
+    );
+  }
+
   async getAllMutations(params?: { installationId?: string; period?: string }) {
     const queryParams = new URLSearchParams();
     if (params?.installationId) queryParams.append('installationId', params.installationId);

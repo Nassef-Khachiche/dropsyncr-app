@@ -363,9 +363,10 @@ model WarehouseLocation {
   id             Int                 @id @default(autoincrement())
   installationId Int
   code           String
-  type           String              // 'row' | 'section' | 'case'
+  type           String              // 'row' | 'section' | 'case' | 'pallet'
   parentId       Int?
   active         Boolean             @default(true)
+  arrowDirection String              @default("none")  // 'up' | 'down' | 'none' — alleen op case-niveau gebruikt
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
   installation   Installation        @relation(fields: [installationId], references: [id], onDelete: Cascade)
