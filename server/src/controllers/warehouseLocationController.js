@@ -46,8 +46,8 @@ export const createLocation = async (req, res) => {
       return res.status(400).json({ error: 'Code and type are required' });
     }
 
-    if (!['row', 'section', 'case'].includes(type)) {
-      return res.status(400).json({ error: 'Type must be row, section, or case' });
+    if (!['row', 'section', 'case', 'pallet'].includes(type)) {
+      return res.status(400).json({ error: 'Type must be row, section, case, or pallet' });
     }
 
     // Validate parent
@@ -56,6 +56,9 @@ export const createLocation = async (req, res) => {
     }
     if (type === 'case' && !parentId) {
       return res.status(400).json({ error: 'Case requires a parent section' });
+    }
+    if (type === 'pallet' && !parentId) {
+      return res.status(400).json({ error: 'Pallet requires a parent case' });
     }
 
     const location = await prisma.warehouseLocation.create({
@@ -81,7 +84,7 @@ export const createLocation = async (req, res) => {
 export const updateLocation = async (req, res) => {
   try {
     const { id } = req.params;
-    const { code, active } = req.body;
+    const { code, active, arrowDirection } = req.body;
 
     if (!req.user.isGlobalAdmin) {
       return res.status(403).json({ error: 'Only administrators can update locations' });
@@ -95,6 +98,12 @@ export const updateLocation = async (req, res) => {
     const updateData = {};
     if (code !== undefined) updateData.code = code.trim().toUpperCase();
     if (active !== undefined) updateData.active = active;
+    if (arrowDirection !== undefined) {
+      if (!['up', 'down', 'none'].includes(arrowDirection)) {
+        return res.status(400).json({ error: 'arrowDirection must be up, down, or none' });
+      }
+      updateData.arrowDirection = arrowDirection;
+    }
 
     const location = await prisma.warehouseLocation.update({
       where: { id: parsedId },
@@ -114,7 +123,7 @@ export const updateLocation = async (req, res) => {
 export const bulkCreateLocations = async (req, res) => {
   try {
     const { installationId, rows } = req.body;
-    // rows = [{ code, sections: [{ code, cases: [{ code }] }] }]
+    // rows = [{ code, sections: [{ code, cases: [{ code, pallets: [{ code }] }] }] }]
 
     if (!req.user.isGlobalAdmin) {
       return res.status(403).json({ error: 'Only administrators can create locations' });
@@ -165,6 +174,20 @@ export const bulkCreateLocations = async (req, res) => {
             },
           });
           created.push(caseLocation);
+
+          for (const palletData of (caseData.pallets || [])) {
+            // Create pallet (palletplaats) — 4th level
+            const palletLocation = await prisma.warehouseLocation.create({
+              data: {
+                installationId: parsedInstallationId,
+                code: palletData.code.trim().toUpperCase(),
+                type: 'pallet',
+                parentId: caseLocation.id,
+                active: true,
+              },
+            });
+            created.push(palletLocation);
+          }
         }
       }
     }

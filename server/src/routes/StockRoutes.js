@@ -6,6 +6,7 @@ import {
   reserveStock,
   pickStock,
   adjustStock,
+  moveBatchLocation,
   getProductMutations,
   getProductBatches,
   cancelReservation,
@@ -34,6 +35,9 @@ router.post('/pick', authenticate, pickStock);
 
 // Correctie
 router.post('/adjust', authenticate, adjustStock);
+
+// verplaatsen
+router.put('/batch/:batchId/location', authenticate, moveBatchLocation);
 
 // Alle mutaties (globale historie) — moet VOOR /:productId routes staan
 router.get('/mutations', authenticate, getAllMutations);

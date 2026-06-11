@@ -150,6 +150,15 @@ export function InventoryManagement({ activeProfile, isGlobalAdmin = false }: In
   const [correctieSaving, setCorrectieSaving] = useState(false);
   const [correctieForm, setCorrectieForm] = useState({ quantity: '', notes: '' });
 
+  // Verplaats-dialog (batch naar andere locatie)
+  const [showMoveDialog, setShowMoveDialog] = useState(false);
+  const [moveItem, setMoveItem] = useState<InventoryItem | null>(null);
+  const [moveBatches, setMoveBatches] = useState<any[]>([]);
+  const [moveBatchesLoading, setMoveBatchesLoading] = useState(false);
+  const [moveLocations, setMoveLocations] = useState<any[]>([]);
+  const [moveSelections, setMoveSelections] = useState<Record<number, string>>({}); // batchId -> nieuwe locationId
+  const [moveSavingId, setMoveSavingId] = useState<number | null>(null);
+
   // EAN Alias dialog
   const [showAliasDialog, setShowAliasDialog] = useState(false);
   const [aliasItem, setAliasItem] = useState<InventoryItem | null>(null);
@@ -214,7 +223,7 @@ export function InventoryManagement({ activeProfile, isGlobalAdmin = false }: In
     const warehouseInstallationId = activeProfile || inboundForm.installationId;
     if (!warehouseInstallationId) { setLocations([]); return; }
     api.getLocations(warehouseInstallationId)
-      .then(data => setLocations((data.locations || []).filter((l: any) => l.type === 'case' && l.active)))
+      .then(data => setLocations((data.locations || []).filter((l: any) => (l.type === 'case' || l.type === 'pallet') && l.active)))
       .catch(() => setLocations([]));
   }, [inboundForm.installationId, activeProfile]);
 
@@ -402,6 +411,48 @@ export function InventoryManagement({ activeProfile, isGlobalAdmin = false }: In
       toast.error(error.message || 'Kon correctie niet opslaan');
     } finally { setCorrectieSaving(false); }
   };
+
+  // ─── Verplaatsen (batch → andere locatie) ────────────────────────────────────
+
+  const handleOpenMove = async (item: InventoryItem) => {
+    setMoveItem(item);
+    setMoveSelections({});
+    setShowMoveDialog(true);
+    setMoveBatchesLoading(true);
+    try {
+      const installId = String(item.installationId || activeProfile || '');
+      const [batchData, locData] = await Promise.all([
+        api.getProductBatches(item.id, installId),
+        api.getLocations(installId),
+      ]);
+      setMoveBatches(batchData.batches || []);
+      setMoveLocations((locData.locations || []).filter((l: any) => (l.type === 'case' || l.type === 'pallet') && l.active));
+    } catch {
+      toast.error('Kon batches niet laden');
+      setMoveBatches([]);
+      setMoveLocations([]);
+    } finally {
+      setMoveBatchesLoading(false);
+    }
+  };
+
+  const handleMoveBatch = async (batch: any) => {
+    const newLocationId = moveSelections[batch.id];
+    if (!newLocationId) { toast.error('Kies een nieuwe locatie'); return; }
+    if (parseInt(newLocationId, 10) === batch.locationId) { toast.error('Dit is al de huidige locatie'); return; }
+    try {
+      setMoveSavingId(batch.id);
+      await api.moveBatchLocation(batch.id, { newLocationId: parseInt(newLocationId, 10) });
+      setMoveBatches(prev => prev.map(b => b.id === batch.id ? { ...b, locationId: parseInt(newLocationId, 10) } : b));
+      setMoveSelections(prev => { const next = { ...prev }; delete next[batch.id]; return next; });
+      toast.success('Locatie gewijzigd');
+      loadInventory();
+    } catch (error: any) {
+      toast.error(error.message || 'Kon locatie niet wijzigen');
+    } finally { setMoveSavingId(null); }
+  };
+
+  const locationCodeById = (id: number) => moveLocations.find((l: any) => l.id === id)?.code || '—';
 
   // ─── EAN Aliassen ────────────────────────────────────────────────────────────
 
@@ -665,7 +716,7 @@ export function InventoryManagement({ activeProfile, isGlobalAdmin = false }: In
               <TableHead className="w-[80px] text-right">{t('reserved')}</TableHead>
               <TableHead className="w-[80px] text-right">{t('available')}</TableHead>
               <TableHead className="w-[60px] text-right">{t('total')}</TableHead>
-              <TableHead className="w-[100px]"></TableHead>
+              <TableHead className="w-[140px]"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -718,6 +769,9 @@ export function InventoryManagement({ activeProfile, isGlobalAdmin = false }: In
                   <TableCell>
                     <div className="flex items-center gap-1">
                       <Button variant="ghost" size="sm" onClick={() => handleOpenAliasDialog(item)} className="h-8 w-8 p-0 text-slate-400 hover:text-purple-600" title="EAN aliassen beheren"><Link className="w-4 h-4" /></Button>
+                      {isGlobalAdmin && (
+                        <Button variant="ghost" size="sm" onClick={() => handleOpenMove(item)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-600" title="Locatie verplaatsen"><ArrowLeftRight className="w-4 h-4" /></Button>
+                      )}
                       {isGlobalAdmin && (
                         <Button variant="ghost" size="sm" onClick={() => handleOpenCorrectie(item)} className="h-8 w-8 p-0 text-slate-400 hover:text-amber-600" title="Voorraad corrigeren"><SlidersHorizontal className="w-4 h-4" /></Button>
                       )}
@@ -962,6 +1016,63 @@ export function InventoryManagement({ activeProfile, isGlobalAdmin = false }: In
               {correctieSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <SlidersHorizontal className="w-4 h-4 mr-2" />}
               Correctie opslaan
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Verplaats-dialog (batch → andere locatie) ─── */}
+      <Dialog open={showMoveDialog} onOpenChange={setShowMoveDialog}>
+        <DialogContent className="sm:max-w-[560px] max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><ArrowLeftRight className="w-4 h-4 text-blue-600" />Locatie verplaatsen</DialogTitle>
+            <DialogDescription className="truncate">{moveItem?.artikel_naam}</DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto mt-2">
+            {moveBatchesLoading ? (
+              <div className="flex items-center justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-indigo-600" /></div>
+            ) : moveBatches.length === 0 ? (
+              <div className="text-center py-12 text-slate-400"><Package className="w-10 h-10 mx-auto mb-2 text-slate-300" /><p>Geen batches gevonden</p></div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-xs text-slate-500">Kies per batch een nieuwe locatie. De voorraad blijft gelijk; alleen de locatie verandert en wordt gelogd.</p>
+                {moveBatches.map((batch: any) => {
+                  const isSaving = moveSavingId === batch.id;
+                  const selectedNew = moveSelections[batch.id] || '';
+                  return (
+                    <div key={batch.id} className="rounded-lg border border-slate-200 p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-3 text-sm">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="px-2 py-0.5 rounded text-xs font-mono bg-slate-100 border border-slate-200 text-slate-700">{locationCodeById(batch.locationId)}</span>
+                          <span className="text-slate-500 text-xs">·</span>
+                          <span className="text-slate-700 font-medium">{batch.quantity} stuks</span>
+                        </div>
+                        <span className="text-xs text-slate-400 shrink-0">{formatDate(batch.receivedAt)}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Select value={selectedNew} onValueChange={(v) => setMoveSelections(prev => ({ ...prev, [batch.id]: v }))}>
+                          <SelectTrigger className="h-9 flex-1"><SelectValue placeholder="Nieuwe locatie..." /></SelectTrigger>
+                          <SelectContent>
+                            {moveLocations.map((loc: any) => (
+                              <SelectItem key={loc.id} value={String(loc.id)}>{loc.code}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          onClick={() => handleMoveBatch(batch)}
+                          disabled={isSaving || !selectedNew}
+                        >
+                          {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowLeftRight className="w-4 h-4" />}
+                          Verplaats
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          <div className="pt-3 border-t border-slate-100">
+            <Button variant="outline" onClick={() => setShowMoveDialog(false)} className="w-full">Sluiten</Button>
           </div>
         </DialogContent>
       </Dialog>

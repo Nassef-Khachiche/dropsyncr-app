@@ -463,6 +463,64 @@ export const adjustStock = async (req, res) => {
   }
 };
 
+// ─── PUT /api/stock/batch/:batchId/location ──────────────────────────────────
+
+export const moveBatchLocation = async (req, res) => {
+  try {
+    const { batchId } = req.params;
+    const { newLocationId, notes } = req.body;
+
+    const parsedBatchId = parseInt(batchId, 10);
+    const parsedNewLocationId = parseInt(newLocationId, 10);
+
+    if (Number.isNaN(parsedBatchId)) return res.status(400).json({ error: 'Invalid batch ID' });
+    if (Number.isNaN(parsedNewLocationId)) return res.status(400).json({ error: 'Invalid location ID' });
+
+    const batch = await prisma.stockBatch.findUnique({ where: { id: parsedBatchId } });
+    if (!batch) return res.status(404).json({ error: 'Batch niet gevonden' });
+
+    const installationIds = await getInstallationIds(req, batch.installationId);
+    if (!installationIds) return res.status(403).json({ error: 'Access denied' });
+
+    // Doel-locatie moet bestaan en bij dezelfde installatie horen
+    const targetLocation = await prisma.warehouseLocation.findFirst({
+      where: { id: parsedNewLocationId, installationId: batch.installationId },
+    });
+    if (!targetLocation) return res.status(404).json({ error: 'Doel-locatie niet gevonden' });
+
+    // Oude locatiecode voor de log
+    const oldLocation = batch.locationId
+      ? await prisma.warehouseLocation.findUnique({ where: { id: batch.locationId }, select: { code: true } })
+      : null;
+    const oldCode = oldLocation?.code || 'onbekend';
+
+    // Verplaats de batch
+    await prisma.stockBatch.update({
+      where: { id: parsedBatchId },
+      data: { locationId: parsedNewLocationId },
+    });
+
+    // Log als move-mutatie (voorraad-neutraal, quantity 0)
+    await prisma.stockMutation.create({
+      data: {
+        installationId: batch.installationId,
+        productId: batch.productId,
+        batchId: parsedBatchId,
+        type: 'move',
+        quantity: 0,
+        locationId: parsedNewLocationId,
+        performedBy: req.user.id,
+        notes: `Locatie gewijzigd: ${oldCode} → ${targetLocation.code}${notes ? ` (${notes})` : ''}`,
+      },
+    });
+
+    res.json({ message: 'Locatie gewijzigd', batchId: parsedBatchId, newLocationId: parsedNewLocationId });
+  } catch (error) {
+    console.error('Move batch location error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
 // ─── GET /api/stock/mutations ─────────────────────────────────────────────────
 
 export const getAllMutations = async (req, res) => {
