@@ -421,9 +421,10 @@ export function InventoryManagement({ activeProfile, isGlobalAdmin = false }: In
     setMoveBatchesLoading(true);
     try {
       const installId = String(item.installationId || activeProfile || '');
+      const warehouseInstallId = String(activeProfile || item.installationId || '');
       const [batchData, locData] = await Promise.all([
         api.getProductBatches(item.id, installId),
-        api.getLocations(installId),
+        api.getLocations(warehouseInstallId),
       ]);
       setMoveBatches(batchData.batches || []);
       setMoveLocations((locData.locations || []).filter((l: any) => (l.type === 'case' || l.type === 'pallet') && l.active));
