@@ -204,6 +204,7 @@ type TranslationKey =
   | 'totalRows'
   | 'totalSections'
   | 'totalCases'
+  | 'totalPallets'
   | 'searchLocationCode'
   | 'locationOverview'
   | 'locationOverviewSubtitle'
@@ -212,6 +213,7 @@ type TranslationKey =
   | 'row'
   | 'section'
   | 'case'
+  | 'pallet'
   | 'inactive'
   | 'deactivate'
   | 'activate'
@@ -223,11 +225,14 @@ type TranslationKey =
   | 'errorDeletingLocation'
   | 'errorCreatingLocation'
   | 'locationCreated'
+  | 'locationsCreated'
   | 'locationType'
   | 'parentRow'
   | 'parentSection'
+  | 'parentCase'
   | 'selectRow'
   | 'selectSection'
+  | 'selectCase'
   | 'locationCode'
   | 'locationCodeRequired'
   | 'parentLocationRequired'
@@ -236,15 +241,27 @@ type TranslationKey =
   | 'locationCodeRowPlaceholder'
   | 'locationCodeSectionPlaceholder'
   | 'locationCodeCasePlaceholder'
+  | 'locationCodePalletPlaceholder'
   | 'bulkCreate'
   | 'bulkCreateSubtitle'
   | 'startCode'
   | 'amount'
   | 'perRow'
   | 'perSection'
+  | 'perCase'
   | 'preview'
+  | 'rows'
+  | 'upTo'
+  | 'exampleSection'
+  | 'exampleCase'
+  | 'examplePallet'
+  | 'locationsLower'
   | 'printBarcode'
   | 'printAllBarcodes'
+  | 'arrowUpdated'
+  | 'arrowUp'
+  | 'arrowDown'
+  | 'arrowNone'
   | 'productManagement'
   | 'productManagementSubtitle'
   | 'newProduct'
@@ -491,6 +508,7 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     totalRows: 'Total Rows',
     totalSections: 'Total Sections',
     totalCases: 'Total Cases',
+    totalPallets: 'Total Pallet Locations',
     searchLocationCode: 'Search by location code...',
     locationOverview: 'Location overview',
     locationOverviewSubtitle: 'Hierarchical overview of all warehouse locations',
@@ -499,6 +517,7 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     row: 'Row',
     section: 'Section',
     case: 'Case',
+    pallet: 'Pallet location',
     inactive: 'Inactive',
     deactivate: 'Deactivate',
     activate: 'Activate',
@@ -510,11 +529,14 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     errorDeletingLocation: 'Could not delete location',
     errorCreatingLocation: 'Could not create location',
     locationCreated: 'Location created',
+    locationsCreated: 'locations created',
     locationType: 'Location type',
     parentRow: 'Parent row',
     parentSection: 'Parent section',
+    parentCase: 'Parent case',
     selectRow: 'Select a row',
     selectSection: 'Select a section',
+    selectCase: 'Select a case',
     locationCode: 'Location code',
     locationCodeRequired: 'Please enter a location code',
     parentLocationRequired: 'Please select a parent location',
@@ -523,15 +545,27 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     locationCodeRowPlaceholder: 'e.g. A',
     locationCodeSectionPlaceholder: 'e.g. A-01',
     locationCodeCasePlaceholder: 'e.g. A-01-1',
+    locationCodePalletPlaceholder: 'e.g. A-01-1-P1',
     bulkCreate: 'Bulk create',
-    bulkCreateSubtitle: 'Create multiple rows, sections and cases at once',
+    bulkCreateSubtitle: 'Create multiple rows, sections, cases and pallet locations at once',
     startCode: 'Start code',
     amount: 'Amount',
     perRow: 'per row',
     perSection: 'per section',
+    perCase: 'per case',
     preview: 'Preview',
+    rows: 'Rows',
+    upTo: 'to',
+    exampleSection: 'Example section',
+    exampleCase: 'Example case',
+    examplePallet: 'Example pallet location',
+    locationsLower: 'locations',
     printBarcode: 'Print barcode',
     printAllBarcodes: 'Print all barcodes in row',
+    arrowUpdated: 'Arrow direction updated',
+    arrowUp: 'Arrow up',
+    arrowDown: 'Arrow down',
+    arrowNone: 'No arrow',
     productManagement: 'Product Management',
     productManagementSubtitle: 'Manage products and product information',
     newProduct: 'New product',
@@ -775,14 +809,16 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     totalRows: 'Totaal Rijen',
     totalSections: 'Totaal Secties',
     totalCases: 'Totaal Cases',
+    totalPallets: 'Totaal Palletplaatsen',
     searchLocationCode: 'Zoek op locatiecode...',
     locationOverview: 'Locatieoverzicht',
-    locationOverviewSubtitle: 'Hiërarchisch overzicht van alle warehouse locaties',
+    locationOverviewSubtitle: 'Hierarchisch overzicht van alle warehouse locaties',
     noLocationsFound: 'Geen locaties gevonden',
     noLocationsYet: 'Nog geen locaties aangemaakt',
     row: 'Rij',
     section: 'Sectie',
     case: 'Case',
+    pallet: 'Palletplaats',
     inactive: 'Inactief',
     deactivate: 'Deactiveren',
     activate: 'Activeren',
@@ -794,11 +830,14 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     errorDeletingLocation: 'Kon locatie niet verwijderen',
     errorCreatingLocation: 'Kon locatie niet aanmaken',
     locationCreated: 'Locatie aangemaakt',
+    locationsCreated: 'locaties aangemaakt',
     locationType: 'Type locatie',
     parentRow: 'Bovenliggende rij',
     parentSection: 'Bovenliggende sectie',
+    parentCase: 'Bovenliggende case',
     selectRow: 'Selecteer een rij',
     selectSection: 'Selecteer een sectie',
+    selectCase: 'Selecteer een case',
     locationCode: 'Locatiecode',
     locationCodeRequired: 'Voer een locatiecode in',
     parentLocationRequired: 'Selecteer een bovenliggende locatie',
@@ -807,15 +846,27 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     locationCodeRowPlaceholder: 'bijv. A',
     locationCodeSectionPlaceholder: 'bijv. A-01',
     locationCodeCasePlaceholder: 'bijv. A-01-1',
+    locationCodePalletPlaceholder: 'bijv. A-01-1-P1',
     bulkCreate: 'Bulk aanmaken',
-    bulkCreateSubtitle: 'Maak meerdere rijen, secties en cases tegelijk aan',
+    bulkCreateSubtitle: 'Maak meerdere rijen, secties, cases en palletplaatsen tegelijk aan',
     startCode: 'Startcode',
     amount: 'Aantal',
     perRow: 'per rij',
     perSection: 'per sectie',
+    perCase: 'per case',
     preview: 'Voorbeeld',
+    rows: 'Rijen',
+    upTo: 't/m',
+    exampleSection: 'Voorbeeld sectie',
+    exampleCase: 'Voorbeeld case',
+    examplePallet: 'Voorbeeld palletplaats',
+    locationsLower: 'locaties',
     printBarcode: 'Barcode printen',
     printAllBarcodes: 'Alle barcodes van rij printen',
+    arrowUpdated: 'Pijlrichting bijgewerkt',
+    arrowUp: 'Pijl omhoog',
+    arrowDown: 'Pijl omlaag',
+    arrowNone: 'Geen pijl',
     productManagement: 'Productbeheer',
     productManagementSubtitle: 'Beheer producten en productinformatie',
     newProduct: 'Nieuw product',
@@ -1059,6 +1110,7 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     totalRows: 'Gesamt Reihen',
     totalSections: 'Gesamt Sektionen',
     totalCases: 'Gesamt Cases',
+    totalPallets: 'Gesamt Palettenplatze',
     searchLocationCode: 'Nach Standortcode suchen...',
     locationOverview: 'Standortubersicht',
     locationOverviewSubtitle: 'Hierarchische Ubersicht aller Lagerstandorte',
@@ -1067,6 +1119,7 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     row: 'Reihe',
     section: 'Sektion',
     case: 'Case',
+    pallet: 'Palettenplatz',
     inactive: 'Inaktiv',
     deactivate: 'Deaktivieren',
     activate: 'Aktivieren',
@@ -1078,11 +1131,14 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     errorDeletingLocation: 'Standort konnte nicht geloscht werden',
     errorCreatingLocation: 'Standort konnte nicht erstellt werden',
     locationCreated: 'Standort erstellt',
+    locationsCreated: 'Standorte erstellt',
     locationType: 'Standorttyp',
     parentRow: 'Ubergeordnete Reihe',
     parentSection: 'Ubergeordnete Sektion',
+    parentCase: 'Ubergeordnete Case',
     selectRow: 'Reihe auswahlen',
     selectSection: 'Sektion auswahlen',
+    selectCase: 'Case auswahlen',
     locationCode: 'Standortcode',
     locationCodeRequired: 'Bitte einen Standortcode eingeben',
     parentLocationRequired: 'Bitte einen ubergeordneten Standort auswahlen',
@@ -1091,15 +1147,27 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     locationCodeRowPlaceholder: 'z.B. A',
     locationCodeSectionPlaceholder: 'z.B. A-01',
     locationCodeCasePlaceholder: 'z.B. A-01-1',
+    locationCodePalletPlaceholder: 'z.B. A-01-1-P1',
     bulkCreate: 'Massenanlage',
-    bulkCreateSubtitle: 'Mehrere Reihen, Sektionen und Cases auf einmal erstellen',
+    bulkCreateSubtitle: 'Mehrere Reihen, Sektionen, Cases und Palettenplatze auf einmal erstellen',
     startCode: 'Startcode',
     amount: 'Anzahl',
     perRow: 'pro Reihe',
     perSection: 'pro Sektion',
+    perCase: 'pro Case',
     preview: 'Vorschau',
+    rows: 'Reihen',
+    upTo: 'bis',
+    exampleSection: 'Beispiel Sektion',
+    exampleCase: 'Beispiel Case',
+    examplePallet: 'Beispiel Palettenplatz',
+    locationsLower: 'Standorte',
     printBarcode: 'Barcode drucken',
     printAllBarcodes: 'Alle Barcodes der Reihe drucken',
+    arrowUpdated: 'Pfeilrichtung aktualisiert',
+    arrowUp: 'Pfeil nach oben',
+    arrowDown: 'Pfeil nach unten',
+    arrowNone: 'Kein Pfeil',
     productManagement: 'Produktverwaltung',
     productManagementSubtitle: 'Produkte und Produktinformationen verwalten',
     newProduct: 'Neues Produkt',
