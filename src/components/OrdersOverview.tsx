@@ -1,4 +1,4 @@
-import { useState, useEffect, Fragment } from 'react';
+import { useState, useEffect, useRef, Fragment } from 'react';
 import { api } from '../services/api';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -421,6 +421,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
   const [bolOrderItems, setBolOrderItems] = useState<Array<{ orderItemId: string; quantity: number }>>([]);
   const [selectedBolDeliveryOptionId, setSelectedBolDeliveryOptionId] = useState<string>('');
   const [loadingBolDeliveryOptions, setLoadingBolDeliveryOptions] = useState(false);
+  const labelPreviewRef = useRef<HTMLDivElement>(null);
 
   // --- Return label dialog state ---
   const [showReturnLabelDialog, setShowReturnLabelDialog] = useState(false);
@@ -548,6 +549,15 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
 
     loadBolDeliveryOptions();
   }, [showLabelDialog, selectedContractId, labelOrder]);
+
+  // Auto-scroll to label preview after generation so the user doesn't miss it
+  useEffect(() => {
+    if (labelPreviewUrl && showLabelDialog && labelPreviewRef.current) {
+      requestAnimationFrame(() => {
+        labelPreviewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
+    }
+  }, [labelPreviewUrl, showLabelDialog]);
 
   const loadOrders = async () => {
     try {
@@ -1031,7 +1041,20 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
         );
 
         if (resolvedLabelPreviewUrl) {
-          setLabelPreviewUrl(resolvedLabelPreviewUrl);
+          // Convert data: URIs to blob URLs — modern browsers block data: URIs in <iframe>
+          let safePreviewUrl = resolvedLabelPreviewUrl;
+          if (safePreviewUrl.startsWith('data:application/pdf;base64,')) {
+            try {
+              const base64Data = safePreviewUrl.slice('data:application/pdf;base64,'.length);
+              const binaryString = atob(base64Data);
+              const bytes = new Uint8Array(binaryString.length);
+              for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
+              safePreviewUrl = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+            } catch {
+              // keep original URL if conversion fails
+            }
+          }
+          setLabelPreviewUrl(safePreviewUrl);
         }
 
         setGeneratedLabelMeta({
@@ -2684,7 +2707,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
             )}
 
             {labelPreviewUrl && (
-              <div className="space-y-2">
+              <div ref={labelPreviewRef} className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-slate-700">Label preview</span>
                   <div className="flex items-center gap-2">
