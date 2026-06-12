@@ -786,23 +786,20 @@ async function getBolLabelWithFallbackInternal(
     };
   };
 
-  // --- Helper: resolve order items payload ---
+// --- Helper: resolve order items payload ---
   const resolveOrderItemsPayload = async () => {
-    // Use pre-fetched order items from the client if available (avoids a /order-items call that may 403)
-    if (Array.isArray(prefetchedOrderItems) && prefetchedOrderItems.length > 0) {
-      console.log('[BOL LABEL DEBUG] Using pre-fetched orderItems from client', { count: prefetchedOrderItems.length });
-      return { orderItems: prefetchedOrderItems };
-    }
-
-    // Try Bol API (may 403 if credentials lack order-items scope)
+    // 1. Altijd eerst vers bij Bol ophalen — orderItemId's moeten actueel zijn
     try {
       const payload = await bolApiRequest(credentials, `/orders/${encodeURIComponent(normalizedOrderId)}/order-items`);
-      if (payload) return payload;
+      if (payload?.orderItems?.length > 0) {
+        console.log('[BOL LABEL] Using fresh orderItems from Bol API', { count: payload.orderItems.length });
+        return payload;
+      }
     } catch (error) {
       errors.push({ endpoint: `/orders/${normalizedOrderId}/order-items`, error });
     }
 
-    // DB fallback: use stored externalId values from last sync — avoids API page scanning
+    // 2. DB fallback: stored externalId van laatste sync
     try {
       const dbOrder = await prisma.order.findFirst({
         where: { orderNumber: normalizedOrderId },
@@ -819,6 +816,12 @@ async function getBolLabelWithFallbackInternal(
       }
     } catch (dbError) {
       errors.push({ endpoint: 'db:orderItems', error: dbError });
+    }
+
+    // 3. Laatste redmiddel: client-items (kunnen verouderd zijn)
+    if (Array.isArray(prefetchedOrderItems) && prefetchedOrderItems.length > 0) {
+      console.log('[BOL LABEL] Falling back to client-supplied orderItems', { count: prefetchedOrderItems.length });
+      return { orderItems: prefetchedOrderItems };
     }
 
     return null;
