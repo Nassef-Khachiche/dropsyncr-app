@@ -568,7 +568,10 @@ async function pollShippingLabelIdFromProcessStatus(
         }
         if (processStatus === 'FAILURE' || processStatus === 'ERROR' || processStatus === 'FAILED') {
           console.warn('[BOL POLL] Process status FAILED', JSON.stringify(payload));
-          return null;
+          const bolErrorMessage = String(payload?.errorMessage || payload?.description || '').trim();
+          throw new Error(bolErrorMessage
+            ? `Bol label aanmaken mislukt: ${bolErrorMessage}`
+            : 'Bol label aanmaken mislukt (process status FAILURE)');
         }
         if (processStatus === 'SUCCESS') {
           console.log('[BOL POLL] Process SUCCESS full payload', JSON.stringify(payload));
@@ -794,7 +797,7 @@ async function getBolLabelWithFallbackInternal(
       return { orderItems: prefetchedOrderItems };
     }
 
-    // Try Bol API (may 403 if credentials lack order-items scope)
+    // Try Bol API — always prefer live IDs over DB to avoid stale/cancelled item IDs
     try {
       const payload = await bolApiRequest(credentials, `/orders/${encodeURIComponent(normalizedOrderId)}/order-items`);
       if (payload) return payload;
@@ -802,7 +805,17 @@ async function getBolLabelWithFallbackInternal(
       errors.push({ endpoint: `/orders/${normalizedOrderId}/order-items`, error });
     }
 
-    // DB fallback: use stored externalId values from last sync — avoids API page scanning
+    // Try full order endpoint as fallback (also contains orderItems)
+    try {
+      const payload = await bolApiRequest(credentials, `/orders/${encodeURIComponent(normalizedOrderId)}`);
+      if (payload?.orderItems?.length > 0) return payload;
+    } catch (error) {
+      errors.push({ endpoint: `/orders/${normalizedOrderId}`, error });
+    }
+
+    // DB fallback — only used when Bol API is unreachable (e.g. 403/timeout).
+    // WARNING: DB IDs may be stale if items were cancelled or fulfilled since last sync.
+    // Before using them, verify they are still eligible via delivery-options endpoint.
     try {
       const dbOrder = await prisma.order.findFirst({
         where: { orderNumber: normalizedOrderId },
@@ -813,11 +826,29 @@ async function getBolLabelWithFallbackInternal(
           .filter((item) => item.externalId)
           .map((item) => ({ orderItemId: item.externalId, quantity: item.quantity || 1 }));
         if (dbItems.length > 0) {
+          // Quick eligibility check: if Bol says these IDs are unknown, fail early with a clear message
+          // rather than letting the POST /shipping-labels call fail with a confusing FAILURE status.
+          try {
+            const eligibilityCheck = await fetchBolDeliveryOptionHandoverWindow(credentials, dbItems, null);
+            if (eligibilityCheck.notEligible) {
+              throw new Error(
+                eligibilityCheck.notEligibleReason
+                  ? `Order items zijn niet geldig voor label aanmaak (mogelijk FBB of geannuleerd): ${eligibilityCheck.notEligibleReason}`
+                  : 'Order items zijn niet geldig voor label aanmaak (mogelijk FBB of al verzonden door Bol)'
+              );
+            }
+          } catch (eligibilityError) {
+            // If it's our own thrown error, rethrow it
+            if (eligibilityError.message?.includes('niet geldig')) throw eligibilityError;
+            // Otherwise it's a network/API error — proceed with DB items anyway
+            console.warn('[BOL LABEL] DB fallback eligibility check failed (network), proceeding anyway:', eligibilityError.message);
+          }
           console.log('[BOL LABEL] Using DB externalId fallback for order items', { count: dbItems.length });
           return { orderItems: dbItems };
         }
       }
     } catch (dbError) {
+      if (dbError.message?.includes('niet geldig')) throw dbError;
       errors.push({ endpoint: 'db:orderItems', error: dbError });
     }
 
@@ -1751,7 +1782,14 @@ async function syncBolOrdersCore({ installationId, integrationId = null, userId 
       .map((value) => String(value || '').trim())
       .filter(Boolean);
 
-    const isVvbOrder = distributionPartyCandidates.some(
+    // FBB (Fulfilled By Bol) orders also have distributionParty='BOL' but cannot have retailer-side labels.
+    // Detect FBB by checking fulfilmentMethod on order items — FBB items will say 'FBB', not 'FBR'.
+    const hasFbbItems = orderItems.some((item) => {
+      const method = String(item?.fulfilmentMethod || item?.fulfilment?.method || item?.fulfilmentDetails?.fulfilmentMethod || '').trim().toUpperCase();
+      return method === 'FBB';
+    });
+
+    const isVvbOrder = !hasFbbItems && distributionPartyCandidates.some(
       (value) => value.toUpperCase() === 'BOL'
     );
     const mailboxOrder = inferIsMailboxFromOrderData({
