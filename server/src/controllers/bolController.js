@@ -786,20 +786,23 @@ async function getBolLabelWithFallbackInternal(
     };
   };
 
-// --- Helper: resolve order items payload ---
+  // --- Helper: resolve order items payload ---
   const resolveOrderItemsPayload = async () => {
-    // 1. Altijd eerst vers bij Bol ophalen — orderItemId's moeten actueel zijn
+    // Use pre-fetched order items from the client if available (avoids a /order-items call that may 403)
+    if (Array.isArray(prefetchedOrderItems) && prefetchedOrderItems.length > 0) {
+      console.log('[BOL LABEL DEBUG] Using pre-fetched orderItems from client', { count: prefetchedOrderItems.length });
+      return { orderItems: prefetchedOrderItems };
+    }
+
+    // Try Bol API (may 403 if credentials lack order-items scope)
     try {
       const payload = await bolApiRequest(credentials, `/orders/${encodeURIComponent(normalizedOrderId)}/order-items`);
-      if (payload?.orderItems?.length > 0) {
-        console.log('[BOL LABEL] Using fresh orderItems from Bol API', { count: payload.orderItems.length });
-        return payload;
-      }
+      if (payload) return payload;
     } catch (error) {
       errors.push({ endpoint: `/orders/${normalizedOrderId}/order-items`, error });
     }
 
-    // 2. DB fallback: stored externalId van laatste sync
+    // DB fallback: use stored externalId values from last sync — avoids API page scanning
     try {
       const dbOrder = await prisma.order.findFirst({
         where: { orderNumber: normalizedOrderId },
@@ -816,12 +819,6 @@ async function getBolLabelWithFallbackInternal(
       }
     } catch (dbError) {
       errors.push({ endpoint: 'db:orderItems', error: dbError });
-    }
-
-    // 3. Laatste redmiddel: client-items (kunnen verouderd zijn)
-    if (Array.isArray(prefetchedOrderItems) && prefetchedOrderItems.length > 0) {
-      console.log('[BOL LABEL] Falling back to client-supplied orderItems', { count: prefetchedOrderItems.length });
-      return { orderItems: prefetchedOrderItems };
     }
 
     return null;
@@ -1234,14 +1231,6 @@ const hasBolShipmentConfirmation = ({ orderPayload = null, shipmentPayload = nul
   return orderSignals.length > 0;
 };
 
-/**
- * FIX: resolvePersistedOrderStatus is removed.
- *
- * Previously this function would permanently "lock" an order as verzonden once
- * it had been marked shipped — even if Bol's live data said otherwise.
- * We now always trust Bol's live status from the API instead.
- */
-
 const isLikelyImageUrl = (value) => {
   if (!value || typeof value !== 'string') return false;
   const trimmed = value.trim();
@@ -1610,7 +1599,530 @@ const enrichBolProductData = async ({ credentials, ean }) => {
 };
 
 /**
- * Sync orders from Bol.com
+ * Core sync logic — pure async function, no Express req/res dependency.
+ * Called by both the HTTP route handler and the cron job.
+ *
+ * @param {object} params
+ * @param {number} params.installationId  - Numeric installation ID
+ * @param {number|null} params.integrationId - Optional numeric integration ID
+ * @param {number} params.userId          - User ID to assign to created orders
+ * @returns {{ imported: number, updated: number, total: number }}
+ */
+async function syncBolOrdersCore({ installationId, integrationId = null, userId }) {
+  const installationIdNumber = parseInt(installationId, 10);
+  if (!Number.isFinite(installationIdNumber)) {
+    throw new Error('Invalid installation ID');
+  }
+
+  await ensureOrderStatusCodes();
+
+  const { integration, credentials } = await getBolIntegration(installationIdNumber, integrationId);
+  const integrationCredentials = JSON.parse(integration.credentials || '{}');
+  const integrationShopName = integrationCredentials.shopName || `Bol.com #${integration.id}`;
+
+  const bolOrders = await fetchAllBolOrders(credentials);
+
+  console.log('[BOL SYNC] Fetched orders from Bol.com:', { totalOrders: bolOrders.length });
+
+  // Bulk-fetch all shipments once and index by orderId to avoid per-order API calls (429)
+  let allShipmentsMap = new Map();
+  try {
+    allShipmentsMap = await fetchAllBolShipmentsMap(credentials);
+    console.log('[BOL SYNC] Bulk-fetched shipments index size:', allShipmentsMap.size);
+  } catch (shipmentsError) {
+    console.warn('[BOL SYNC] Could not bulk-fetch shipments, will fall back to per-order calls:', shipmentsError.message);
+  }
+
+  let importedCount = 0;
+  let updatedCount = 0;
+  const enrichmentCache = new Map();
+
+  for (const bolOrder of bolOrders) {
+    const currentBolOrderId = String(bolOrder?.orderId || bolOrder?.orderNumber || '').trim();
+
+    let bolOrderDetails = null;
+    let bolOrderItemsDetails = null;
+    let bolShipmentDetails = null;
+
+    try {
+      bolOrderDetails = await bolApiRequest(credentials, `/orders/${bolOrder.orderId}`);
+    } catch (detailError) {
+      console.warn('[BOL SYNC] Failed to fetch order details:', detailError.message);
+    }
+
+    const orderItemsEndpointKey = `${credentials.clientId}:/orders/*/order-items`;
+    if (!bol403EndpointCache.has(orderItemsEndpointKey)) {
+      try {
+        bolOrderItemsDetails = await bolApiRequest(credentials, `/orders/${bolOrder.orderId}/order-items`);
+      } catch (detailError) {
+        if (detailError.message.includes('403') || /unauthorized/i.test(detailError.message)) {
+          // This credential set lacks permission — skip for all orders in this sync
+          bol403EndpointCache.add(orderItemsEndpointKey);
+          console.warn('[BOL SYNC] /order-items endpoint returned 403, skipping for all orders with this credential set');
+        } else {
+          console.warn('[BOL SYNC] Failed to fetch order items details:', detailError.message);
+        }
+      }
+    }
+
+    // Use bulk-fetched shipments map. No per-order fallback — open/new orders have no
+    // shipment yet so a per-order call returns empty anyway, and firing one per order
+    // is exactly what causes 429 rate-limit errors.
+    bolShipmentDetails = allShipmentsMap.get(currentBolOrderId) || null;
+
+    const orderPayload = bolOrderDetails || bolOrder;
+    const baseOrderItems = orderPayload.orderItems || bolOrder.orderItems || [];
+    const detailedOrderItems = bolOrderItemsDetails?.orderItems || [];
+    const orderItems = mergeBolOrderItems(baseOrderItems, detailedOrderItems);
+    const shipmentDetails = orderPayload.shipmentDetails || orderPayload.billingDetails || {};
+    const shipmentList = Array.isArray(bolShipmentDetails?.shipments)
+      ? bolShipmentDetails.shipments
+      : [];
+    const firstShipment = shipmentList[0] || null;
+    const shipmentConfirmedByBol = hasBolShipmentConfirmation({
+      orderPayload,
+      shipmentPayload: bolShipmentDetails,
+      shipmentList,
+    });
+    const resolvedTrackAndTrace = firstNonEmptyString(
+      firstShipment?.transport?.trackAndTrace,
+      firstShipment?.trackAndTrace,
+      firstShipment?.trackingCode,
+      firstShipment?.trackingNumber,
+      firstShipment?.parcelLabelNumber,
+      findStringValueByKey(firstShipment, /(track.?and.?trace|tracking.?code|tracking.?number|parcel.?label.?number)/i),
+      findStringValueByKey(bolShipmentDetails, /(track.?and.?trace|tracking.?code|tracking.?number|parcel.?label.?number)/i),
+    );
+    const resolvedTransporterCode = firstNonEmptyString(
+      firstShipment?.transport?.transporterCode,
+      firstShipment?.transporterCode,
+      firstShipment?.transporter,
+      findStringValueByKey(firstShipment, /(transporter.?code|carrier.?code|carrier)/i),
+    );
+
+    const bolStatusCandidates = [
+      firstNonEmptyString(bolOrder?.status),
+      firstNonEmptyString(orderPayload?.status),
+      firstNonEmptyString(firstShipment?.status),
+      firstNonEmptyString(firstShipment?.shipmentStatus),
+      firstNonEmptyString(firstShipment?.transport?.status),
+      findStringValueByKey(firstShipment, /(^|_)(status|shipment.?status|order.?status)$/i),
+      findStringValueByKey(bolShipmentDetails, /(^|_)(status|shipment.?status|order.?status)$/i),
+      shipmentConfirmedByBol ? 'SHIPPED' : null,
+    ].filter(Boolean);
+
+    console.log('[SHIP DEBUG]', bolOrder.orderId, 'candidates=', JSON.stringify(bolStatusCandidates), 'confirmed=', shipmentConfirmedByBol, 'tt=', resolvedTrackAndTrace, 'shipments=', JSON.stringify(shipmentList));
+
+    const resolvedBolOrderStatus = resolvePrimaryBolStatus(bolStatusCandidates);
+    const resolvedShippingStatus = resolvedBolOrderStatus || null;
+
+    // FIX: Always derive status from live Bol data — never from previously persisted DB status.
+    // This prevents orders from getting permanently stuck as "verzonden".
+    const resolvedInternalStatus = resolveBolStatusToInternal({
+      statuses: bolStatusCandidates,
+      hasTrackAndTrace: Boolean(resolvedTrackAndTrace) || shipmentConfirmedByBol,
+    });
+
+    const finalInternalStatus = resolvedInternalStatus;
+    const finalOrderStatus = resolvedBolOrderStatus || finalInternalStatus;
+    const finalOrderStatusCode = toOrderStatusCode(finalInternalStatus || finalOrderStatus);
+
+    const deliveryDate = resolveBolDeliveryDate(orderPayload, orderItems, bolShipmentDetails);
+    const resolvedBolShippingMethod = inferBolShippingMethodFromOrderData({
+      orderPayload,
+      bolOrder,
+      orderItems,
+      shippingMethod: orderPayload?.shippingMethod,
+      bolShippingMethod: orderPayload?.bolShippingMethod,
+    });
+
+    const distributionPartyCandidates = [
+      orderPayload?.distributionParty,
+      orderPayload?.distribution_party,
+      bolOrder?.distributionParty,
+      bolOrder?.distribution_party,
+      ...orderItems.flatMap((item) => [
+        item?.distributionParty,
+        item?.distribution_party,
+      ]),
+      findStringValueByKey(orderPayload, /distribution.?party/i),
+      findStringValueByKey(bolOrder, /distribution.?party/i),
+    ]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean);
+
+    const isVvbOrder = distributionPartyCandidates.some(
+      (value) => value.toUpperCase() === 'BOL'
+    );
+    const mailboxOrder = inferIsMailboxFromOrderData({
+      orderPayload,
+      orderItems,
+      shippingDescription: shipmentDetails?.deliveryMethod,
+    });
+
+    const existingOrder = await prisma.order.findFirst({
+      where: {
+        orderNumber: bolOrder.orderId,
+        installationId: installationIdNumber,
+      },
+      select: {
+        id: true,
+        storeName: true,
+        installationId: true,
+        orderStatus: true,
+        status: true,
+        supplierTracking: true,
+        tracking: { select: { trackingCode: true } },
+        label: { select: { status: true } },
+      },
+    });
+
+    const conflictingOrder = await prisma.order.findFirst({
+      where: {
+        orderNumber: bolOrder.orderId,
+        NOT: { installationId: installationIdNumber },
+      },
+      select: { id: true, installationId: true, storeName: true },
+    });
+
+    if (!existingOrder && conflictingOrder) {
+      console.warn('[BOL SYNC] Skipping conflicting orderNumber from another installation', {
+        orderNumber: bolOrder.orderId,
+        targetInstallationId: installationIdNumber,
+        conflictingInstallationId: conflictingOrder.installationId,
+      });
+      continue;
+    }
+
+    if (!integrationId && existingOrder && existingOrder.storeName && existingOrder.storeName !== integrationShopName) {
+      console.warn('[BOL SYNC] Skipping conflicting orderNumber from another integration/store', {
+        orderNumber: bolOrder.orderId,
+        existingStoreName: existingOrder.storeName,
+        incomingStoreName: integrationShopName,
+      });
+      continue;
+    }
+
+    const firstName = shipmentDetails?.firstName || '';
+    const surname = shipmentDetails?.surname || '';
+    const customerName = `${firstName} ${surname}`.trim() || 'Unknown';
+
+    const shippingAutomationResult = await resolveShippingAutomationForOrder({
+      prisma,
+      installationId: installationIdNumber,
+      storeName: existingOrder?.storeName || integrationShopName,
+      country: shipmentDetails?.countryCode || 'NL',
+      bolShippingMethod: resolvedBolShippingMethod,
+      isBrievenbus: mailboxOrder,
+    });
+
+    const resolvedOrderShippingMethod = isVvbOrder
+      ? 'Bol.com'
+      : (shippingAutomationResult.shippingAssignment || null);
+
+    // Never downgrade a locally-confirmed shipment back to an open state during sync.
+    // This covers the window between label generation / POST /shipments and Bol's own
+    // status update propagating back. Cancellations and deliveries from Bol still win.
+    const localShipmentStatuses = new Set(['verzonden', 'label-aangemaakt']);
+    const syncOpenStatuses = new Set(['openstaand', 'onderweg-ffm', 'binnengekomen-ffm']);
+    const existingHasShipmentProof =
+      Boolean(existingOrder?.supplierTracking) ||
+      Boolean(existingOrder?.tracking?.trackingCode) ||
+      Boolean(existingOrder?.label?.status);
+
+    const bolIsDowngradingShipment =
+      existingOrder &&
+      localShipmentStatuses.has(existingOrder.status) &&
+      syncOpenStatuses.has(finalInternalStatus) &&
+      existingHasShipmentProof;
+
+    const syncedStatus = bolIsDowngradingShipment ? existingOrder.status : finalInternalStatus;
+    const syncedOrderStatus = bolIsDowngradingShipment ? existingOrder.orderStatus : finalOrderStatus;
+
+    if (syncedStatus === 'verzonden') {
+      console.log('[VERZONDEN TRACE]', JSON.stringify({
+        orderId: bolOrder.orderId,
+        reason: bolIsDowngradingShipment ? 'downgrade-protected (bleef verzonden)' : 'live bol status',
+        candidates: bolStatusCandidates,
+        confirmedByBol: shipmentConfirmedByBol,
+        trackAndTrace: resolvedTrackAndTrace || null,
+        shipmentCount: shipmentList.length,
+        shipmentRefs: shipmentList.map((s) => s?.shipmentReference || null),
+        existingStatus: existingOrder?.status || null,
+        existingHasShipmentProof,
+      }));
+    }
+
+    const syncedOrderStatusCode = bolIsDowngradingShipment
+      ? toOrderStatusCode(existingOrder.orderStatus)
+      : finalOrderStatusCode;
+
+    const orderData = {
+      orderNumber: bolOrder.orderId,
+      installationId: installationIdNumber,
+      userId,
+      customerName,
+      customerEmail: shipmentDetails?.email || null,
+      address: [
+        shipmentDetails?.streetName,
+        shipmentDetails?.houseNumber,
+        shipmentDetails?.zipCode,
+        shipmentDetails?.city,
+      ].filter(Boolean).join(', '),
+      country: shipmentDetails?.countryCode || 'NL',
+      storeName: existingOrder?.storeName || integrationShopName,
+      platform: 'bol.com',
+      orderDate: new Date(orderPayload.orderPlacedDateTime),
+      deliveryDate,
+      orderStatus: syncedOrderStatus,
+      orderStatusCode: syncedOrderStatusCode,
+      shippingStatus: resolvedShippingStatus || null,
+      isVVB: isVvbOrder,
+      orderValue: parseFloat(orderItems?.reduce((sum, item) => {
+        const unitPrice = parseFloat(item.unitPrice ?? item.totalPrice ?? item.offerPrice ?? 0) || 0;
+        return sum + (unitPrice * (item.quantity || 1));
+      }, 0) || 0),
+      itemCount: orderItems?.length || 1,
+      ...(resolvedTrackAndTrace ? { supplierTracking: resolvedTrackAndTrace } : {}),
+      status: syncedStatus,
+    };
+
+    // Resolve handover window dates for VVB orders (drop-off dates only — not shipping status)
+    if (isVvbOrder && orderItems.length > 0) {
+      try {
+        const bolLabelOrderItems = orderItems
+          .map((item) => {
+            const orderItemId = String(item?.orderItemId || item?.id || '').trim();
+            if (!orderItemId) return null;
+
+            const rawQuantity = Number(item?.quantity || item?.amount || item?.quantityOrdered || 1);
+            const quantity = Number.isFinite(rawQuantity) && rawQuantity > 0
+              ? Math.max(1, Math.floor(rawQuantity))
+              : 1;
+
+            return { orderItemId, quantity };
+          })
+          .filter(Boolean);
+
+        if (bolLabelOrderItems.length > 0) {
+          const handoverWindow = await fetchBolDeliveryOptionHandoverWindow(credentials, bolLabelOrderItems);
+          orderData.earliestDropOffDate = toValidDate(handoverWindow.earliestHandoverDateTime);
+          orderData.latestDropOffDate = toValidDate(handoverWindow.latestHandoverDateTime);
+        }
+      } catch (handoverError) {
+        console.warn('[BOL SYNC] Failed to resolve handover window from delivery options', {
+          orderId: bolOrder.orderId,
+          message: handoverError?.message || String(handoverError),
+        });
+      }
+    }
+
+    const savedOrder = existingOrder
+      ? await prisma.order.update({
+          where: { id: existingOrder.id },
+          data: orderData,
+          select: { id: true },
+        })
+      : await prisma.order.create({
+          data: { ...orderData, fulfillmentType: null },
+          select: { id: true },
+        });
+
+    if (resolvedTrackAndTrace) {
+      await prisma.tracking.upsert({
+        where: { orderId: savedOrder.id },
+        update: {
+          trackingCode: resolvedTrackAndTrace,
+          supplier: resolvedTransporterCode || 'bol.com',
+          source: 'bol_sync',
+          status: 'linked',
+        },
+        create: {
+          orderId: savedOrder.id,
+          trackingCode: resolvedTrackAndTrace,
+          supplier: resolvedTransporterCode || 'bol.com',
+          source: 'bol_sync',
+          status: 'linked',
+        },
+      });
+    }
+
+    if (isVvbOrder || resolvedOrderShippingMethod) {
+      try {
+        await prisma.$executeRaw`
+          UPDATE \`Order\`
+          SET shippingMethod = ${isVvbOrder ? 'Bol.com' : resolvedOrderShippingMethod}, updatedAt = NOW()
+          WHERE id = ${savedOrder.id} AND installationId = ${installationIdNumber}
+        `;
+      } catch (shippingMethodError) {
+        console.warn('[BOL SYNC] Failed to persist shippingMethod via raw SQL', {
+          orderId: savedOrder.id,
+          orderNumber: bolOrder.orderId,
+          message: shippingMethodError.message,
+        });
+      }
+    }
+
+    if (existingOrder) {
+      updatedCount++;
+    } else {
+      importedCount++;
+    }
+
+    if (Array.isArray(orderItems)) {
+      await prisma.orderItem.deleteMany({
+        where: { orderId: savedOrder.id },
+      });
+
+      for (let index = 0; index < orderItems.length; index++) {
+        const item = orderItems[index];
+
+        const productName = firstNonEmptyString(
+          item?.product?.title,
+          item?.title,
+          item?.productTitle,
+          'Unknown Product'
+        );
+        const productBrand = firstNonEmptyString(
+          item?.product?.brand,
+          item?.product?.brandName,
+          item?.brand,
+          findStringValueByKey(item?.product, /brand/i),
+          findStringValueByKey(item, /brand/i)
+        );
+        const ean = firstNonEmptyString(item?.ean, item?.product?.ean);
+        const offerId = firstNonEmptyString(item?.offerId, item?.offer?.offerId);
+        const sku = firstNonEmptyString(
+          item?.sku,
+          item?.product?.sku,
+          item?.offerId,
+          item?.offer?.offerId,
+          item?.offerReference,
+          item?.offer?.reference,
+          ean,
+          `bol-${bolOrder.orderId}-${item?.orderItemId || index + 1}`
+        );
+        const internalRef = firstNonEmptyString(
+          item?.internalReference,
+          item?.internalRef,
+          item?.product?.internalReference,
+          item?.reference,
+          item?.offerReference,
+          item?.offerId,
+          item?.offer?.reference,
+          item?.offer?.offerId,
+          item?.orderItemId,
+          sku
+        );
+        const quantity = Math.max(1, parseInt(item?.quantity || 1, 10) || 1);
+        const unitPrice = toNumber(item?.unitPrice ?? item?.price ?? item?.offerPrice);
+        const totalPrice = toNumber(item?.totalPrice);
+        const effectiveUnitPrice = unitPrice > 0
+          ? unitPrice
+          : (totalPrice > 0 ? totalPrice / quantity : 0);
+        const productImage = extractProductImage(item);
+        let resolvedProductImage = productImage;
+        let resolvedProductBrand = productBrand;
+
+        const enrichmentCacheKey = firstNonEmptyString(ean, sku, offerId, item?.orderItemId);
+        if ((!resolvedProductImage || !resolvedProductBrand) && enrichmentCacheKey) {
+          if (!bolEnrichmentCache.has(enrichmentCacheKey) || Date.now() > (bolEnrichmentCache.get(enrichmentCacheKey)?._expiresAt || 0)) {
+            const enrichment = await enrichBolProductData({ credentials, ean });
+            const entry = enrichment ? { ...enrichment, _expiresAt: Date.now() + BOL_ENRICHMENT_CACHE_TTL_MS } : { _expiresAt: Date.now() + BOL_ENRICHMENT_CACHE_TTL_MS };
+            bolEnrichmentCache.set(enrichmentCacheKey, entry);
+          }
+          // Also keep local per-run cache in sync for legacy reads below
+          if (!enrichmentCache.has(enrichmentCacheKey)) {
+            enrichmentCache.set(enrichmentCacheKey, bolEnrichmentCache.get(enrichmentCacheKey) || null);
+          }
+
+          const enrichmentResponse = enrichmentCache.get(enrichmentCacheKey);
+          if (enrichmentResponse) {
+            if (!resolvedProductImage) {
+              resolvedProductImage = firstNonEmptyString(
+                enrichmentResponse.resolvedImage,
+                resolveImageFromBolEnrichment(enrichmentResponse.data)
+              );
+            }
+          }
+        }
+
+        if (!resolvedProductBrand) {
+          resolvedProductBrand = 'Bol.com';
+        }
+
+        let product = await prisma.product.findFirst({
+          where: {
+            installationId: installationIdNumber,
+            OR: [
+              { sku },
+              ...(ean ? [{ ean }] : []),
+            ],
+          },
+          select: { id: true, image: true },
+        });
+
+        const normalizedProductName = normalizeProductName(productName);
+
+        if (product) {
+          product = await prisma.product.update({
+            where: { id: product.id },
+            data: {
+              ean: ean || undefined,
+              name: normalizedProductName,
+              image: resolvedProductImage || undefined,
+              brand: resolvedProductBrand || undefined,
+              internalRef: internalRef || sku,
+              price: effectiveUnitPrice,
+            },
+            select: { id: true, image: true },
+          });
+        } else {
+          product = await prisma.product.create({
+            data: {
+              installationId: installationIdNumber,
+              sku,
+              ean,
+              name: normalizedProductName,
+              image: resolvedProductImage,
+              brand: resolvedProductBrand,
+              internalRef: internalRef || sku,
+              price: effectiveUnitPrice,
+              sizeCategory: null,
+            },
+            select: { id: true, image: true },
+          });
+        }
+
+        await prisma.orderItem.create({
+          data: {
+            orderId: savedOrder.id,
+            productId: product.id,
+            productName: normalizedProductName,
+            productImage: resolvedProductImage || product.image || null,
+            ean,
+            sku,
+            quantity,
+            price: effectiveUnitPrice,
+            unitPrice: effectiveUnitPrice,
+            externalId: String(item?.orderItemId || item?.orderItemID || '').trim() || null,
+          },
+        });
+      }
+    }
+  }
+
+  return {
+    success: true,
+    imported: importedCount,
+    updated: updatedCount,
+    total: importedCount + updatedCount,
+  };
+}
+
+/**
+ * Sync orders from Bol.com — Express route handler.
+ * Thin wrapper around syncBolOrdersCore.
  */
 export const syncBolOrders = async (req, res) => {
   try {
@@ -1634,511 +2146,13 @@ export const syncBolOrders = async (req, res) => {
       }
     }
 
-    await ensureOrderStatusCodes();
-
-    const { integration, credentials } = await getBolIntegration(installationId, integrationId);
-    const integrationCredentials = JSON.parse(integration.credentials || '{}');
-    const integrationShopName = integrationCredentials.shopName || `Bol.com #${integration.id}`;
-
-    const bolOrders = await fetchAllBolOrders(credentials);
-
-    console.log('[BOL SYNC] Fetched orders from Bol.com:', { totalOrders: bolOrders.length });
-
-    // Bulk-fetch all shipments once and index by orderId to avoid per-order API calls (429)
-    let allShipmentsMap = new Map();
-    try {
-      allShipmentsMap = await fetchAllBolShipmentsMap(credentials);
-      console.log('[BOL SYNC] Bulk-fetched shipments index size:', allShipmentsMap.size);
-    } catch (shipmentsError) {
-      console.warn('[BOL SYNC] Could not bulk-fetch shipments, will fall back to per-order calls:', shipmentsError.message);
-    }
-
-    let importedCount = 0;
-    let updatedCount = 0;
-    const enrichmentCache = new Map();
-
-    for (const bolOrder of bolOrders) {
-      const currentBolOrderId = String(bolOrder?.orderId || bolOrder?.orderNumber || '').trim();
-
-      let bolOrderDetails = null;
-      let bolOrderItemsDetails = null;
-      let bolShipmentDetails = null;
-
-      try {
-        bolOrderDetails = await bolApiRequest(credentials, `/orders/${bolOrder.orderId}`);
-      } catch (detailError) {
-        console.warn('[BOL SYNC] Failed to fetch order details:', detailError.message);
-      }
-
-      const orderItemsEndpointKey = `${credentials.clientId}:/orders/*/order-items`;
-      if (!bol403EndpointCache.has(orderItemsEndpointKey)) {
-        try {
-          bolOrderItemsDetails = await bolApiRequest(credentials, `/orders/${bolOrder.orderId}/order-items`);
-        } catch (detailError) {
-          if (detailError.message.includes('403') || /unauthorized/i.test(detailError.message)) {
-            // This credential set lacks permission — skip for all orders in this sync
-            bol403EndpointCache.add(orderItemsEndpointKey);
-            console.warn('[BOL SYNC] /order-items endpoint returned 403, skipping for all orders with this credential set');
-          } else {
-            console.warn('[BOL SYNC] Failed to fetch order items details:', detailError.message);
-          }
-        }
-      }
-
-      // Use bulk-fetched shipments map. No per-order fallback — open/new orders have no
-      // shipment yet so a per-order call returns empty anyway, and firing one per order
-      // is exactly what causes 429 rate-limit errors.
-      bolShipmentDetails = allShipmentsMap.get(currentBolOrderId) || null;
-
-      const orderPayload = bolOrderDetails || bolOrder;
-      const baseOrderItems = orderPayload.orderItems || bolOrder.orderItems || [];
-      const detailedOrderItems = bolOrderItemsDetails?.orderItems || [];
-      const orderItems = mergeBolOrderItems(baseOrderItems, detailedOrderItems);
-      const shipmentDetails = orderPayload.shipmentDetails || orderPayload.billingDetails || {};
-      const shipmentList = Array.isArray(bolShipmentDetails?.shipments)
-        ? bolShipmentDetails.shipments
-        : [];
-      const firstShipment = shipmentList[0] || null;
-      const shipmentConfirmedByBol = hasBolShipmentConfirmation({
-        orderPayload,
-        shipmentPayload: bolShipmentDetails,
-        shipmentList,
-      });
-      const resolvedTrackAndTrace = firstNonEmptyString(
-        firstShipment?.transport?.trackAndTrace,
-        firstShipment?.trackAndTrace,
-        firstShipment?.trackingCode,
-        firstShipment?.trackingNumber,
-        firstShipment?.parcelLabelNumber,
-        findStringValueByKey(firstShipment, /(track.?and.?trace|tracking.?code|tracking.?number|parcel.?label.?number)/i),
-        findStringValueByKey(bolShipmentDetails, /(track.?and.?trace|tracking.?code|tracking.?number|parcel.?label.?number)/i),
-      );
-      const resolvedTransporterCode = firstNonEmptyString(
-        firstShipment?.transport?.transporterCode,
-        firstShipment?.transporterCode,
-        firstShipment?.transporter,
-        findStringValueByKey(firstShipment, /(transporter.?code|carrier.?code|carrier)/i),
-      );
-
-      const bolStatusCandidates = [
-        firstNonEmptyString(bolOrder?.status),
-        firstNonEmptyString(orderPayload?.status),
-        firstNonEmptyString(firstShipment?.status),
-        firstNonEmptyString(firstShipment?.shipmentStatus),
-        firstNonEmptyString(firstShipment?.transport?.status),
-        findStringValueByKey(firstShipment, /(^|_)(status|shipment.?status|order.?status)$/i),
-        findStringValueByKey(bolShipmentDetails, /(^|_)(status|shipment.?status|order.?status)$/i),
-        shipmentConfirmedByBol ? 'SHIPPED' : null,
-      ].filter(Boolean);
-
-      console.log('[SHIP DEBUG]', bolOrder.orderId, 'candidates=', JSON.stringify(bolStatusCandidates), 'confirmed=', shipmentConfirmedByBol, 'tt=', resolvedTrackAndTrace, 'shipments=', JSON.stringify(shipmentList));
-
-      const resolvedBolOrderStatus = resolvePrimaryBolStatus(bolStatusCandidates);
-      const resolvedShippingStatus = resolvedBolOrderStatus || null;
-
-      // FIX: Always derive status from live Bol data — never from previously persisted DB status.
-      // This prevents orders from getting permanently stuck as "verzonden".
-      const resolvedInternalStatus = resolveBolStatusToInternal({
-        statuses: bolStatusCandidates,
-        hasTrackAndTrace: Boolean(resolvedTrackAndTrace) || shipmentConfirmedByBol,
-      });
-
-      const finalInternalStatus = resolvedInternalStatus;
-      const finalOrderStatus = resolvedBolOrderStatus || finalInternalStatus;
-      const finalOrderStatusCode = toOrderStatusCode(finalInternalStatus || finalOrderStatus);
-
-      const deliveryDate = resolveBolDeliveryDate(orderPayload, orderItems, bolShipmentDetails);
-      const resolvedBolShippingMethod = inferBolShippingMethodFromOrderData({
-        orderPayload,
-        bolOrder,
-        orderItems,
-        shippingMethod: orderPayload?.shippingMethod,
-        bolShippingMethod: orderPayload?.bolShippingMethod,
-      });
-
-      const distributionPartyCandidates = [
-        orderPayload?.distributionParty,
-        orderPayload?.distribution_party,
-        bolOrder?.distributionParty,
-        bolOrder?.distribution_party,
-        ...orderItems.flatMap((item) => [
-          item?.distributionParty,
-          item?.distribution_party,
-        ]),
-        findStringValueByKey(orderPayload, /distribution.?party/i),
-        findStringValueByKey(bolOrder, /distribution.?party/i),
-      ]
-        .map((value) => String(value || '').trim())
-        .filter(Boolean);
-
-      const isVvbOrder = distributionPartyCandidates.some(
-        (value) => value.toUpperCase() === 'BOL'
-      );
-      const mailboxOrder = inferIsMailboxFromOrderData({
-        orderPayload,
-        orderItems,
-        shippingDescription: shipmentDetails?.deliveryMethod,
-      });
-
-      const existingOrder = await prisma.order.findFirst({
-        where: {
-          orderNumber: bolOrder.orderId,
-          installationId: parseInt(installationId),
-        },
-        select: {
-          id: true,
-          storeName: true,
-          installationId: true,
-          orderStatus: true,
-          status: true,
-          supplierTracking: true,
-          tracking: { select: { trackingCode: true } },
-          label: { select: { status: true } },
-        },
-      });
-
-      const conflictingOrder = await prisma.order.findFirst({
-        where: {
-          orderNumber: bolOrder.orderId,
-          NOT: { installationId: parseInt(installationId) },
-        },
-        select: { id: true, installationId: true, storeName: true },
-      });
-
-      if (!existingOrder && conflictingOrder) {
-        console.warn('[BOL SYNC] Skipping conflicting orderNumber from another installation', {
-          orderNumber: bolOrder.orderId,
-          targetInstallationId: parseInt(installationId),
-          conflictingInstallationId: conflictingOrder.installationId,
-        });
-        continue;
-      }
-
-      if (!integrationId && existingOrder && existingOrder.storeName && existingOrder.storeName !== integrationShopName) {
-        console.warn('[BOL SYNC] Skipping conflicting orderNumber from another integration/store', {
-          orderNumber: bolOrder.orderId,
-          existingStoreName: existingOrder.storeName,
-          incomingStoreName: integrationShopName,
-        });
-        continue;
-      }
-
-      const firstName = shipmentDetails?.firstName || '';
-      const surname = shipmentDetails?.surname || '';
-      const customerName = `${firstName} ${surname}`.trim() || 'Unknown';
-
-      const shippingAutomationResult = await resolveShippingAutomationForOrder({
-        prisma,
-        installationId: parseInt(installationId, 10),
-        storeName: existingOrder?.storeName || integrationShopName,
-        country: shipmentDetails?.countryCode || 'NL',
-        bolShippingMethod: resolvedBolShippingMethod,
-        isBrievenbus: mailboxOrder,
-      });
-
-      const resolvedOrderShippingMethod = isVvbOrder
-        ? 'Bol.com'
-        : (shippingAutomationResult.shippingAssignment || null);
-
-      // Never downgrade a locally-confirmed shipment back to an open state during sync.
-      // This covers the window between label generation / POST /shipments and Bol's own
-      // status update propagating back. Cancellations and deliveries from Bol still win.
-      const localShipmentStatuses = new Set(['verzonden', 'label-aangemaakt']);
-      const syncOpenStatuses = new Set(['openstaand', 'onderweg-ffm', 'binnengekomen-ffm']);
-      const existingHasShipmentProof =
-        Boolean(existingOrder?.supplierTracking) ||
-        Boolean(existingOrder?.tracking?.trackingCode) ||
-        Boolean(existingOrder?.label?.status);
-
-      const bolIsDowngradingShipment =
-        existingOrder &&
-        localShipmentStatuses.has(existingOrder.status) &&
-        syncOpenStatuses.has(finalInternalStatus) &&
-        existingHasShipmentProof;
-
-      const syncedStatus = bolIsDowngradingShipment ? existingOrder.status : finalInternalStatus;
-      const syncedOrderStatus = bolIsDowngradingShipment ? existingOrder.orderStatus : finalOrderStatus;
-
-      if (syncedStatus === 'verzonden') {
-        console.log('[VERZONDEN TRACE]', JSON.stringify({
-          orderId: bolOrder.orderId,
-          reason: bolIsDowngradingShipment ? 'downgrade-protected (bleef verzonden)' : 'live bol status',
-          candidates: bolStatusCandidates,
-          confirmedByBol: shipmentConfirmedByBol,
-          trackAndTrace: resolvedTrackAndTrace || null,
-          shipmentCount: shipmentList.length,
-          shipmentRefs: shipmentList.map((s) => s?.shipmentReference || null),
-          existingStatus: existingOrder?.status || null,
-          existingHasShipmentProof,
-        }));
-      }
-
-      const syncedOrderStatusCode = bolIsDowngradingShipment
-        ? toOrderStatusCode(existingOrder.orderStatus)
-        : finalOrderStatusCode;
-
-      const orderData = {
-        orderNumber: bolOrder.orderId,
-        installationId: parseInt(installationId),
-        userId: req.user.id,
-        customerName,
-        customerEmail: shipmentDetails?.email || null,
-        address: [
-          shipmentDetails?.streetName,
-          shipmentDetails?.houseNumber,
-          shipmentDetails?.zipCode,
-          shipmentDetails?.city,
-        ].filter(Boolean).join(', '),
-        country: shipmentDetails?.countryCode || 'NL',
-        storeName: existingOrder?.storeName || integrationShopName,
-        platform: 'bol.com',
-        orderDate: new Date(orderPayload.orderPlacedDateTime),
-        deliveryDate,
-        orderStatus: syncedOrderStatus,
-        orderStatusCode: syncedOrderStatusCode,
-        shippingStatus: resolvedShippingStatus || null,
-        isVVB: isVvbOrder,
-        orderValue: parseFloat(orderItems?.reduce((sum, item) => {
-          const unitPrice = parseFloat(item.unitPrice ?? item.totalPrice ?? item.offerPrice ?? 0) || 0;
-          return sum + (unitPrice * (item.quantity || 1));
-        }, 0) || 0),
-        itemCount: orderItems?.length || 1,
-        ...(resolvedTrackAndTrace ? { supplierTracking: resolvedTrackAndTrace } : {}),
-        status: syncedStatus,
-      };
-
-      // Resolve handover window dates for VVB orders (drop-off dates only — not shipping status)
-      if (isVvbOrder && orderItems.length > 0) {
-        try {
-          const bolLabelOrderItems = orderItems
-            .map((item) => {
-              const orderItemId = String(item?.orderItemId || item?.id || '').trim();
-              if (!orderItemId) return null;
-
-              const rawQuantity = Number(item?.quantity || item?.amount || item?.quantityOrdered || 1);
-              const quantity = Number.isFinite(rawQuantity) && rawQuantity > 0
-                ? Math.max(1, Math.floor(rawQuantity))
-                : 1;
-
-              return { orderItemId, quantity };
-            })
-            .filter(Boolean);
-
-          if (bolLabelOrderItems.length > 0) {
-            const handoverWindow = await fetchBolDeliveryOptionHandoverWindow(credentials, bolLabelOrderItems);
-            orderData.earliestDropOffDate = toValidDate(handoverWindow.earliestHandoverDateTime);
-            orderData.latestDropOffDate = toValidDate(handoverWindow.latestHandoverDateTime);
-          }
-        } catch (handoverError) {
-          console.warn('[BOL SYNC] Failed to resolve handover window from delivery options', {
-            orderId: bolOrder.orderId,
-            message: handoverError?.message || String(handoverError),
-          });
-        }
-      }
-
-      const savedOrder = existingOrder
-        ? await prisma.order.update({
-            where: { id: existingOrder.id },
-            data: orderData,
-            select: { id: true },
-          })
-        : await prisma.order.create({
-            data: { ...orderData, fulfillmentType: null },
-            select: { id: true },
-          });
-
-      if (resolvedTrackAndTrace) {
-        await prisma.tracking.upsert({
-          where: { orderId: savedOrder.id },
-          update: {
-            trackingCode: resolvedTrackAndTrace,
-            supplier: resolvedTransporterCode || 'bol.com',
-            source: 'bol_sync',
-            status: 'linked',
-          },
-          create: {
-            orderId: savedOrder.id,
-            trackingCode: resolvedTrackAndTrace,
-            supplier: resolvedTransporterCode || 'bol.com',
-            source: 'bol_sync',
-            status: 'linked',
-          },
-        });
-      }
-
-      if (isVvbOrder || resolvedOrderShippingMethod) {
-        try {
-          await prisma.$executeRaw`
-            UPDATE \`Order\`
-            SET shippingMethod = ${isVvbOrder ? 'Bol.com' : resolvedOrderShippingMethod}, updatedAt = NOW()
-            WHERE id = ${savedOrder.id} AND installationId = ${parseInt(installationId)}
-          `;
-        } catch (shippingMethodError) {
-          console.warn('[BOL SYNC] Failed to persist shippingMethod via raw SQL', {
-            orderId: savedOrder.id,
-            orderNumber: bolOrder.orderId,
-            message: shippingMethodError.message,
-          });
-        }
-      }
-
-      if (existingOrder) {
-        updatedCount++;
-      } else {
-        importedCount++;
-      }
-
-      if (Array.isArray(orderItems)) {
-        await prisma.orderItem.deleteMany({
-          where: { orderId: savedOrder.id },
-        });
-
-        for (let index = 0; index < orderItems.length; index++) {
-          const item = orderItems[index];
-
-          const productName = firstNonEmptyString(
-            item?.product?.title,
-            item?.title,
-            item?.productTitle,
-            'Unknown Product'
-          );
-          const productBrand = firstNonEmptyString(
-            item?.product?.brand,
-            item?.product?.brandName,
-            item?.brand,
-            findStringValueByKey(item?.product, /brand/i),
-            findStringValueByKey(item, /brand/i)
-          );
-          const ean = firstNonEmptyString(item?.ean, item?.product?.ean);
-          const offerId = firstNonEmptyString(item?.offerId, item?.offer?.offerId);
-          const sku = firstNonEmptyString(
-            item?.sku,
-            item?.product?.sku,
-            item?.offerId,
-            item?.offer?.offerId,
-            item?.offerReference,
-            item?.offer?.reference,
-            ean,
-            `bol-${bolOrder.orderId}-${item?.orderItemId || index + 1}`
-          );
-          const internalRef = firstNonEmptyString(
-            item?.internalReference,
-            item?.internalRef,
-            item?.product?.internalReference,
-            item?.reference,
-            item?.offerReference,
-            item?.offerId,
-            item?.offer?.reference,
-            item?.offer?.offerId,
-            item?.orderItemId,
-            sku
-          );
-          const quantity = Math.max(1, parseInt(item?.quantity || 1, 10) || 1);
-          const unitPrice = toNumber(item?.unitPrice ?? item?.price ?? item?.offerPrice);
-          const totalPrice = toNumber(item?.totalPrice);
-          const effectiveUnitPrice = unitPrice > 0
-            ? unitPrice
-            : (totalPrice > 0 ? totalPrice / quantity : 0);
-          const productImage = extractProductImage(item);
-          let resolvedProductImage = productImage;
-          let resolvedProductBrand = productBrand;
-
-          const enrichmentCacheKey = firstNonEmptyString(ean, sku, offerId, item?.orderItemId);
-          if ((!resolvedProductImage || !resolvedProductBrand) && enrichmentCacheKey) {
-            if (!bolEnrichmentCache.has(enrichmentCacheKey) || Date.now() > (bolEnrichmentCache.get(enrichmentCacheKey)?._expiresAt || 0)) {
-              const enrichment = await enrichBolProductData({ credentials, ean });
-              const entry = enrichment ? { ...enrichment, _expiresAt: Date.now() + BOL_ENRICHMENT_CACHE_TTL_MS } : { _expiresAt: Date.now() + BOL_ENRICHMENT_CACHE_TTL_MS };
-              bolEnrichmentCache.set(enrichmentCacheKey, entry);
-            }
-            // Also keep local per-run cache in sync for legacy reads below
-            if (!enrichmentCache.has(enrichmentCacheKey)) {
-              enrichmentCache.set(enrichmentCacheKey, bolEnrichmentCache.get(enrichmentCacheKey) || null);
-            }
-
-            const enrichmentResponse = enrichmentCache.get(enrichmentCacheKey);
-            if (enrichmentResponse) {
-              if (!resolvedProductImage) {
-                resolvedProductImage = firstNonEmptyString(
-                  enrichmentResponse.resolvedImage,
-                  resolveImageFromBolEnrichment(enrichmentResponse.data)
-                );
-              }
-            }
-          }
-
-          if (!resolvedProductBrand) {
-            resolvedProductBrand = 'Bol.com';
-          }
-
-          const installationIdNumber = parseInt(installationId);
-          let product = await prisma.product.findFirst({
-            where: {
-              installationId: installationIdNumber,
-              OR: [
-                { sku },
-                ...(ean ? [{ ean }] : []),
-              ],
-            },
-            select: { id: true, image: true },
-          });
-
-          const normalizedProductName = normalizeProductName(productName);
-
-          if (product) {
-            product = await prisma.product.update({
-              where: { id: product.id },
-              data: {
-                ean: ean || undefined,
-                name: normalizedProductName,
-                image: resolvedProductImage || undefined,
-                brand: resolvedProductBrand || undefined,
-                internalRef: internalRef || sku,
-                price: effectiveUnitPrice,
-              },
-              select: { id: true, image: true },
-            });
-          } else {
-            product = await prisma.product.create({
-              data: {
-                installationId: installationIdNumber,
-                sku,
-                ean,
-                name: normalizedProductName,
-                image: resolvedProductImage,
-                brand: resolvedProductBrand,
-                internalRef: internalRef || sku,
-                price: effectiveUnitPrice,
-                sizeCategory: null,
-              },
-              select: { id: true, image: true },
-            });
-          }
-
-          await prisma.orderItem.create({
-            data: {
-              orderId: savedOrder.id,
-              productId: product.id,
-              productName: normalizedProductName,
-              productImage: resolvedProductImage || product.image || null,
-              ean,
-              sku,
-              quantity,
-              price: effectiveUnitPrice,
-              unitPrice: effectiveUnitPrice,
-              externalId: String(item?.orderItemId || item?.orderItemID || '').trim() || null,
-            },
-          });
-        }
-      }
-    }
-
-    res.json({
-      success: true,
-      imported: importedCount,
-      updated: updatedCount,
-      total: importedCount + updatedCount,
+    const result = await syncBolOrdersCore({
+      installationId: parseInt(installationId, 10),
+      integrationId: integrationId ? parseInt(integrationId, 10) : null,
+      userId: req.user.id,
     });
+
+    res.json(result);
   } catch (error) {
     console.error('Sync Bol orders error:', error);
     if (error?.code === 'P2000') {
@@ -2788,6 +2802,10 @@ async function getFallbackSyncUserId(installationId) {
   throw new Error('No user available to assign imported Bol.com orders');
 }
 
+/**
+ * Sync orders for a specific installation — called directly by the cron job.
+ * No Express req/res involved.
+ */
 export const syncBolOrdersForInstallation = async ({ installationId, integrationId } = {}) => {
   if (!installationId) {
     throw new Error('Installation ID is required');
@@ -2798,35 +2816,13 @@ export const syncBolOrdersForInstallation = async ({ installationId, integration
     throw new Error('Invalid Installation ID');
   }
 
-  const syncUserId = await getFallbackSyncUserId(installationIdNumber);
-  let statusCode = 200;
-  let payload = null;
+  const userId = await getFallbackSyncUserId(installationIdNumber);
 
-  await syncBolOrders(
-    {
-      query: {
-        installationId: String(installationIdNumber),
-        ...(integrationId ? { integrationId: String(integrationId) } : {}),
-      },
-      user: { id: syncUserId, isGlobalAdmin: true },
-    },
-    {
-      status(code) {
-        statusCode = code;
-        return this;
-      },
-      json(data) {
-        payload = data;
-        return data;
-      },
-    }
-  );
-
-  if (statusCode >= 400) {
-    throw new Error(payload?.details || payload?.error || 'Failed to sync orders from Bol.com');
-  }
-
-  return payload || { success: true, imported: 0, updated: 0, total: 0 };
+  return syncBolOrdersCore({
+    installationId: installationIdNumber,
+    integrationId: integrationId ? parseInt(integrationId, 10) : null,
+    userId,
+  });
 };
 
 // Helper function to map Bol status to internal status

@@ -50,6 +50,7 @@ async function runBolSyncCycle() {
           integrationId: integration.id,
           installationId: integration.installationId,
           error: installationError.message,
+          stack: installationError.stack,
         });
       }
     }
