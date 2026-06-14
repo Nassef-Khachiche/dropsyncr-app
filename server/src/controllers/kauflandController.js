@@ -593,9 +593,6 @@ export async function reconcileKauflandOrderStatusesForInstallation({
 
     if (resolution.reason === 'all-missing' && resolution.internalStatus === null) {
       missing++;
-      console.warn('[KAUFLAND RECONCILE] Order units niet teruggevonden bij Kaufland — handmatig nakijken', {
-        orderNumber: order.orderNumber,
-      });
       continue;
     }
 

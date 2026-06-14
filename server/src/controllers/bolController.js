@@ -1742,8 +1742,6 @@ async function syncBolOrdersCore({ installationId, integrationId = null, userId 
       shipmentConfirmedByBol ? 'SHIPPED' : null,
     ].filter(Boolean);
 
-    console.log('[SHIP DEBUG]', bolOrder.orderId, 'candidates=', JSON.stringify(bolStatusCandidates), 'confirmed=', shipmentConfirmedByBol, 'tt=', resolvedTrackAndTrace, 'shipments=', JSON.stringify(shipmentList));
-
     const resolvedBolOrderStatus = resolvePrimaryBolStatus(bolStatusCandidates);
     const resolvedShippingStatus = resolvedBolOrderStatus || null;
 
