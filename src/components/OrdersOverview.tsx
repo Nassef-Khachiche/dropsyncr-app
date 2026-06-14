@@ -2523,11 +2523,17 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
           <DialogHeader>
             <DialogTitle>Label genereren</DialogTitle>
             <DialogDescription>
-              Selecteer een contract en genereer een verzendlabel voor {labelOrder?.orderNumber || 'de order'}.
+              {labelPreviewUrl && normalizeOrderStatus(labelOrder) === 'verzonden'
+                ? `Label voor order ${labelOrder?.orderNumber || ''}`
+                : `Selecteer een contract en genereer een verzendlabel voor ${labelOrder?.orderNumber || 'de order'}.`}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 flex-1 overflow-auto">
+          {(() => {
+            const isShippedWithLabel = Boolean(labelPreviewUrl && normalizeOrderStatus(labelOrder) === 'verzonden');
+            return (
+              <div className="space-y-4 flex-1 overflow-auto">
+                {!isShippedWithLabel && (
             <div className="space-y-2">
               <label className="text-sm text-slate-700">Contract</label>
               {loadingCarriers ? (
@@ -2607,8 +2613,9 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
                 </div>
               )}
             </div>
+            )}
 
-            {isVvbContractSelected && (
+            {!isShippedWithLabel && isVvbContractSelected && (
               <div className="space-y-3 rounded-xl border border-sky-200 bg-gradient-to-br from-sky-50 to-indigo-50/60 p-4">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-lg bg-white border border-sky-200 p-1.5 flex items-center justify-center shadow-sm">
@@ -2753,12 +2760,15 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
                 )}
               </div>
             )}
-          </div>
+              </div>
+            );
+          })()}
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowLabelDialog(false)} className="border-slate-200">
               Sluiten
             </Button>
+            {!labelPreviewUrl || normalizeOrderStatus(labelOrder) !== 'verzonden' ? (
             <Button
               onClick={handleGenerateLabel}
               disabled={
@@ -2772,6 +2782,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
               {generatingLabel && <Loader2 className="w-4 h-4 animate-spin" />}
               {isVvbContractSelected ? 'Bol label genereren' : 'Label genereren'}
             </Button>
+            ) : null}
           </DialogFooter>
         </DialogContent>
       </Dialog>
