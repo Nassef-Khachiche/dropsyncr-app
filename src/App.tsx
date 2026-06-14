@@ -28,7 +28,14 @@ import { Toaster } from 'sonner';
 export default function App() {
   const { isAuthenticated, loading, logout, user } = useAuth();
   const { t } = useLanguage();
-  const [activeProfile, setActiveProfile] = useState<string | null>(null);
+  const [activeProfile, setActiveProfile] = useState<string | null>(
+    () => localStorage.getItem('activeProfile')
+  );
+
+  const handleProfileChange = (profileId: string) => {
+    localStorage.setItem('activeProfile', profileId);
+    setActiveProfile(profileId);
+  };
   const [activeView, setActiveView] = useState('orders');
 
   const isGlobalAdmin =
@@ -40,6 +47,7 @@ export default function App() {
 
   React.useEffect(() => {
     const handleLogout = () => {
+      localStorage.removeItem('activeProfile');
       logout();
     };
     
@@ -114,7 +122,7 @@ export default function App() {
               <LanguageSwitcher />
               <ProfileSwitcher 
                 activeProfile={activeProfile} 
-                onProfileChange={setActiveProfile} 
+                onProfileChange={handleProfileChange} 
               />
             </div>
           </div>
