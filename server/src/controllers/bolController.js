@@ -1830,11 +1830,13 @@ async function syncBolOrdersCore({ installationId, integrationId = null, userId 
       Boolean(existingOrder?.tracking?.trackingCode) ||
       Boolean(existingOrder?.label?.status);
 
+    // For 'label-aangemaakt': always protect — we generated a label so it is being processed.
+    // For 'verzonden': require shipment proof to distinguish a genuine shipment from a stale status.
     const bolIsDowngradingShipment =
       existingOrder &&
       localShipmentStatuses.has(existingOrder.status) &&
       syncOpenStatuses.has(finalInternalStatus) &&
-      existingHasShipmentProof;
+      (existingOrder.status === 'label-aangemaakt' || existingHasShipmentProof);
 
     const syncedStatus = bolIsDowngradingShipment ? existingOrder.status : finalInternalStatus;
     const syncedOrderStatus = bolIsDowngradingShipment ? existingOrder.orderStatus : finalOrderStatus;

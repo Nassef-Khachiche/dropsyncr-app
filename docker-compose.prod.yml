@@ -19,6 +19,8 @@ services:
       NODE_ENV: production
     ports:
       - "5000:5000"
+    volumes:
+      - label_storage:/app/storage/labels
     networks:
       - dropsyncr-network
     command: sh -c "npx prisma generate && npx prisma db push && npm start"
@@ -40,3 +42,4 @@ networks:
     driver: bridge
 volumes:
   mysql_data_prod:
+  label_storage:
