@@ -2365,14 +2365,6 @@ export const getBolShippingLabel = async (req, res) => {
 
     if (rawLabelDataUri.startsWith('data:')) {
       try {
-        const forwardedProto = String(req.get('x-forwarded-proto') || '').split(',')[0].trim().toLowerCase();
-        const forwardedHost = String(req.get('x-forwarded-host') || '').split(',')[0].trim();
-        const requestHost = forwardedHost || String(req.get('host') || '').trim();
-        const protocol =
-          req.secure || forwardedProto === 'https' || process.env.FORCE_LABEL_HTTPS === 'true' || process.env.NODE_ENV === 'production'
-            ? 'https'
-            : req.protocol;
-
         const dataUrlMatch = rawLabelDataUri.match(/^data:([^;]+);base64,(.+)$/i);
         if (dataUrlMatch) {
           const mimeType = String(dataUrlMatch[1] || 'application/pdf').toLowerCase();
@@ -2385,7 +2377,7 @@ export const getBolShippingLabel = async (req, res) => {
           await fs.mkdir(LABEL_STORAGE_DIR, { recursive: true });
           await fs.writeFile(filePath, Buffer.from(base64Payload, 'base64'));
 
-          persistedLabelUrl = `${protocol}://${requestHost}/labels/${fileName}`;
+          persistedLabelUrl = `/labels/${fileName}`;
           labelData = { ...labelData, labelUrl: persistedLabelUrl };
 
           console.log('[BOL LABEL] Saved label to disk', { orderId: normalizedOrderId, fileName, persistedLabelUrl });

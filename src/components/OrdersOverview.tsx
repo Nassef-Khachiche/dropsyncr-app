@@ -1021,7 +1021,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
           bolOrderItems.length > 0 ? bolOrderItems : undefined,
         );
         const deliveryOptionValidation = bolLabelResult?.deliveryOptionValidation || null;
-        const directLabelUrl = typeof bolLabelResult?.labelUrl === 'string' && isLikelyUrl(bolLabelResult.labelUrl.trim())
+        const directLabelUrl = typeof bolLabelResult?.labelUrl === 'string' && bolLabelResult.labelUrl.trim()
           ? bolLabelResult.labelUrl.trim()
           : null;
         const labelUrl = directLabelUrl || extractFirstStringMatch(bolLabelResult, isLikelyUrl);

@@ -452,7 +452,7 @@ export const generateCarrierLabels = async (req, res) => {
         ? 'https'
         : req.protocol;
 
-    const buildPublicLabelUrl = (fileName) => `${protocol}://${requestHost}/labels/${fileName}`;
+    const buildPublicLabelUrl = (fileName) => `/labels/${fileName}`;
 
     const resolveStoredLabelUrl = async (labelUrl, orderId) => {
       const normalized = String(labelUrl || '').trim();
@@ -476,7 +476,7 @@ export const generateCarrierLabels = async (req, res) => {
         return buildPublicLabelUrl(fileName);
       }
 
-      if (normalized.startsWith('/labels/')) return `${protocol}://${requestHost}${normalized}`;
+      if (normalized.startsWith('/labels/')) return normalized;
 
       if (normalized.startsWith('http://') || normalized.startsWith('https://')) {
         try {
