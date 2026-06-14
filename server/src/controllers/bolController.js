@@ -369,6 +369,13 @@ const extractShippingLabelIdsFromResponse = (payload) => {
   return Array.from(shippingLabelIds);
 };
 
+const isFbbOrderItem = (item) => {
+  const method = String(
+    item?.fulfilmentMethod || item?.fulfilment?.method || item?.fulfilmentDetails?.fulfilmentMethod || ''
+  ).trim().toUpperCase();
+  return method === 'FBB';
+};
+
 const extractBolOrderItemsForLabel = (payload) => {
   const resolvedItems = new Map();
 
@@ -384,6 +391,9 @@ const extractBolOrderItemsForLabel = (payload) => {
 
     if (value.orderItems && Array.isArray(value.orderItems)) {
       value.orderItems.forEach((item) => {
+        // Skip FBB items — they are fulfilled by Bol's warehouse and cannot have retailer labels.
+        if (isFbbOrderItem(item)) return;
+
         const orderItemId = String(item?.orderItemId || item?.orderItemID || item?.id || '').trim();
         if (!orderItemId) return;
 
@@ -597,8 +607,10 @@ async function pollShippingLabelIdFromProcessStatus(
         const linkedEntityId = extractFirstLinkId(payload, '/shipping-labels');
         if (linkedEntityId) return linkedEntityId;
       } catch (err) {
+        // Definitive Bol FAILURE — stop retrying immediately
+        if (err?.message?.startsWith('Bol label aanmaken mislukt')) throw err;
         console.warn(`[BOL POLL] attempt ${attempt}, endpoint ${endpoint} failed:`, err?.message);
-        // ignore endpoint error, try next endpoint
+        // ignore transient network errors, try next endpoint
       }
     }
   }
@@ -793,8 +805,12 @@ async function getBolLabelWithFallbackInternal(
   const resolveOrderItemsPayload = async () => {
     // Use pre-fetched order items from the client if available (avoids a /order-items call that may 403)
     if (Array.isArray(prefetchedOrderItems) && prefetchedOrderItems.length > 0) {
-      console.log('[BOL LABEL DEBUG] Using pre-fetched orderItems from client', { count: prefetchedOrderItems.length });
-      return { orderItems: prefetchedOrderItems };
+      // Filter out any FBB items that may have slipped through before this fix
+      const fbrItems = prefetchedOrderItems.filter((item) => !isFbbOrderItem(item));
+      if (fbrItems.length > 0) {
+        console.log('[BOL LABEL DEBUG] Using pre-fetched orderItems from client', { count: fbrItems.length });
+        return { orderItems: fbrItems };
+      }
     }
 
     // Try Bol API — always prefer live IDs over DB to avoid stale/cancelled item IDs
