@@ -997,6 +997,7 @@ async function fetchAllBolOrders(credentials) {
   const interPageDelayMs = 400;
   // Only fetch with status=ALL — querying individual statuses separately is redundant
   // and multiplies API calls by 7x, causing rate limit (429) errors.
+  // Only fetch FBR (Fulfilled by Retailer) orders — FBB orders are handled by Bol's warehouse.
   const statusesToFetch = ['ALL'];
   const dedupedOrders = new Map();
 
@@ -1012,7 +1013,7 @@ async function fetchAllBolOrders(credentials) {
       try {
         response = await bolApiRequest(
           credentials,
-          `/orders?status=${encodeURIComponent(status)}&page=${page}`,
+          `/orders?status=${encodeURIComponent(status)}&fulfilment-method=FBR&page=${page}`,
         );
       } catch (error) {
         if (page === 1) {
@@ -1120,7 +1121,7 @@ async function findOrderInFbrOrderPages(credentials, orderId, maxPages = 8) {
   if (!normalizedOrderId) return null;
 
   for (let page = 1; page <= maxPages; page += 1) {
-    const response = await bolApiRequest(credentials, `/orders?status=ALL&page=${page}`);
+    const response = await bolApiRequest(credentials, `/orders?status=ALL&fulfilment-method=FBR&page=${page}`);
     const pageOrders = Array.isArray(response?.orders) ? response.orders : [];
 
     if (pageOrders.length === 0) return null;

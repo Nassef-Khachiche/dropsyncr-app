@@ -140,6 +140,7 @@ const WEGROW_SERVICE_OPTIONS = {
   'dhl-for-you': { label: 'DHL For You', defaultServiceCode: null, fallbackServiceKeys: ['dhl'] },
   'postnl-nederland-brievenbuspakketje-0-2kg': { label: 'PostNL Brievenbuspakketje 0-2kg', defaultServiceCode: null, fallbackServiceKeys: ['postnl'] },
   'postnl-belgie-standaard-0-23kg': { label: 'PostNL België Standaard 0-23kg', defaultServiceCode: null, fallbackServiceKeys: ['postnl'] },
+  'dpd-standaard': { label: 'DPD Standaard', defaultServiceCode: null, fallbackServiceKeys: ['dpd'] },
 };
 
 const normalizeWeGrowServiceCodeMap = (rawServiceCodeMap) => {
@@ -1038,12 +1039,14 @@ export const generateCarrierLabels = async (req, res) => {
         dhl: credentials.dhlServiceCode,
         postnl: credentials.postnlServiceCode,
         bpost: credentials.bpostServiceCode,
+        dpd: credentials.dpdServiceCode,
         'dhl-nl': credentials.dhlNlServiceCode,
         'dhl-for-you-envelop': credentials.dhlForYouEnvelopServiceCode,
         'dhl-for-you-brievenbuspakje': credentials.dhlForYouBrievenbuspakjeServiceCode,
         'dhl-for-you': credentials.dhlForYouServiceCode,
         'postnl-nederland-brievenbuspakketje-0-2kg': credentials.postnlNederlandBrievenbuspakketje02kgServiceCode,
         'postnl-belgie-standaard-0-23kg': credentials.postnlBelgieStandaard023kgServiceCode,
+        'dpd-standaard': credentials.dpdServiceCode,
       };
       const selectedServiceOption = selectedWeGrowCarrier ? WEGROW_SERVICE_OPTIONS[selectedWeGrowCarrier] : null;
       const optionFallbackServiceCode = selectedServiceOption

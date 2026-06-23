@@ -135,13 +135,7 @@ const availableCarriers: CarrierOption[] = [
       { name: 'contractName', label: 'Contractnaam', type: 'text', placeholder: 'Bijv. WeGrow EU Contract' },
       { name: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Voer je WeGrow API key in' },
       { name: 'bearerToken', label: 'Bearer Token (optioneel)', type: 'password', placeholder: 'Voer je WeGrow bearer token in', required: false },
-      { name: 'serviceCode', label: 'Algemene Service Code', type: 'text', placeholder: 'Bijv. wegrow_home_premium' },
-      { name: 'dhlNlServiceCode', label: 'DHL NL Service Code', type: 'text', placeholder: 'Specifieke WeGrow service code voor DHL NL', required: false },
-      { name: 'dhlForYouEnvelopServiceCode', label: 'DHL For You - Envelop Service Code', type: 'text', placeholder: 'Specifieke WeGrow service code voor DHL For You - Envelop', required: false },
-      { name: 'dhlForYouBrievenbuspakjeServiceCode', label: 'DHL For You Brievenbuspakje Service Code', type: 'text', placeholder: 'Specifieke WeGrow service code voor DHL For You Brievenbuspakje', required: false },
-      { name: 'dhlForYouServiceCode', label: 'DHL For You Service Code', type: 'text', placeholder: 'Specifieke WeGrow service code voor DHL For You', required: false },
-      { name: 'postnlNederlandBrievenbuspakketje02kgServiceCode', label: 'PostNL Brievenbuspakketje 0-2kg Service Code', type: 'text', placeholder: 'Specifieke WeGrow service code voor PostNL Brievenbuspakketje 0-2kg', required: false },
-      { name: 'postnlBelgieStandaard023kgServiceCode', label: 'PostNL België Standaard 0-23kg Service Code', type: 'text', placeholder: 'Specifieke WeGrow service code voor PostNL België Standaard 0-23kg', required: false },
+      { name: 'serviceCode', label: 'Service Code', type: 'text', placeholder: 'Bijv. wegrow_home_premium' },
       { name: 'returnServiceCode', label: 'Return Service Code', type: 'text', placeholder: 'Bijv. wegrow_direct_return', required: false },
       { name: 'baseUrl', label: 'Base URL', type: 'text', placeholder: 'Bijv. https://api-sandbox.wegrow.eu', required: false },
       { name: 'apiVersion', label: 'API Version', type: 'text', placeholder: 'Bijv. v1', required: false },
@@ -252,6 +246,7 @@ export function Carriers({ activeProfile }: CarriersProps) {
         baseUrl: 'https://api-sandbox.wegrow.eu',
         apiVersion: 'v1',
         sandbox: true,
+        serviceCode: 'wegrow_home_premium',
       });
     } else {
       setFormData({});

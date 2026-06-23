@@ -111,6 +111,7 @@ const wegrowCarrierOptions = [
   { id: 'dhl-for-you', name: 'DHL For You', logo: dhlLogo },
   { id: 'postnl-nederland-brievenbuspakketje-0-2kg', name: 'PostNL Brievenbuspakketje 0-2kg', logo: postnlLogo },
   { id: 'postnl-belgie-standaard-0-23kg', name: 'PostNL België Standaard 0-23kg', logo: postnlLogo },
+  { id: 'dpd-standaard', name: 'DPD', logo: dpdLogo },
 ];
 
 const getWegrowCarrierOptionById = (carrierId: string) => {
