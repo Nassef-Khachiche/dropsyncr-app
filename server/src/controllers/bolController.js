@@ -2416,6 +2416,32 @@ export const getBolShippingLabel = async (req, res) => {
         rawLabelDataUri = `data:application/pdf;base64,${bodyBase64}`;
       }
     }
+
+    // VVB labels are generated asynchronously: the process-status may report SUCCESS but
+    // the PDF endpoint still returns 406 for a short window. Retry once after a delay.
+    if (!rawLabelDataUri && successfulCredentials) {
+      const retryLabelId = String(labelData?.shippingLabelId || '').trim();
+      if (retryLabelId) {
+        console.log('[BOL LABEL] No PDF in initial response, retrying PDF fetch for label:', retryLabelId);
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+        try {
+          const retryResult = await fetchBolShippingLabelById(successfulCredentials, retryLabelId);
+          if (retryResult?.labelUrl) {
+            rawLabelDataUri = String(retryResult.labelUrl).trim();
+            labelData = {
+              ...labelData,
+              labelUrl: rawLabelDataUri,
+              trackingCode: retryResult.trackingCode || labelData.trackingCode || null,
+              transporterCode: retryResult.transporterCode || labelData.transporterCode || null,
+            };
+            console.log('[BOL LABEL] PDF retry succeeded for label:', retryLabelId);
+          }
+        } catch (retryErr) {
+          console.warn('[BOL LABEL] PDF retry failed (non-fatal):', retryErr?.message);
+        }
+      }
+    }
+
     let persistedLabelUrl = rawLabelDataUri; // fallback: return data URI if file save fails
 
     if (rawLabelDataUri.startsWith('data:')) {

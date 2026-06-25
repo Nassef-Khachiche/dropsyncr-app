@@ -144,6 +144,20 @@ const isManualShippingOverride = (value: string) => (
 
 const isLikelyUrl = (value: string) => /^https?:\/\//i.test(value);
 
+// Resolve relative /labels/... paths to absolute using the API origin.
+// Needed because frontend (Vite, port 3000) and backend (Express, port 5000) run on different origins in dev.
+const resolveToAbsoluteLabelUrl = (url: string): string => {
+  if (!url) return '';
+  if (/^https?:\/\//i.test(url) || url.startsWith('blob:') || url.startsWith('data:')) return url;
+  if (url.startsWith('/')) {
+    try {
+      const apiUrl = ((import.meta as any).env?.VITE_API_URL as string) || '';
+      if (apiUrl) return new URL(apiUrl).origin + url;
+    } catch { /* ignore */ }
+  }
+  return url;
+};
+
 const isLikelyPdfBase64 = (value: string) => {
   const normalized = String(value || '').trim();
   if (!normalized) return false;
@@ -751,7 +765,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
         ? initialWegrowCarrier
         : ''
     );
-    setLabelPreviewUrl(order?.label?.labelUrl || '');
+    setLabelPreviewUrl(resolveToAbsoluteLabelUrl(order?.label?.labelUrl || ''));
     setGeneratedLabelMeta({
       shipmentId: order?.label?.id ? String(order.label.id) : null,
       trackingCode: order?.supplierTracking || order?.tracking?.trackingCode || null,
@@ -1055,7 +1069,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
               // keep original URL if conversion fails
             }
           }
-          setLabelPreviewUrl(safePreviewUrl);
+          setLabelPreviewUrl(resolveToAbsoluteLabelUrl(safePreviewUrl));
         }
 
         setGeneratedLabelMeta({
@@ -1165,8 +1179,9 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
 
       const label = (result.labels || [])[0];
       if (label?.labelUrl) {
-        setLabelPreviewUrl(label.labelUrl);
-        window.open(label.labelUrl, '_blank', 'noreferrer');
+        const resolvedLabelUrl = resolveToAbsoluteLabelUrl(label.labelUrl);
+        setLabelPreviewUrl(resolvedLabelUrl);
+        window.open(resolvedLabelUrl, '_blank', 'noreferrer');
       }
       setGeneratedLabelMeta({
         shipmentId: label?.shipmentId || null,
