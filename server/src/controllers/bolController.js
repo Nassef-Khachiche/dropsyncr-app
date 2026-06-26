@@ -2727,6 +2727,65 @@ export const getBolDeliveryOptions = async (req, res) => {
 };
 
 /**
+ * Fetch the PDF for an already-created Bol shipping label.
+ * Used by the client to poll for the PDF when it was not yet available
+ * at label-creation time (Bol returns 406 for a short window after SUCCESS).
+ */
+export const getBolLabelPdf = async (req, res) => {
+  try {
+    const { installationId, shippingLabelId, integrationId } = req.query;
+
+    if (!installationId || !shippingLabelId) {
+      return res.status(400).json({ error: 'installationId and shippingLabelId are required' });
+    }
+
+    const normalizedShippingLabelId = String(shippingLabelId).trim();
+
+    let credentials;
+    try {
+      ({ credentials } = await getBolIntegration(installationId, integrationId || null));
+    } catch (credErr) {
+      return res.status(400).json({ error: credErr.message });
+    }
+
+    const result = await fetchBolShippingLabelById(credentials, normalizedShippingLabelId);
+
+    if (!result?.labelUrl) {
+      // PDF not ready yet — client should retry later
+      return res.json({ ready: false, shippingLabelId: normalizedShippingLabelId });
+    }
+
+    let persistedLabelUrl = String(result.labelUrl).trim();
+    if (persistedLabelUrl.startsWith('data:')) {
+      try {
+        const dataUrlMatch = persistedLabelUrl.match(/^data:([^;]+);base64,(.+)$/i);
+        if (dataUrlMatch) {
+          const base64Payload = dataUrlMatch[2] || '';
+          const fileName = `label-pdf-${normalizedShippingLabelId}-${Date.now()}.pdf`;
+          const filePath = path.join(LABEL_STORAGE_DIR, fileName);
+          await fs.mkdir(LABEL_STORAGE_DIR, { recursive: true });
+          await fs.writeFile(filePath, Buffer.from(base64Payload, 'base64'));
+          persistedLabelUrl = `/labels/${fileName}`;
+        }
+      } catch (saveError) {
+        console.warn('[BOL LABEL PDF] Failed to save label PDF to disk:', saveError?.message);
+        // fall back to data URI
+      }
+    }
+
+    res.json({
+      ready: true,
+      labelUrl: persistedLabelUrl,
+      trackingCode: result.trackingCode || null,
+      transporterCode: result.transporterCode || null,
+    });
+  } catch (error) {
+    console.error('Get Bol label PDF error:', error);
+    res.status(500).json({ error: 'Failed to fetch label PDF', details: error.message });
+  }
+};
+
+/**
  * Update order shipment status
  */
 export const updateBolShipment = async (req, res) => {

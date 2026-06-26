@@ -437,6 +437,10 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
   const [selectedBolDeliveryOptionId, setSelectedBolDeliveryOptionId] = useState<string>('');
   const [loadingBolDeliveryOptions, setLoadingBolDeliveryOptions] = useState(false);
   const [labelJustGenerated, setLabelJustGenerated] = useState(false);
+  // Pending label PDF polling: set when the server generated a label but PDF wasn't ready yet
+  const [pendingLabelShippingId, setPendingLabelShippingId] = useState<string | null>(null);
+  const [pendingLabelInstallationId, setPendingLabelInstallationId] = useState<string | null>(null);
+  const [pendingLabelIntegrationId, setPendingLabelIntegrationId] = useState<string | null>(null);
   const labelPreviewRef = useRef<HTMLDivElement>(null);
 
   // --- Return label dialog state ---
@@ -578,6 +582,44 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
       });
     }
   }, [labelPreviewUrl, showLabelDialog]);
+
+  // Poll for the Bol label PDF when the server returned a shippingLabelId but no PDF yet.
+  // Bol's PDF endpoint returns 406 for a short window after process-status SUCCESS.
+  // We keep retrying on the client so the user always sees the actual label.
+  useEffect(() => {
+    if (!pendingLabelShippingId || !pendingLabelInstallationId || !showLabelDialog) return;
+
+    let cancelled = false;
+    const delays = [3000, 5000, 8000, 12000, 15000, 20000];
+    let attempt = 0;
+
+    const pollOnce = async () => {
+      if (cancelled || attempt >= delays.length) return;
+      await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
+      if (cancelled) return;
+      attempt++;
+      try {
+        const result = await api.getBolLabelPdf(
+          pendingLabelShippingId,
+          pendingLabelInstallationId,
+          pendingLabelIntegrationId ?? undefined,
+        );
+        if (cancelled) return;
+        if (result.ready && result.labelUrl) {
+          const resolvedUrl = resolveToAbsoluteLabelUrl(result.labelUrl);
+          setLabelPreviewUrl(resolvedUrl);
+          setPendingLabelShippingId(null);
+        } else {
+          pollOnce();
+        }
+      } catch {
+        if (!cancelled) pollOnce();
+      }
+    };
+
+    pollOnce();
+    return () => { cancelled = true; };
+  }, [pendingLabelShippingId, pendingLabelInstallationId, pendingLabelIntegrationId, showLabelDialog]);
 
   const loadOrders = async () => {
     try {
@@ -777,6 +819,9 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
       trackingUrl: order?.tracking?.trackingUrl || null,
     });
     setLabelJustGenerated(false);
+    setPendingLabelShippingId(null);
+    setPendingLabelInstallationId(null);
+    setPendingLabelIntegrationId(null);
     setShowLabelDialog(true);
   };
 
@@ -1076,6 +1121,17 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
             }
           }
           setLabelPreviewUrl(resolveToAbsoluteLabelUrl(safePreviewUrl));
+        } else {
+          // PDF not yet available from Bol — start polling with the shippingLabelId so the
+          // dialog automatically shows the label as soon as Bol has it ready.
+          const receivedShippingLabelId = String(bolLabelResult?.shippingLabelId || '').trim();
+          if (receivedShippingLabelId) {
+            setPendingLabelInstallationId(installationId);
+            setPendingLabelIntegrationId(
+              bolLabelResult?.integrationId != null ? String(bolLabelResult.integrationId) : null
+            );
+            setPendingLabelShippingId(receivedShippingLabelId);
+          }
         }
 
         setGeneratedLabelMeta({
@@ -2541,6 +2597,9 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
           if (!open) {
             setSelectedWeGrowCarrier('');
             setLabelJustGenerated(false);
+            setPendingLabelShippingId(null);
+            setPendingLabelInstallationId(null);
+            setPendingLabelIntegrationId(null);
           }
         }}
       >
@@ -2741,11 +2800,17 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
             {labelJustGenerated && !labelPreviewUrl && (
               <div className="flex flex-col items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/60 p-6 text-center">
                 <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center">
-                  <Package className="w-6 h-6 text-emerald-600" />
+                  {pendingLabelShippingId
+                    ? <Loader2 className="w-6 h-6 text-emerald-600 animate-spin" />
+                    : <Package className="w-6 h-6 text-emerald-600" />}
                 </div>
                 <div>
                   <p className="text-sm font-medium text-emerald-900">Label aangemaakt</p>
-                  <p className="text-xs text-emerald-700 mt-1">Het label is aangemaakt en de verzending is bevestigd bij Bol.com. De PDF wordt door Bol verwerkt — download het label via de Bol Retailer Portal of probeer het over een moment opnieuw.</p>
+                  <p className="text-xs text-emerald-700 mt-1">
+                    {pendingLabelShippingId
+                      ? 'PDF wordt opgehaald bij Bol.com\u2026 het label verschijnt hier zodra het klaar is.'
+                      : 'Het label is aangemaakt maar de PDF is nog niet beschikbaar. Probeer de dialog opnieuw te openen of download het label via de Bol Retailer Portal.'}
+                  </p>
                 </div>
               </div>
             )}

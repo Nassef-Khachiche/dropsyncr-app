@@ -638,6 +638,20 @@ class ApiService {
     }>(`/bol/delivery-options?${queryParams.toString()}`);
   }
 
+  async getBolLabelPdf(shippingLabelId: string, installationId: string, integrationId?: string) {
+    const queryParams = new URLSearchParams();
+    queryParams.append('shippingLabelId', shippingLabelId);
+    queryParams.append('installationId', installationId);
+    if (integrationId) queryParams.append('integrationId', integrationId);
+    return this.request<{
+      ready: boolean;
+      shippingLabelId?: string;
+      labelUrl?: string;
+      trackingCode?: string | null;
+      transporterCode?: string | null;
+    }>(`/bol/label-pdf?${queryParams.toString()}`);
+  }
+
   async updateBolShipment(installationId: string, data: any) {
     return this.request<{ success: boolean; data: any }>(
       `/bol/shipment?installationId=${installationId}`, {
