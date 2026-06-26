@@ -569,7 +569,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
   useEffect(() => {
     if (labelPreviewUrl && showLabelDialog && labelPreviewRef.current) {
       requestAnimationFrame(() => {
-        labelPreviewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        labelPreviewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
     }
   }, [labelPreviewUrl, showLabelDialog]);
@@ -2546,7 +2546,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
           </DialogHeader>
 
           {(() => {
-            const isShippedWithLabel = Boolean(labelPreviewUrl && normalizeOrderStatus(labelOrder) === 'verzonden');
+            const isShippedWithLabel = Boolean(labelPreviewUrl);
             return (
               <div className="space-y-4 flex-1 overflow-auto">
                 {!isShippedWithLabel && (
