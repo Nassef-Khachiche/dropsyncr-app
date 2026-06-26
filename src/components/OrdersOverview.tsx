@@ -531,7 +531,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
 
       // Don't reload delivery options after a label was just generated — the order
       // is now being processed and the options are no longer relevant.
-      if (labelJustGenerated || labelPreviewUrl) return;
+      if (labelJustGenerated) return;
 
       const installationId = String(
         labelOrder.installation?.id
