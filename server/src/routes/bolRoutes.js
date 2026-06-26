@@ -4,6 +4,7 @@ import {
   getBolShippingLabel,
   getBolDeliveryOptions,
   getBolLabelPdf,
+  getBolLabelByOrder,
   updateBolShipment,
   getBolReturns,
   handleBolReturn,
@@ -21,6 +22,7 @@ router.get('/sync-orders', syncBolOrders);
 // Shipping labels
 router.post('/shipping-label', getBolShippingLabel);
 router.get('/label-pdf', getBolLabelPdf);
+router.get('/label-by-order', getBolLabelByOrder);
 router.get('/delivery-options', getBolDeliveryOptions);
 
 // Shipment updates

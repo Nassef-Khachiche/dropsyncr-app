@@ -441,6 +441,10 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
   const [pendingLabelShippingId, setPendingLabelShippingId] = useState<string | null>(null);
   const [pendingLabelInstallationId, setPendingLabelInstallationId] = useState<string | null>(null);
   const [pendingLabelIntegrationId, setPendingLabelIntegrationId] = useState<string | null>(null);
+  // Fallback order-based polling: used when no shippingLabelId was returned at all
+  const [pendingLabelOrderId, setPendingLabelOrderId] = useState<string | null>(null);
+  const [pendingLabelOrderInstallationId, setPendingLabelOrderInstallationId] = useState<string | null>(null);
+  const [pendingLabelOrderIntegrationId, setPendingLabelOrderIntegrationId] = useState<string | null>(null);
   const labelPreviewRef = useRef<HTMLDivElement>(null);
 
   // --- Return label dialog state ---
@@ -620,6 +624,50 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
     pollOnce();
     return () => { cancelled = true; };
   }, [pendingLabelShippingId, pendingLabelInstallationId, pendingLabelIntegrationId, showLabelDialog]);
+
+  // Order-based polling: used when no shippingLabelId was returned in the initial label response.
+  // Queries /bol/label-by-order which checks Bol's /shipments endpoint and fetches the PDF.
+  // When the shippingLabelId is discovered (but PDF still not ready), we switch to the
+  // shippingLabelId-based poll so the two systems don't overlap.
+  useEffect(() => {
+    if (!pendingLabelOrderId || !pendingLabelOrderInstallationId || pendingLabelShippingId || !showLabelDialog) return;
+
+    let cancelled = false;
+    let attempt = 0;
+    const delays = [5000, 10000, 15000, 20000, 30000];
+
+    const pollOnce = async () => {
+      if (cancelled || attempt >= delays.length) return;
+      await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
+      if (cancelled) return;
+      attempt++;
+      try {
+        const result = await api.getBolLabelByOrder(
+          pendingLabelOrderId,
+          pendingLabelOrderInstallationId,
+          pendingLabelOrderIntegrationId ?? undefined,
+        );
+        if (cancelled) return;
+        if (result.ready && result.labelUrl) {
+          setLabelPreviewUrl(resolveToAbsoluteLabelUrl(result.labelUrl));
+          setPendingLabelOrderId(null);
+        } else if (result.shippingLabelId) {
+          // Switch to the faster shippingLabelId-based poll
+          setPendingLabelInstallationId(pendingLabelOrderInstallationId);
+          setPendingLabelIntegrationId(pendingLabelOrderIntegrationId);
+          setPendingLabelShippingId(result.shippingLabelId);
+          setPendingLabelOrderId(null);
+        } else {
+          pollOnce();
+        }
+      } catch {
+        if (!cancelled) pollOnce();
+      }
+    };
+
+    pollOnce();
+    return () => { cancelled = true; };
+  }, [pendingLabelOrderId, pendingLabelOrderInstallationId, pendingLabelOrderIntegrationId, pendingLabelShippingId, showLabelDialog]);
 
   const loadOrders = async () => {
     try {
@@ -822,6 +870,9 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
     setPendingLabelShippingId(null);
     setPendingLabelInstallationId(null);
     setPendingLabelIntegrationId(null);
+    setPendingLabelOrderId(null);
+    setPendingLabelOrderInstallationId(null);
+    setPendingLabelOrderIntegrationId(null);
     setShowLabelDialog(true);
   };
 
@@ -1131,6 +1182,14 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
               bolLabelResult?.integrationId != null ? String(bolLabelResult.integrationId) : null
             );
             setPendingLabelShippingId(receivedShippingLabelId);
+          } else {
+            // No shippingLabelId returned — fall back to order-based polling which
+            // queries Bol's /shipments endpoint to discover the ID.
+            setPendingLabelOrderId(bolOrderId);
+            setPendingLabelOrderInstallationId(installationId);
+            setPendingLabelOrderIntegrationId(
+              bolLabelResult?.integrationId != null ? String(bolLabelResult.integrationId) : null
+            );
           }
         }
 
@@ -2800,19 +2859,19 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
             {labelJustGenerated && !labelPreviewUrl && (
               <div className="flex flex-col items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/60 p-6 text-center">
                 <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center">
-                  {pendingLabelShippingId
+                  {(pendingLabelShippingId || pendingLabelOrderId)
                     ? <Loader2 className="w-6 h-6 text-emerald-600 animate-spin" />
                     : <Package className="w-6 h-6 text-emerald-600" />}
                 </div>
                 <div>
                   <p className="text-sm font-medium text-emerald-900">Label aangemaakt</p>
                   <p className="text-xs text-emerald-700 mt-1">
-                    {pendingLabelShippingId
+                    {(pendingLabelShippingId || pendingLabelOrderId)
                       ? 'PDF wordt opgehaald bij Bol.com\u2026 het label verschijnt hier zodra het klaar is.'
                       : 'Het label is aangemaakt maar de PDF kon niet direct worden opgehaald.'}
                   </p>
                 </div>
-                {!pendingLabelShippingId && (
+                {!pendingLabelShippingId && !pendingLabelOrderId && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -2822,6 +2881,9 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
                       setPendingLabelShippingId(null);
                       setPendingLabelInstallationId(null);
                       setPendingLabelIntegrationId(null);
+                      setPendingLabelOrderId(null);
+                      setPendingLabelOrderInstallationId(null);
+                      setPendingLabelOrderIntegrationId(null);
                     }}
                   >
                     <RefreshCw className="w-3.5 h-3.5 mr-1.5" />

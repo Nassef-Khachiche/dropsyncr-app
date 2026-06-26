@@ -652,6 +652,18 @@ class ApiService {
     }>(`/bol/label-pdf?${queryParams.toString()}`);
   }
 
+  async getBolLabelByOrder(orderId: string, installationId: string, integrationId?: string) {
+    const queryParams = new URLSearchParams();
+    queryParams.append('orderId', orderId);
+    queryParams.append('installationId', installationId);
+    if (integrationId) queryParams.append('integrationId', integrationId);
+    return this.request<{
+      ready: boolean;
+      labelUrl?: string;
+      shippingLabelId?: string;
+    }>(`/bol/label-by-order?${queryParams.toString()}`);
+  }
+
   async updateBolShipment(installationId: string, data: any) {
     return this.request<{ success: boolean; data: any }>(
       `/bol/shipment?installationId=${installationId}`, {

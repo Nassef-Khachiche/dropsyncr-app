@@ -39,6 +39,7 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+// v2026-06-26 — getBolLabelByOrder endpoint added
 
 getJwtSecret();
 app.set('trust proxy', true);

@@ -2811,6 +2811,112 @@ export const getBolLabelPdf = async (req, res) => {
 };
 
 /**
+ * Poll for a Bol label PDF by order ID.
+ * Checks the DB first; if no URL is stored yet, queries Bol's /shipments endpoint
+ * to discover the shippingLabelId and then tries to fetch the PDF.
+ * Returns { ready: true, labelUrl } on success,
+ *         { ready: false, shippingLabelId } when the ID was found but PDF isn't available yet,
+ *      or { ready: false } when nothing could be determined.
+ */
+export const getBolLabelByOrder = async (req, res) => {
+  try {
+    const { orderId, installationId, integrationId } = req.query;
+    if (!orderId || !installationId) {
+      return res.status(400).json({ error: 'orderId and installationId are required' });
+    }
+
+    const normalizedOrderId = String(orderId).trim();
+
+    // 1. Check DB for a previously-persisted label URL
+    const dbOrder = await prisma.order.findFirst({
+      where: { orderNumber: normalizedOrderId },
+      include: { label: true },
+    });
+
+    const existingUrl = String(dbOrder?.label?.labelUrl || '').trim();
+    if (existingUrl && (existingUrl.startsWith('/labels/') || /^https?:\/\//.test(existingUrl))) {
+      console.log('[BOL LABEL BY ORDER] Found existing label in DB', { normalizedOrderId, existingUrl });
+      return res.json({ ready: true, labelUrl: existingUrl });
+    }
+
+    // 2. Get Bol credentials
+    let credentials;
+    try {
+      ({ credentials } = await getBolIntegration(installationId, integrationId || null));
+    } catch (credErr) {
+      console.warn('[BOL LABEL BY ORDER] Credential error', credErr?.message);
+      return res.json({ ready: false });
+    }
+
+    // 3. Find the shippingLabelId via Bol's /shipments endpoint
+    let foundShippingLabelId = null;
+    try {
+      const shipmentsPayload = await bolApiRequest(
+        credentials,
+        `/shipments?order-id=${encodeURIComponent(normalizedOrderId)}`,
+      );
+      const ids = extractShippingLabelIdsFromResponse(shipmentsPayload);
+      if (ids.length > 0) {
+        foundShippingLabelId = ids[0];
+        console.log('[BOL LABEL BY ORDER] Found shippingLabelId via shipments', { normalizedOrderId, foundShippingLabelId });
+      }
+    } catch (shipmentsErr) {
+      console.warn('[BOL LABEL BY ORDER] /shipments lookup failed', shipmentsErr?.message);
+    }
+
+    if (!foundShippingLabelId) {
+      return res.json({ ready: false });
+    }
+
+    // 4. Try to get the PDF for that shippingLabelId
+    let result;
+    try {
+      result = await fetchBolShippingLabelById(credentials, foundShippingLabelId);
+    } catch (fetchErr) {
+      // PDF not ready yet — return the ID so the client can switch to standard polling
+      return res.json({ ready: false, shippingLabelId: foundShippingLabelId });
+    }
+
+    if (!result?.labelUrl) {
+      return res.json({ ready: false, shippingLabelId: foundShippingLabelId });
+    }
+
+    // 5. Save the PDF to disk
+    let persistedUrl = String(result.labelUrl).trim();
+    if (persistedUrl.startsWith('data:')) {
+      try {
+        const match = persistedUrl.match(/^data:([^;]+);base64,(.+)$/i);
+        if (match) {
+          const base64 = match[2];
+          const safeName = normalizedOrderId.replace(/[^a-z0-9]/gi, '_');
+          const fileName = `label-order-${safeName}-${Date.now()}.pdf`;
+          const filePath = path.join(LABEL_STORAGE_DIR, fileName);
+          await fs.mkdir(LABEL_STORAGE_DIR, { recursive: true });
+          await fs.writeFile(filePath, Buffer.from(base64, 'base64'));
+          persistedUrl = `/labels/${fileName}`;
+          // Update DB
+          if (dbOrder?.id) {
+            await prisma.label.upsert({
+              where: { orderId: dbOrder.id },
+              update: { labelUrl: persistedUrl, status: 'generated' },
+              create: { orderId: dbOrder.id, labelUrl: persistedUrl, status: 'generated', carrierId: null },
+            });
+          }
+        }
+      } catch (saveErr) {
+        console.warn('[BOL LABEL BY ORDER] Failed to save PDF to disk', saveErr?.message);
+      }
+    }
+
+    console.log('[BOL LABEL BY ORDER] PDF ready', { normalizedOrderId, persistedUrl });
+    return res.json({ ready: true, labelUrl: persistedUrl, shippingLabelId: foundShippingLabelId });
+  } catch (error) {
+    console.error('getBolLabelByOrder error:', error);
+    return res.json({ ready: false });
+  }
+};
+
+/**
  * Update order shipment status
  */
 export const updateBolShipment = async (req, res) => {
