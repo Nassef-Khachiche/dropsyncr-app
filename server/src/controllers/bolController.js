@@ -722,6 +722,9 @@ async function getBolLabelWithFallbackInternal(
 
   const errors = [];
   const normalizedPreferredShippingLabelOfferId = String(preferredShippingLabelOfferId || '').trim();
+  // When pre-fetched order item IDs are rejected by Bol as 'unknown', set this flag so
+  // resolveOrderItemsPayload skips the stale client IDs and fetches fresh ones from the API.
+  let skipPrefetchedItems = false;
 
   // --- Helper: create label from order items + delivery option ---
   const createLabelFromOrderItems = async (orderItemsPayload, preferredOfferId = null) => {
@@ -824,7 +827,7 @@ async function getBolLabelWithFallbackInternal(
   // --- Helper: resolve order items payload ---
   const resolveOrderItemsPayload = async () => {
     // Use pre-fetched order items from the client if available (avoids a /order-items call that may 403)
-    if (Array.isArray(prefetchedOrderItems) && prefetchedOrderItems.length > 0) {
+    if (!skipPrefetchedItems && Array.isArray(prefetchedOrderItems) && prefetchedOrderItems.length > 0) {
       // Filter out any FBB items that may have slipped through before this fix
       const fbrItems = prefetchedOrderItems.filter((item) => !isFbbOrderItem(item));
       if (fbrItems.length > 0) {
@@ -900,9 +903,20 @@ async function getBolLabelWithFallbackInternal(
         if (result) return result;
       }
     } catch (error) {
-      // Definitive Bol FAILURE (e.g. item ineligible, FBB order) — retrying other paths won't help.
-      // Rethrow so the error surfaces as a toast instead of silently falling through.
-      if (String(error?.message || '').startsWith('Bol label aanmaken mislukt')) throw error;
+      // Check whether this is a definitive Bol FAILURE.
+      const errorMsg = String(error?.message || '');
+      if (errorMsg.startsWith('Bol label aanmaken mislukt')) {
+        if (/unknown order item id/i.test(errorMsg)) {
+          // The client sent stale order item IDs that Bol no longer recognises.
+          // Clear the prefetch flag so path 4 fetches fresh IDs from Bol's API before retrying.
+          console.warn('[BOL LABEL] Stale order item IDs detected, will retry with fresh items from Bol API:', errorMsg);
+          skipPrefetchedItems = true;
+        } else {
+          // Item is known to Bol but definitively ineligible (pure FBB, already fulfilled, etc.).
+          // Retrying with different item IDs won't help — surface the error immediately.
+          throw error;
+        }
+      }
       errors.push({ endpoint: '/shipping-labels/delivery-options|/shipping-labels (preferred offer)', error });
     }
   }

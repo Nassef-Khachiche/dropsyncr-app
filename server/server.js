@@ -39,6 +39,7 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+// v2026-06-26d — stale order item ID retry with fresh Bol API items
 
 getJwtSecret();
 app.set('trust proxy', true);
