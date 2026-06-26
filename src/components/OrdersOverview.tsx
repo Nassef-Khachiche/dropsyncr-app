@@ -436,6 +436,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
   const [bolOrderItems, setBolOrderItems] = useState<Array<{ orderItemId: string; quantity: number }>>([]);
   const [selectedBolDeliveryOptionId, setSelectedBolDeliveryOptionId] = useState<string>('');
   const [loadingBolDeliveryOptions, setLoadingBolDeliveryOptions] = useState(false);
+  const [labelJustGenerated, setLabelJustGenerated] = useState(false);
   const labelPreviewRef = useRef<HTMLDivElement>(null);
 
   // --- Return label dialog state ---
@@ -520,6 +521,10 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
         return;
       }
 
+      // Don't reload delivery options after a label was just generated — the order
+      // is now being processed and the options are no longer relevant.
+      if (labelJustGenerated || labelPreviewUrl) return;
+
       const installationId = String(
         labelOrder.installation?.id
         ?? labelOrder.installationId
@@ -563,7 +568,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
     };
 
     loadBolDeliveryOptions();
-  }, [showLabelDialog, selectedContractId, labelOrder]);
+  }, [showLabelDialog, selectedContractId, labelOrder, labelJustGenerated, labelPreviewUrl]);
 
   // Auto-scroll to label preview after generation so the user doesn't miss it
   useEffect(() => {
@@ -771,6 +776,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
       trackingCode: order?.supplierTracking || order?.tracking?.trackingCode || null,
       trackingUrl: order?.tracking?.trackingUrl || null,
     });
+    setLabelJustGenerated(false);
     setShowLabelDialog(true);
   };
 
@@ -1117,6 +1123,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
         }
 
         toast.success('Bol label aangemaakt');
+        setLabelJustGenerated(true);
 
         if (deliveryOptionValidation?.hasSelectedDeliveryOption) {
           if (deliveryOptionValidation.isDeliveryOptionAttached) {
@@ -1223,6 +1230,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
       }
 
       toast.success('Label succesvol gegenereerd');
+      setLabelJustGenerated(true);
     } catch (error) {
       console.error('Failed to generate label:', error);
       let errorDescription = getApiErrorToastMeta(error).description;
@@ -2532,6 +2540,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
           setShowLabelDialog(open);
           if (!open) {
             setSelectedWeGrowCarrier('');
+            setLabelJustGenerated(false);
           }
         }}
       >
@@ -2546,7 +2555,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
           </DialogHeader>
 
           {(() => {
-            const isShippedWithLabel = Boolean(labelPreviewUrl);
+            const isShippedWithLabel = Boolean(labelPreviewUrl || labelJustGenerated);
             return (
               <div className="space-y-4 flex-1 overflow-auto">
                 {!isShippedWithLabel && (
@@ -2726,6 +2735,18 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {labelJustGenerated && !labelPreviewUrl && (
+              <div className="flex flex-col items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/60 p-6 text-center">
+                <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center">
+                  <Package className="w-6 h-6 text-emerald-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-emerald-900">Label aangemaakt</p>
+                  <p className="text-xs text-emerald-700 mt-1">Het label is aangemaakt en de verzending is bevestigd bij Bol.com. De PDF wordt door Bol verwerkt — download het label via de Bol Retailer Portal of probeer het over een moment opnieuw.</p>
+                </div>
               </div>
             )}
 

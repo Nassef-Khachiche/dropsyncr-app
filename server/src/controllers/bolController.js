@@ -2418,26 +2418,31 @@ export const getBolShippingLabel = async (req, res) => {
     }
 
     // VVB labels are generated asynchronously: the process-status may report SUCCESS but
-    // the PDF endpoint still returns 406 for a short window. Retry once after a delay.
+    // the PDF endpoint still returns 406 for a short window. Retry up to 4 times with
+    // increasing delays (2 s, 4 s, 8 s, 12 s) to cover Bol's propagation lag.
     if (!rawLabelDataUri && successfulCredentials) {
       const retryLabelId = String(labelData?.shippingLabelId || '').trim();
       if (retryLabelId) {
-        console.log('[BOL LABEL] No PDF in initial response, retrying PDF fetch for label:', retryLabelId);
-        await new Promise((resolve) => setTimeout(resolve, 2500));
-        try {
-          const retryResult = await fetchBolShippingLabelById(successfulCredentials, retryLabelId);
-          if (retryResult?.labelUrl) {
-            rawLabelDataUri = String(retryResult.labelUrl).trim();
-            labelData = {
-              ...labelData,
-              labelUrl: rawLabelDataUri,
-              trackingCode: retryResult.trackingCode || labelData.trackingCode || null,
-              transporterCode: retryResult.transporterCode || labelData.transporterCode || null,
-            };
-            console.log('[BOL LABEL] PDF retry succeeded for label:', retryLabelId);
+        const retryDelays = [2000, 4000, 8000, 12000];
+        for (let attempt = 0; attempt < retryDelays.length && !rawLabelDataUri; attempt++) {
+          const delay = retryDelays[attempt];
+          console.log(`[BOL LABEL] No PDF in response, retry ${attempt + 1}/${retryDelays.length} for label ${retryLabelId} after ${delay}ms`);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          try {
+            const retryResult = await fetchBolShippingLabelById(successfulCredentials, retryLabelId);
+            if (retryResult?.labelUrl) {
+              rawLabelDataUri = String(retryResult.labelUrl).trim();
+              labelData = {
+                ...labelData,
+                labelUrl: rawLabelDataUri,
+                trackingCode: retryResult.trackingCode || labelData.trackingCode || null,
+                transporterCode: retryResult.transporterCode || labelData.transporterCode || null,
+              };
+              console.log(`[BOL LABEL] PDF retry ${attempt + 1} succeeded for label ${retryLabelId}`);
+            }
+          } catch (retryErr) {
+            console.warn(`[BOL LABEL] PDF retry ${attempt + 1} failed (non-fatal):`, retryErr?.message);
           }
-        } catch (retryErr) {
-          console.warn('[BOL LABEL] PDF retry failed (non-fatal):', retryErr?.message);
         }
       }
     }
