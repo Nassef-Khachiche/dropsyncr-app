@@ -39,7 +39,7 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-// v2026-06-26e — path 2 skips empty shipments, path 4 retries with fresh items
+// v2026-06-26g — path 5 runs after path 4 fails; transport fields in label ID extraction
 
 getJwtSecret();
 app.set('trust proxy', true);

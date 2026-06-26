@@ -363,6 +363,11 @@ const extractShippingLabelIdsFromResponse = (payload) => {
     if (value.items) collect(value.items);
     if (value.shippingLabels) collect(value.shippingLabels);
     if (value.labels) collect(value.labels);
+    // VVB/transport fields — Bol stores shippingLabelId inside transport objects
+    if (value.transport) collect(value.transport);
+    if (value.transports) collect(value.transports);
+    if (value.shipmentItems) collect(value.shipmentItems);
+    if (value.orderItems) collect(value.orderItems);
   };
 
   collect(payload);
@@ -871,9 +876,9 @@ async function getBolLabelWithFallbackInternal(
             const eligibilityCheck = await fetchBolDeliveryOptionHandoverWindow(credentials, dbItems, null);
             if (eligibilityCheck.notEligible) {
               throw new Error(
-                eligibilityCheck.notEligibleReason
-                  ? `Order items zijn niet geldig voor label aanmaak (mogelijk FBB of geannuleerd): ${eligibilityCheck.notEligibleReason}`
-                  : 'Order items zijn niet geldig voor label aanmaak (mogelijk FBB of al verzonden door Bol)'
+                'Dit order item is niet meer beschikbaar voor label aanmaak bij Bol.com. '
+                + 'Mogelijk is het order al eerder verwerkt of verzondenvia een andere weg. '
+                + 'Controleer het Bol Retailer Portaal voor de huidige status.'
               );
             }
           } catch (eligibilityError) {
@@ -973,6 +978,7 @@ async function getBolLabelWithFallbackInternal(
   }
 
   // 4. Create label via delivery options (recommended / auto-select)
+  let path4IneligibleError = null;
   try {
     const orderItemsPayload = await resolveOrderItemsPayload();
     if (orderItemsPayload) {
@@ -980,7 +986,13 @@ async function getBolLabelWithFallbackInternal(
       if (result) return result;
     }
   } catch (error) {
-    if (String(error?.message || '').startsWith('Bol label aanmaken mislukt')) throw error;
+    const msg = String(error?.message || '');
+    if (msg.startsWith('Bol label aanmaken mislukt')) throw error; // Definitive API FAILURE
+    // For 'ineligible' errors, save and let path 5 try to find an existing label first.
+    // Path 5 does not create a new label — it only looks for an already-existing one.
+    if (msg.includes('niet meer beschikbaar voor label aanmaak')) {
+      path4IneligibleError = error;
+    }
     errors.push({ endpoint: '/shipping-labels/delivery-options|/shipping-labels (auto)', error });
   }
 
@@ -1032,6 +1044,8 @@ async function getBolLabelWithFallbackInternal(
 
   const lastError = errors[errors.length - 1]?.error;
   if (lastError) {
+    // Surface 'ineligible' errors cleanly without appending the endpoint list
+    if (path4IneligibleError) throw path4IneligibleError;
     const attemptedEndpoints = errors.map(({ endpoint }) => endpoint).join(', ');
     throw new Error(`${String(lastError?.message || 'Onbekende fout')} (Endpoints: ${attemptedEndpoints})`);
   }
