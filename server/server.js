@@ -83,7 +83,15 @@ app.use(rateLimit({
 }));
 
 app.use(express.json({ limit: '1mb' }));
-app.use('/labels', express.static(path.join(__dirname, 'storage', 'labels'), {
+// Strip framing-restriction headers for label PDFs so the iframe preview
+// works in dev mode (cross-origin: frontend :3000, backend :5000).
+// In production the request goes through nginx on the same origin anyway,
+// so this header removal is harmless there too.
+app.use('/labels', (req, res, next) => {
+  res.removeHeader('X-Frame-Options');
+  res.removeHeader('Content-Security-Policy');
+  next();
+}, express.static(path.join(__dirname, 'storage', 'labels'), {
   dotfiles: 'ignore',
   index: false,
   maxAge: '1d',
