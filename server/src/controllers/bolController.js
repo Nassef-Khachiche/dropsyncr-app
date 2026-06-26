@@ -364,6 +364,17 @@ const extractShippingLabelIdsFromResponse = (payload) => {
       if (normalized) shippingLabelIds.add(normalized);
     });
 
+    // HATEOAS links — Bol embeds label URLs like: { rel: 'shippingLabel', href: '.../shipping-labels/12345' }
+    const linkArrays = [...(Array.isArray(value.links) ? value.links : []), ...(Array.isArray(value._links) ? value._links : [])];
+    for (const link of linkArrays) {
+      const rel = String(link?.rel || '').toLowerCase().replace(/[^a-z]/g, '');
+      if (rel === 'shippinglabel' || rel === 'label') {
+        const href = String(link?.href || link?.url || '');
+        const m = href.match(/\/shipping-labels\/([^/?#]+)/i);
+        if (m) shippingLabelIds.add(m[1]);
+      }
+    }
+
     if (value.shipments) collect(value.shipments);
     if (value.results) collect(value.results);
     if (value.items) collect(value.items);
@@ -377,6 +388,11 @@ const extractShippingLabelIdsFromResponse = (payload) => {
     // Order-level label containers
     if (value.label) collect(value.label);
     if (value.labelDetails) collect(value.labelDetails);
+    // shippingLabel sub-object (e.g. { shippingLabel: { id: '...' } })
+    if (value.shippingLabel && typeof value.shippingLabel === 'object') collect(value.shippingLabel);
+    // HATEOAS link containers
+    if (Array.isArray(value.links)) value.links.forEach((l) => collect(l));
+    if (Array.isArray(value._links)) value._links.forEach((l) => collect(l));
   };
 
   collect(payload);
@@ -987,6 +1003,8 @@ async function getBolLabelWithFallbackInternal(
         if (Array.isArray(firstItemArr) && firstItemArr.length > 0) {
           console.log(`[BOL LABEL VVB] ${endpoint} — first item keys: ${JSON.stringify(Object.keys(firstItemArr[0] || {}))}`);
         }
+        // Full JSON dump (truncated) so we can see the VVB label field structure
+        console.log(`[BOL LABEL VVB] ${endpoint} — full response (truncated):`, JSON.stringify(payload).substring(0, 3000));
       }
 
       for (const shippingLabelId of shippingLabelIds) {
@@ -1102,8 +1120,19 @@ async function getBolLabelWithFallbackInternal(
 
   const lastError = errors[errors.length - 1]?.error;
   if (lastError) {
-    // Surface 'ineligible' errors cleanly without appending the endpoint list
-    if (path4IneligibleError) throw path4IneligibleError;
+    // Surface 'ineligible' errors cleanly without appending the endpoint list.
+    // For VVB orders that Bol manages internally, give the user actionable guidance.
+    if (path4IneligibleError) {
+      const ineligibleMsg = String(path4IneligibleError.message || '');
+      if (ineligibleMsg.includes('can not be fulfilled by the retailer')) {
+        throw new Error(
+          `Dit is een VVB order (Verzending via Bol) — het label wordt door Bol aangemaakt. ` +
+          `Download het verzendzegel direct via de Bol retailer portal. ` +
+          `(Bol melding: ${ineligibleMsg})`
+        );
+      }
+      throw path4IneligibleError;
+    }
     const attemptedEndpoints = errors.map(({ endpoint }) => endpoint).join(', ');
     throw new Error(`${String(lastError?.message || 'Onbekende fout')} (Endpoints: ${attemptedEndpoints})`);
   }

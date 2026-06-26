@@ -39,7 +39,7 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-// v2026-06-26i — VVB label field extraction; diagnostic logging; detailed shipment fetch in path 5
+// v2026-06-26j — HATEOAS link extraction; shippingLabel recursion; VVB user-friendly error; full order JSON log
 
 getJwtSecret();
 app.set('trust proxy', true);
