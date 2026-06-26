@@ -598,7 +598,12 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
     let attempt = 0;
 
     const pollOnce = async () => {
-      if (cancelled || attempt >= delays.length) return;
+      if (cancelled) return;
+      if (attempt >= delays.length) {
+        // All attempts exhausted — stop spinner, show static fallback + retry button
+        setPendingLabelShippingId(null);
+        return;
+      }
       await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
       if (cancelled) return;
       attempt++;
@@ -634,10 +639,15 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
 
     let cancelled = false;
     let attempt = 0;
-    const delays = [5000, 10000, 15000, 20000, 30000];
+    const delays = [3000, 6000, 10000, 15000, 20000];
 
     const pollOnce = async () => {
-      if (cancelled || attempt >= delays.length) return;
+      if (cancelled) return;
+      if (attempt >= delays.length) {
+        // All attempts exhausted — stop spinner, show static fallback + retry button
+        setPendingLabelOrderId(null);
+        return;
+      }
       await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
       if (cancelled) return;
       attempt++;
