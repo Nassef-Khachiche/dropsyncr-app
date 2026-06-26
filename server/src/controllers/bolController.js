@@ -931,6 +931,16 @@ async function getBolLabelWithFallbackInternal(
   for (const endpoint of directEndpoints) {
     try {
       const response = await bolApiRequest(credentials, endpoint);
+      // For the /shipments endpoint, only use the result when it actually contains label IDs.
+      // An existing-but-labelless shipment means the order was processed by Bol (FBB) or via
+      // another flow — falling through lets path 4 try fresh items from the API.
+      if (endpoint.includes('/shipments')) {
+        const labelIds = extractShippingLabelIdsFromResponse(response);
+        if (labelIds.length === 0) {
+          console.log('[BOL LABEL] /shipments returned data but no label IDs, continuing to path 4');
+          continue;
+        }
+      }
       return { labelData: response, endpoint };
     } catch (error) {
       errors.push({ endpoint, error });
