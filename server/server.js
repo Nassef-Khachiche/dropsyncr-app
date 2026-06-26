@@ -42,7 +42,9 @@ const PORT = process.env.PORT || 5000;
 // v2026-06-26j — HATEOAS link extraction; shippingLabel recursion; VVB user-friendly error; full order JSON log
 
 getJwtSecret();
-app.set('trust proxy', true);
+// Trust exactly one proxy hop (nginx → node). Using `true` is too permissive and
+// breaks express-rate-limit's IP detection (ERR_ERL_PERMISSIVE_TRUST_PROXY).
+app.set('trust proxy', 1);
 app.disable('x-powered-by');
 
 const normalizeOrigin = (value) => String(value || '').trim().replace(/\/$/, '');
