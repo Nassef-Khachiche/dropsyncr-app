@@ -39,7 +39,7 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-// v2026-06-26h — propagate notEligibleReason; treat Geen delivery option as ineligible in path 4
+// v2026-06-26i — VVB label field extraction; diagnostic logging; detailed shipment fetch in path 5
 
 getJwtSecret();
 app.set('trust proxy', true);

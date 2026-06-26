@@ -351,6 +351,12 @@ const extractShippingLabelIdsFromResponse = (payload) => {
       value.shippingLabel?.id,
       value.labelId,
       value.labelID,
+      // VVB/order-level label fields
+      value.shippingLabelCode,
+      value.label?.id,
+      value.label?.labelId,
+      value.label?.shippingLabelId,
+      value.label?.shippingLabelCode,
     ];
 
     directCandidates.forEach((candidate) => {
@@ -368,6 +374,9 @@ const extractShippingLabelIdsFromResponse = (payload) => {
     if (value.transports) collect(value.transports);
     if (value.shipmentItems) collect(value.shipmentItems);
     if (value.orderItems) collect(value.orderItems);
+    // Order-level label containers
+    if (value.label) collect(value.label);
+    if (value.labelDetails) collect(value.labelDetails);
   };
 
   collect(payload);
@@ -970,6 +979,16 @@ async function getBolLabelWithFallbackInternal(
       const payload = await bolApiRequest(credentials, endpoint);
       const shippingLabelIds = extractShippingLabelIdsFromResponse(payload);
 
+      // Diagnostic: log top-level and first-item keys so we can see VVB label field names
+      if (shippingLabelIds.length === 0 && payload) {
+        const topKeys = Object.keys(payload);
+        console.log(`[BOL LABEL VVB] ${endpoint} — top keys: ${JSON.stringify(topKeys)}`);
+        const firstItemArr = payload?.orderItems || payload?.items || payload?.results || [];
+        if (Array.isArray(firstItemArr) && firstItemArr.length > 0) {
+          console.log(`[BOL LABEL VVB] ${endpoint} — first item keys: ${JSON.stringify(Object.keys(firstItemArr[0] || {}))}`);
+        }
+      }
+
       for (const shippingLabelId of shippingLabelIds) {
         const labelEndpoint = `/shipping-labels/${encodeURIComponent(shippingLabelId)}`;
         try {
@@ -1011,6 +1030,17 @@ async function getBolLabelWithFallbackInternal(
     const shipmentsPayload = await bolApiRequest(credentials, `/shipments?order-id=${encodeURIComponent(normalizedOrderId)}`);
 
     if (shipmentsPayload) {
+      // Diagnostic: log keys so we can see the VVB shipment response structure
+      const rawShipments = shipmentsPayload?.shipments || shipmentsPayload?.results || [];
+      if (Array.isArray(rawShipments) && rawShipments.length > 0) {
+        console.log(`[BOL LABEL VVB] /shipments?order-id=${normalizedOrderId} — first shipment keys: ${JSON.stringify(Object.keys(rawShipments[0] || {}))}`);
+        if (rawShipments[0]?.transport) {
+          console.log(`[BOL LABEL VVB] first shipment transport keys: ${JSON.stringify(Object.keys(rawShipments[0].transport || {}))}`);
+        }
+      } else {
+        console.log(`[BOL LABEL VVB] /shipments?order-id=${normalizedOrderId} — no shipments array found, top keys: ${JSON.stringify(Object.keys(shipmentsPayload))}`);
+      }
+
       const shippingLabelIds = extractShippingLabelIdsFromResponse(shipmentsPayload);
       for (const shippingLabelId of shippingLabelIds) {
         const endpoint = `/shipping-labels/${encodeURIComponent(shippingLabelId)}`;
@@ -1024,6 +1054,24 @@ async function getBolLabelWithFallbackInternal(
 
       const shipmentIds = extractShipmentIdsFromResponse(shipmentsPayload);
       for (const shipmentId of shipmentIds) {
+        // First fetch the DETAILED shipment — its transport field often has shippingLabelId
+        try {
+          const detailPayload = await bolApiRequest(credentials, `/shipments/${encodeURIComponent(shipmentId)}`);
+          const detailLabelIds = extractShippingLabelIdsFromResponse(detailPayload);
+          console.log(`[BOL LABEL VVB] /shipments/${shipmentId} detail label IDs: ${JSON.stringify(detailLabelIds)}`);
+          for (const detailLabelId of detailLabelIds) {
+            const endpoint = `/shipping-labels/${encodeURIComponent(detailLabelId)}`;
+            try {
+              const response = await fetchBolShippingLabelById(credentials, detailLabelId);
+              return { labelData: response, endpoint };
+            } catch (error) {
+              errors.push({ endpoint, error });
+            }
+          }
+        } catch (detailErr) {
+          errors.push({ endpoint: `/shipments/${shipmentId}`, error: detailErr });
+        }
+
         for (const endpoint of [
           `/shipments/${encodeURIComponent(shipmentId)}/label`,
           `/shipments/${encodeURIComponent(shipmentId)}/shipment-label`,
