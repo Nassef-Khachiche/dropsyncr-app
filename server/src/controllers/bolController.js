@@ -2835,7 +2835,6 @@ export const getBolLabelByOrder = async (req, res) => {
 
     const existingUrl = String(dbOrder?.label?.labelUrl || '').trim();
     if (existingUrl && (existingUrl.startsWith('/labels/') || /^https?:\/\//.test(existingUrl))) {
-      console.log('[BOL LABEL BY ORDER] Found existing label in DB', { normalizedOrderId, existingUrl });
       return res.json({ ready: true, labelUrl: existingUrl });
     }
 
