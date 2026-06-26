@@ -579,8 +579,13 @@ async function pollShippingLabelIdFromProcessStatus(
         if (processStatus === 'FAILURE' || processStatus === 'ERROR' || processStatus === 'FAILED') {
           console.warn('[BOL POLL] Process status FAILED', JSON.stringify(payload));
           const bolErrorMessage = String(payload?.errorMessage || payload?.description || '').trim();
-          throw new Error(bolErrorMessage
-            ? `Bol label aanmaken mislukt: ${bolErrorMessage}`
+          // Translate the common FBB/VVB ineligibility error into Dutch for the user.
+          let userMessage = bolErrorMessage;
+          if (/can not be fulfilled by the retailer|only FBR items|unknown order item id/i.test(bolErrorMessage)) {
+            userMessage = `Dit order item kan niet worden verwerkt: het is waarschijnlijk een FBB/VVB order dat al volledig door Bol.com wordt afgehandeld. (${bolErrorMessage})`;
+          }
+          throw new Error(userMessage
+            ? `Bol label aanmaken mislukt: ${userMessage}`
             : 'Bol label aanmaken mislukt (process status FAILURE)');
         }
         if (processStatus === 'SUCCESS') {
@@ -895,6 +900,9 @@ async function getBolLabelWithFallbackInternal(
         if (result) return result;
       }
     } catch (error) {
+      // Definitive Bol FAILURE (e.g. item ineligible, FBB order) — retrying other paths won't help.
+      // Rethrow so the error surfaces as a toast instead of silently falling through.
+      if (String(error?.message || '').startsWith('Bol label aanmaken mislukt')) throw error;
       errors.push({ endpoint: '/shipping-labels/delivery-options|/shipping-labels (preferred offer)', error });
     }
   }
@@ -948,6 +956,7 @@ async function getBolLabelWithFallbackInternal(
       if (result) return result;
     }
   } catch (error) {
+    if (String(error?.message || '').startsWith('Bol label aanmaken mislukt')) throw error;
     errors.push({ endpoint: '/shipping-labels/delivery-options|/shipping-labels (auto)', error });
   }
 
