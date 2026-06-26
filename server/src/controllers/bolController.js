@@ -753,7 +753,14 @@ async function getBolLabelWithFallbackInternal(
     }
 
     if (!shippingLabelOfferId) {
-      throw new Error('Geen Bol delivery option gevonden voor deze order items');
+      // Include the Bol-specific reason when delivery-options returned 'notEligible'
+      // (e.g. "can not be fulfilled by the retailer" for FBB/VVB items).
+      const reason = String(handoverWindow?.notEligibleReason || '').trim();
+      throw new Error(
+        reason
+          ? `Geen Bol delivery option gevonden voor deze order items: ${reason}`
+          : 'Geen Bol delivery option gevonden voor deze order items'
+      );
     }
 
     const createLabelPayload = await bolApiRequest(
@@ -988,9 +995,12 @@ async function getBolLabelWithFallbackInternal(
   } catch (error) {
     const msg = String(error?.message || '');
     if (msg.startsWith('Bol label aanmaken mislukt')) throw error; // Definitive API FAILURE
-    // For 'ineligible' errors, save and let path 5 try to find an existing label first.
+    // For 'ineligible' errors (item locked or FBB/VVB), save and let path 5 try first.
     // Path 5 does not create a new label — it only looks for an already-existing one.
-    if (msg.includes('niet meer beschikbaar voor label aanmaak')) {
+    if (
+      msg.includes('niet meer beschikbaar voor label aanmaak')
+      || msg.includes('Geen Bol delivery option gevonden')
+    ) {
       path4IneligibleError = error;
     }
     errors.push({ endpoint: '/shipping-labels/delivery-options|/shipping-labels (auto)', error });

@@ -39,7 +39,7 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-// v2026-06-26g — path 5 runs after path 4 fails; transport fields in label ID extraction
+// v2026-06-26h — propagate notEligibleReason; treat Geen delivery option as ineligible in path 4
 
 getJwtSecret();
 app.set('trust proxy', true);
