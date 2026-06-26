@@ -2809,9 +2809,25 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
                   <p className="text-xs text-emerald-700 mt-1">
                     {pendingLabelShippingId
                       ? 'PDF wordt opgehaald bij Bol.com\u2026 het label verschijnt hier zodra het klaar is.'
-                      : 'Het label is aangemaakt maar de PDF is nog niet beschikbaar. Probeer de dialog opnieuw te openen of download het label via de Bol Retailer Portal.'}
+                      : 'Het label is aangemaakt maar de PDF kon niet direct worden opgehaald.'}
                   </p>
                 </div>
+                {!pendingLabelShippingId && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-emerald-300 text-emerald-800 hover:bg-emerald-100"
+                    onClick={() => {
+                      setLabelJustGenerated(false);
+                      setPendingLabelShippingId(null);
+                      setPendingLabelInstallationId(null);
+                      setPendingLabelIntegrationId(null);
+                    }}
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+                    Opnieuw proberen
+                  </Button>
+                )}
               </div>
             )}
 

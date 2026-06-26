@@ -780,7 +780,21 @@ async function getBolLabelWithFallbackInternal(
     }
 
     const labelEndpoint = `/shipping-labels/${encodeURIComponent(createdShippingLabelId)}`;
-    const response = await fetchBolShippingLabelById(credentials, createdShippingLabelId);
+
+    // Fetch the PDF / metadata.  Auth errors are re-thrown so the outer
+    // integration-retry loop can try a different set of credentials.
+    // All other errors (406-then-JSON-also-fails, transient network issues,
+    // rate-limits) are treated as "PDF not ready yet" — we still return the
+    // shippingLabelId so the client can poll via getBolLabelPdf.
+    let response;
+    try {
+      response = await fetchBolShippingLabelById(credentials, createdShippingLabelId);
+    } catch (fetchErr) {
+      if (isUnauthorizedBolError(fetchErr)) throw fetchErr;
+      console.warn('[BOL LABEL] PDF fetch failed (non-fatal, client will poll):', fetchErr?.message);
+      response = { shippingLabelId: createdShippingLabelId };
+    }
+
     const earliestHandoverDateTime = handoverWindow?.earliestHandoverDateTime || null;
     const latestHandoverDateTime = handoverWindow?.latestHandoverDateTime || null;
     const deliveryOptionValidation = validateBolDeliveryOptionAttachment({
@@ -793,6 +807,7 @@ async function getBolLabelWithFallbackInternal(
     return {
       labelData: {
         ...response,
+        shippingLabelId: createdShippingLabelId, // always surface the ID at top level
         earliestHandoverDateTime,
         latestHandoverDateTime,
         deliveryOptionValidation,
@@ -2598,8 +2613,18 @@ export const getBolShippingLabel = async (req, res) => {
       }
     }
 
+    // Ensure shippingLabelId is always at the top level so the client can start
+    // polling via getBolLabelPdf even when labelData came from a fallback path
+    // (e.g. /shipments response) where the ID is nested rather than top-level.
+    const topLevelShippingLabelId = String(
+      labelData?.shippingLabelId
+      || extractShippingLabelIdsFromResponse(labelData)[0]
+      || ''
+    ).trim();
+
     res.json({
       ...labelData,
+      ...(topLevelShippingLabelId ? { shippingLabelId: topLevelShippingLabelId } : {}),
       integrationId: successfulIntegrationId,
     });
   } catch (error) {
