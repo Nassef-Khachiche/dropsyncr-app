@@ -914,8 +914,8 @@ async function getBolLabelWithFallbackInternal(
               );
             }
           } catch (eligibilityError) {
-            // If it's our own thrown error, rethrow it
-            if (eligibilityError.message?.includes('niet geldig')) throw eligibilityError;
+            // If it's our own ineligibility error, rethrow it so the DB items are not used
+            if (eligibilityError.message?.includes('niet meer beschikbaar voor label aanmaak')) throw eligibilityError;
             // Otherwise it's a network/API error — proceed with DB items anyway
             console.warn('[BOL LABEL] DB fallback eligibility check failed (network), proceeding anyway:', eligibilityError.message);
           }
@@ -924,7 +924,7 @@ async function getBolLabelWithFallbackInternal(
         }
       }
     } catch (dbError) {
-      if (dbError.message?.includes('niet geldig')) throw dbError;
+      if (dbError.message?.includes('niet meer beschikbaar voor label aanmaak')) throw dbError;
       errors.push({ endpoint: 'db:orderItems', error: dbError });
     }
 
@@ -953,6 +953,12 @@ async function getBolLabelWithFallbackInternal(
           // Retrying with different item IDs won't help — surface the error immediately.
           throw error;
         }
+      } else if (/unknown order item id/i.test(errorMsg)) {
+        // Direct 404 from POST /shipping-labels with stale prefetched item IDs (no process-status
+        // was created, so the error prefix differs from the FAILURE path above).
+        // Clear the flag so path 4 fetches fresh IDs from the Bol API before retrying.
+        console.warn('[BOL LABEL] Stale prefetched item IDs (direct 404 from POST /shipping-labels), will retry with fresh items:', errorMsg);
+        skipPrefetchedItems = true;
       }
       errors.push({ endpoint: '/shipping-labels/delivery-options|/shipping-labels (preferred offer)', error });
     }
