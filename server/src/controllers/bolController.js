@@ -907,10 +907,12 @@ async function getBolLabelWithFallbackInternal(
           try {
             const eligibilityCheck = await fetchBolDeliveryOptionHandoverWindow(credentials, dbItems, null);
             if (eligibilityCheck.notEligible) {
+              const notEligibleReason = String(eligibilityCheck.notEligibleReason || '').trim();
               throw new Error(
                 'Dit order item is niet meer beschikbaar voor label aanmaak bij Bol.com. '
                 + 'Mogelijk is het order al eerder verwerkt of verzonden via een andere weg. '
                 + 'Controleer het Bol Retailer Portaal voor de huidige status.'
+                + (notEligibleReason ? ` (Bol: ${notEligibleReason})` : '')
               );
             }
           } catch (eligibilityError) {
@@ -1054,15 +1056,21 @@ async function getBolLabelWithFallbackInternal(
     const shipmentsPayload = await bolApiRequest(credentials, `/shipments?order-id=${encodeURIComponent(normalizedOrderId)}`);
 
     if (shipmentsPayload) {
-      // Diagnostic: log keys so we can see the VVB shipment response structure
-      const rawShipments = shipmentsPayload?.shipments || shipmentsPayload?.results || [];
+      // Diagnostic: log keys so we can see the VVB shipment response structure.
+      // Bol can return a bare array [] directly instead of { shipments: [...] }.
+      const rawShipments = Array.isArray(shipmentsPayload)
+        ? shipmentsPayload
+        : (shipmentsPayload?.shipments || shipmentsPayload?.results || []);
       if (Array.isArray(rawShipments) && rawShipments.length > 0) {
         console.log(`[BOL LABEL VVB] /shipments?order-id=${normalizedOrderId} — first shipment keys: ${JSON.stringify(Object.keys(rawShipments[0] || {}))}`);
         if (rawShipments[0]?.transport) {
           console.log(`[BOL LABEL VVB] first shipment transport keys: ${JSON.stringify(Object.keys(rawShipments[0].transport || {}))}`);
         }
       } else {
-        console.log(`[BOL LABEL VVB] /shipments?order-id=${normalizedOrderId} — no shipments array found, top keys: ${JSON.stringify(Object.keys(shipmentsPayload))}`);
+        const payloadSummary = Array.isArray(shipmentsPayload)
+          ? `bare array[${shipmentsPayload.length}]`
+          : `object, keys: ${JSON.stringify(Object.keys(shipmentsPayload))}`;
+        console.log(`[BOL LABEL VVB] /shipments?order-id=${normalizedOrderId} — no shipments found (${payloadSummary})`);
       }
 
       const shippingLabelIds = extractShippingLabelIdsFromResponse(shipmentsPayload);
