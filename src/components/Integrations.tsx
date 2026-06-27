@@ -38,7 +38,7 @@ import { toast } from 'sonner';
 import { api } from '../services/api';
 import bolLogo from '../assets/bol-logo.png';
 import kauflandLogo from '../assets/kaufland-logo.png';
-import shopifyLogo from '../assets/shopify-logo.svg';
+import shopifyLogo from '../assets/shopify-logo.png';
 
 interface IntegrationsProps {
   activeProfile: string;
