@@ -576,7 +576,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
     };
 
     loadBolDeliveryOptions();
-  }, [showLabelDialog, selectedContractId, labelOrder, labelJustGenerated, labelPreviewUrl]);
+  }, [showLabelDialog, selectedContractId, labelOrder, labelJustGenerated]);
 
   // Auto-scroll to label preview after generation so the user doesn't miss it
   useEffect(() => {
@@ -858,7 +858,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
       ? normalizedMethodLower.replace('wegrow-', '').trim()
       : '';
 
-    const shouldDefaultToVvb = Boolean(order?.isVVB);
+    const shouldDefaultToVvb = Boolean(order?.isVVB) || normalizedOrderShippingMethod.toLowerCase() === 'bol.com';
 
     setSelectedContractId(
       shouldDefaultToVvb
@@ -2683,7 +2683,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
           </DialogHeader>
 
           {(() => {
-            const isShippedWithLabel = Boolean(labelPreviewUrl || labelJustGenerated);
+            const isShippedWithLabel = Boolean(labelPreviewUrl && normalizeOrderStatus(labelOrder) === 'verzonden');
             return (
               <div className="space-y-4 flex-1 overflow-auto">
                 {!isShippedWithLabel && (
