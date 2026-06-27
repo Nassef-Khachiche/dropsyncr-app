@@ -592,6 +592,40 @@ class ApiService {
     );
   }
 
+  // Shopify Integration
+  async syncShopifyOrders(installationId: string, integrationId?: number) {
+    const queryParams = new URLSearchParams();
+    queryParams.append('installationId', installationId);
+    if (integrationId) queryParams.append('integrationId', String(integrationId));
+
+    return this.request<{ success: boolean; imported: number; updated: number; total: number }>(
+      `/shopify/sync-orders?${queryParams.toString()}`
+    );
+  }
+
+  async fulfillShopifyOrder(
+    installationId: string,
+    shopifyOrderId: string,
+    trackingNumber?: string,
+    trackingCompany?: string,
+    integrationId?: number,
+  ) {
+    return this.request<{ success: boolean; fulfillment: any }>('/shopify/fulfill-order', {
+      method: 'POST',
+      body: JSON.stringify({ installationId, shopifyOrderId, trackingNumber, trackingCompany, integrationId }),
+    });
+  }
+
+  async getShopifyShopInfo(installationId: string, integrationId?: number) {
+    const queryParams = new URLSearchParams();
+    queryParams.append('installationId', installationId);
+    if (integrationId) queryParams.append('integrationId', String(integrationId));
+
+    return this.request<{ name: string; domain: string; currency: string; country: string; email: string; planName: string }>(
+      `/shopify/shop-info?${queryParams.toString()}`
+    );
+  }
+
   // Bol.com Integration
   async syncBolOrders(installationId: string, integrationId?: number) {
     const queryParams = new URLSearchParams();

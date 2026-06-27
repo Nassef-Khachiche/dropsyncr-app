@@ -20,6 +20,7 @@ import installationRoutes from './src/routes/installationRoutes.js';
 import integrationRoutes from './src/routes/integrationRoutes.js';
 import bolRoutes from './src/routes/bolRoutes.js';
 import kauflandRoutes from './src/routes/kauflandRoutes.js';
+import shopifyRoutes from './src/routes/shopifyRoutes.js';
 import automationRuleRoutes from './src/routes/automationRuleRoutes.js';
 import returnRoutes from './src/routes/returnRoutes.js';
 import warehouseRoutes from './src/routes/warehouseRoutes.js';
@@ -30,6 +31,7 @@ import stockRoutes from './src/routes/StockRoutes.js';
 // Cron jobs
 import { startBolSyncCronJob } from './src/jobs/bolSyncJob.js';
 import { startKauflandSyncCronJob } from './src/jobs/kauflandSyncJob.js';
+import { startShopifySyncCronJob } from './src/jobs/shopifySyncJob.js';
 import { startStockReservationJob } from './src/jobs/stockReservationJob.js';
 
 dotenv.config();
@@ -129,6 +131,7 @@ app.use('/api/installations', installationRoutes);
 app.use('/api/integrations', integrationRoutes);
 app.use('/api/bol', bolRoutes);
 app.use('/api/kaufland', kauflandRoutes);
+app.use('/api/shopify', shopifyRoutes);
 app.use('/api/automation-rules', automationRuleRoutes);
 app.use('/api/returns', returnRoutes);
 app.use('/api/warehouse', warehouseRoutes);
@@ -161,5 +164,6 @@ app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
   startBolSyncCronJob();
   startKauflandSyncCronJob();
+  startShopifySyncCronJob();
   startStockReservationJob();
 });

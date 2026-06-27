@@ -38,6 +38,7 @@ import { toast } from 'sonner';
 import { api } from '../services/api';
 import bolLogo from '../assets/bol-logo.png';
 import kauflandLogo from '../assets/kaufland-logo.png';
+import shopifyLogo from '../assets/shopify-logo.svg';
 
 interface IntegrationsProps {
   activeProfile: string;
@@ -75,6 +76,14 @@ const availablePlatforms = [
     logo: kauflandLogo,
     color: 'from-red-500 to-red-600',
     bgColor: 'from-red-50 to-red-100/50',
+  },
+  {
+    id: 'shopify',
+    name: 'Shopify',
+    description: 'Koppel je Shopify webshop voor geautomatiseerde orderverwerking',
+    logo: shopifyLogo,
+    color: 'from-green-500 to-emerald-600',
+    bgColor: 'from-green-50 to-emerald-100/50',
   },
 ];
 
@@ -120,6 +129,9 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
         // Normalize platform ID (handle both 'bol' and 'bol.com')
         const platformId = integration.platform === 'bol.com' ? 'bol' : integration.platform;
         const platform = availablePlatforms.find(p => p.id === platformId);
+        const apiKeyDisplay = platformId === 'shopify'
+          ? (integration.credentials?.shopDomain || '••••••••')
+          : (integration.credentials?.clientId || '••••••••');
         return {
           id: integration.id,
           installationId: integration.installationId,
@@ -128,7 +140,7 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
           platformId,
           name: integration.credentials?.shopName || platform?.name || integration.platform,
           connected: true,
-          apiKey: integration.credentials?.clientId || '••••••••',
+          apiKey: apiKeyDisplay,
           hasSecret: integration.credentials?.hasSecret || false,
           processOrders: integration.settings?.processOrders ?? false,
           active: integration.active,
@@ -177,8 +189,13 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
     try {
       const credentialsResponse = await api.getIntegrationCredentials(store.id);
       setShopName(credentialsResponse.credentials?.shopName || store.name || '');
-      setApiKey(credentialsResponse.credentials?.clientId || '');
-      setApiSecret(credentialsResponse.credentials?.clientSecret || '');
+      if (store.platformId === 'shopify') {
+        setApiKey((credentialsResponse.credentials as any)?.shopDomain || '');
+        setApiSecret((credentialsResponse.credentials as any)?.accessToken || '');
+      } else {
+        setApiKey(credentialsResponse.credentials?.clientId || '');
+        setApiSecret(credentialsResponse.credentials?.clientSecret || '');
+      }
     } catch (error: any) {
       console.error('Failed to load integration credentials:', error);
       toast.error('Kon integratie-credentials niet laden', {
@@ -218,14 +235,21 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
     }
 
     try {
+      const isShopify = selectedPlatform?.id === 'shopify';
       const integrationData = {
         installationId: parseInt(activeProfile),
         platform: selectedPlatform?.id === 'bol' ? 'bol.com' : selectedPlatform?.id || '',
-        credentials: {
-          ...(apiKey ? { clientId: apiKey } : {}),
-          ...(apiSecret ? { clientSecret: apiSecret } : {}),
-          shopName: normalizedShopName,
-        },
+        credentials: isShopify
+          ? {
+              ...(apiKey ? { shopDomain: apiKey } : {}),
+              ...(apiSecret ? { accessToken: apiSecret } : {}),
+              shopName: normalizedShopName,
+            }
+          : {
+              ...(apiKey ? { clientId: apiKey } : {}),
+              ...(apiSecret ? { clientSecret: apiSecret } : {}),
+              shopName: normalizedShopName,
+            },
         settings: {
           processOrders: processOrders,
         },
@@ -236,8 +260,8 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
         installationId: integrationData.installationId,
         platform: integrationData.platform,
         active: integrationData.active,
-        hasClientId: !!integrationData.credentials.clientId,
-        hasClientSecret: !!integrationData.credentials.clientSecret,
+        hasKey: !!(integrationData.credentials as any).clientId || !!(integrationData.credentials as any).shopDomain,
+        hasSecret: !!(integrationData.credentials as any).clientSecret || !!(integrationData.credentials as any).accessToken,
       });
 
       if (editingStore) {
@@ -307,7 +331,7 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
     if (!activeProfile) return;
 
     const store = connectedStores.find(s => s.id === storeId);
-    if (!store || (store.platform !== 'bol.com' && store.platform !== 'kaufland')) {
+    if (!store || (store.platform !== 'bol.com' && store.platform !== 'kaufland' && store.platform !== 'shopify')) {
       toast.error('Sync wordt niet ondersteund voor dit platform');
       return;
     }
@@ -325,7 +349,9 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
       setSyncing(true);
       const result = store.platform === 'kaufland'
         ? await api.syncKauflandOrders(syncInstallationId, storeId)
-        : await api.syncBolOrders(syncInstallationId, storeId);
+        : store.platform === 'shopify'
+          ? await api.syncShopifyOrders(syncInstallationId, storeId)
+          : await api.syncBolOrders(syncInstallationId, storeId);
       
       toast.success('Orders gesynchroniseerd!', {
         description: `${result.imported} nieuwe orders, ${result.updated} bijgewerkt`
@@ -459,7 +485,7 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
                         >
                           <Settings className="w-3.5 h-3.5" />
                         </Button>
-                        {(store.platform === 'bol.com' || store.platform === 'kaufland') && (
+                        {(store.platform === 'bol.com' || store.platform === 'kaufland' || store.platform === 'shopify') && (
                           <Button 
                             variant="outline" 
                             size="sm" 
@@ -619,14 +645,26 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
 
             <div className="space-y-2">
               <Label htmlFor="apikey">
-                {selectedPlatform?.id === 'bol' ? 'Client ID' : 'API Key'}
+                {selectedPlatform?.id === 'bol'
+                  ? 'Client ID'
+                  : selectedPlatform?.id === 'shopify'
+                    ? 'Shop Domain'
+                    : 'API Key'}
               </Label>
               <Input
                 id="apikey"
                 placeholder={
                   editingStore
-                    ? (selectedPlatform?.id === 'bol' ? 'Laat leeg om huidige Client ID te behouden' : 'Laat leeg om huidige API key te behouden')
-                    : (selectedPlatform?.id === 'bol' ? 'Voer je Client ID in' : 'Voer je API key in')
+                    ? selectedPlatform?.id === 'shopify'
+                      ? 'Laat leeg om huidige shop domain te behouden'
+                      : selectedPlatform?.id === 'bol'
+                        ? 'Laat leeg om huidige Client ID te behouden'
+                        : 'Laat leeg om huidige API key te behouden'
+                    : selectedPlatform?.id === 'shopify'
+                      ? 'bijv. mijnwinkel.myshopify.com'
+                      : selectedPlatform?.id === 'bol'
+                        ? 'Voer je Client ID in'
+                        : 'Voer je API key in'
                 }
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
@@ -636,15 +674,27 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
 
             <div className="space-y-2">
               <Label htmlFor="apisecret">
-                {selectedPlatform?.id === 'bol' ? 'Client Secret' : 'API Secret'}
+                {selectedPlatform?.id === 'bol'
+                  ? 'Client Secret'
+                  : selectedPlatform?.id === 'shopify'
+                    ? 'Access Token'
+                    : 'API Secret'}
               </Label>
               <Input
                 id="apisecret"
                 type="password"
                 placeholder={
                   editingStore
-                    ? (selectedPlatform?.id === 'bol' ? 'Laat leeg om huidige Client Secret te behouden' : 'Laat leeg om huidige API secret te behouden')
-                    : (selectedPlatform?.id === 'bol' ? 'Voer je Client Secret in' : 'Voer je API secret in')
+                    ? selectedPlatform?.id === 'shopify'
+                      ? 'Laat leeg om huidige Access Token te behouden'
+                      : selectedPlatform?.id === 'bol'
+                        ? 'Laat leeg om huidige Client Secret te behouden'
+                        : 'Laat leeg om huidige API secret te behouden'
+                    : selectedPlatform?.id === 'shopify'
+                      ? 'Voer je Admin API access token in'
+                      : selectedPlatform?.id === 'bol'
+                        ? 'Voer je Client Secret in'
+                        : 'Voer je API secret in'
                 }
                 value={apiSecret}
                 onChange={(e) => setApiSecret(e.target.value)}
