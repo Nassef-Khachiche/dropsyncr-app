@@ -909,7 +909,7 @@ async function getBolLabelWithFallbackInternal(
             if (eligibilityCheck.notEligible) {
               throw new Error(
                 'Dit order item is niet meer beschikbaar voor label aanmaak bij Bol.com. '
-                + 'Mogelijk is het order al eerder verwerkt of verzondenvia een andere weg. '
+                + 'Mogelijk is het order al eerder verwerkt of verzonden via een andere weg. '
                 + 'Controleer het Bol Retailer Portaal voor de huidige status.'
               );
             }
@@ -1130,7 +1130,10 @@ async function getBolLabelWithFallbackInternal(
     // For VVB orders that Bol manages internally, give the user actionable guidance.
     if (path4IneligibleError) {
       const ineligibleMsg = String(path4IneligibleError.message || '');
-      if (ineligibleMsg.includes('can not be fulfilled by the retailer')) {
+      if (
+        ineligibleMsg.includes('can not be fulfilled by the retailer') ||
+        ineligibleMsg.includes('niet meer beschikbaar voor label aanmaak')
+      ) {
         throw new Error(
           `Dit is een VVB order (Verzending via Bol) — het label wordt door Bol aangemaakt. ` +
           `Download het verzendzegel direct via de Bol retailer portal. ` +
