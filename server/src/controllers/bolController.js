@@ -908,16 +908,24 @@ async function getBolLabelWithFallbackInternal(
             const eligibilityCheck = await fetchBolDeliveryOptionHandoverWindow(credentials, dbItems, null);
             if (eligibilityCheck.notEligible) {
               const notEligibleReason = String(eligibilityCheck.notEligibleReason || '').trim();
+              const isUnknownItemId = /unknown order item id/i.test(notEligibleReason);
               throw new Error(
-                'Dit order item is niet meer beschikbaar voor label aanmaak bij Bol.com. '
-                + 'Mogelijk is het order al eerder verwerkt of verzonden via een andere weg. '
-                + 'Controleer het Bol Retailer Portaal voor de huidige status.'
-                + (notEligibleReason ? ` (Bol: ${notEligibleReason})` : '')
+                isUnknownItemId
+                  ? 'Bol herkent het order item ID niet meer (mogelijk verouderd in de database). '
+                    + 'Synchroniseer de order opnieuw via "Bestellingen ophalen" en probeer daarna het label opnieuw aan te maken.'
+                    + ` (Bol: ${notEligibleReason})`
+                  : 'Dit order item is niet meer beschikbaar voor label aanmaak bij Bol.com. '
+                    + 'Mogelijk is het order al eerder verwerkt of verzonden via een andere weg. '
+                    + 'Controleer het Bol Retailer Portaal voor de huidige status.'
+                    + (notEligibleReason ? ` (Bol: ${notEligibleReason})` : '')
               );
             }
           } catch (eligibilityError) {
             // If it's our own ineligibility error, rethrow it so the DB items are not used
-            if (eligibilityError.message?.includes('niet meer beschikbaar voor label aanmaak')) throw eligibilityError;
+            if (
+              eligibilityError.message?.includes('niet meer beschikbaar voor label aanmaak') ||
+              eligibilityError.message?.includes('Bol herkent het order item ID niet meer')
+            ) throw eligibilityError;
             // Otherwise it's a network/API error — proceed with DB items anyway
             console.warn('[BOL LABEL] DB fallback eligibility check failed (network), proceeding anyway:', eligibilityError.message);
           }
@@ -926,7 +934,10 @@ async function getBolLabelWithFallbackInternal(
         }
       }
     } catch (dbError) {
-      if (dbError.message?.includes('niet meer beschikbaar voor label aanmaak')) throw dbError;
+      if (
+        dbError.message?.includes('niet meer beschikbaar voor label aanmaak') ||
+        dbError.message?.includes('Bol herkent het order item ID niet meer')
+      ) throw dbError;
       errors.push({ endpoint: 'db:orderItems', error: dbError });
     }
 
@@ -1044,6 +1055,7 @@ async function getBolLabelWithFallbackInternal(
     // Path 5 does not create a new label — it only looks for an already-existing one.
     if (
       msg.includes('niet meer beschikbaar voor label aanmaak')
+      || msg.includes('Bol herkent het order item ID niet meer')
       || msg.includes('Geen Bol delivery option gevonden')
     ) {
       path4IneligibleError = error;
@@ -1138,6 +1150,13 @@ async function getBolLabelWithFallbackInternal(
     // For VVB orders that Bol manages internally, give the user actionable guidance.
     if (path4IneligibleError) {
       const ineligibleMsg = String(path4IneligibleError.message || '');
+      // "unknown order item id" means Bol does not recognise the item ID — this is a stale-ID /
+      // sync problem, NOT a VVB/FBB order.  The Bol 404 body also happens to contain the phrase
+      // "can not be fulfilled by the retailer" as a generic hint, so we must check for the
+      // unknown-item case BEFORE the VVB check to avoid a false-positive VVB diagnosis.
+      if (/unknown order item id/i.test(ineligibleMsg)) {
+        throw path4IneligibleError;
+      }
       if (
         ineligibleMsg.includes('can not be fulfilled by the retailer') ||
         ineligibleMsg.includes('niet meer beschikbaar voor label aanmaak')
@@ -2424,6 +2443,19 @@ export const getBolShippingLabel = async (req, res) => {
         .filter((id) => Number.isInteger(id) && id > 0)
     ));
 
+    // Resolve the storeName-matched integration first — the same logic getBolDeliveryOptions uses.
+    // In multi-store setups multiple Bol integrations exist for the same installation.
+    // Without storeName matching we may try the wrong Bol account, which returns 404 "unknown
+    // order item id" for items that belong to a different account.
+    let storeNameMatchedIntegration = null;
+    try {
+      const resolved = await resolveBolIntegrationForOrder(installationId, normalizedOrderId, integrationId);
+      storeNameMatchedIntegration = resolved.integration;
+      console.log('[BOL LABEL] storeName-matched integration', { integrationId: storeNameMatchedIntegration?.id });
+    } catch {
+      // non-fatal — fall through to candidate list
+    }
+
     const requestedInstallationCandidates = await getBolIntegrationCandidates(installationId, integrationId);
 
     const orderScopedInstallationIntegrations = orderScopedInstallations.length > 0
@@ -2461,6 +2493,8 @@ export const getBolShippingLabel = async (req, res) => {
       : [];
 
     const allCandidateIntegrations = [
+      // StoreName-matched integration goes first so we always try the correct Bol account first.
+      ...(storeNameMatchedIntegration ? [storeNameMatchedIntegration] : []),
       ...prioritizedIntegrations,
       ...inactiveFallbackIntegrations,
     ];
@@ -2556,9 +2590,22 @@ export const getBolShippingLabel = async (req, res) => {
         break;
       } catch (candidateError) {
         lastError = candidateError;
-        if (!isUnauthorizedBolError(candidateError)) {
+        const candidateMsg = String(candidateError?.message || '');
+        // Continue to the next integration for:
+        // - Unauthorized (403/401): this account's token doesn't cover this endpoint.
+        // - "unknown order item id" (404): the item doesn't exist in THIS Bol account.
+        //   A wrong account returns 404 for items that belong to a different shop,
+        //   so we must try other integrations before giving up.
+        const isRetryableError = isUnauthorizedBolError(candidateError)
+          || /unknown order item id/i.test(candidateMsg);
+        if (!isRetryableError) {
           throw candidateError;
         }
+        console.warn('[BOL LABEL] Integration candidate failed (retrying next)', {
+          integrationId: candidate.integration.id,
+          reason: isUnauthorizedBolError(candidateError) ? 'unauthorized' : 'unknown-order-item-id',
+          message: candidateMsg.substring(0, 200),
+        });
       }
     }
 
