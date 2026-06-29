@@ -72,6 +72,9 @@ const normalizeWeGrowCredentials = (rawCredentials = {}) => {
   if (credentials.apiVersion !== undefined) credentials.apiVersion = trimMaybe(credentials.apiVersion);
   if (credentials.serviceCode !== undefined) credentials.serviceCode = trimMaybe(credentials.serviceCode);
   if (credentials.returnServiceCode !== undefined) credentials.returnServiceCode = trimMaybe(credentials.returnServiceCode);
+  if (credentials.dhlServiceCode !== undefined) credentials.dhlServiceCode = trimMaybe(credentials.dhlServiceCode);
+  if (credentials.postnlServiceCode !== undefined) credentials.postnlServiceCode = trimMaybe(credentials.postnlServiceCode);
+  if (credentials.dpdServiceCode !== undefined) credentials.dpdServiceCode = trimMaybe(credentials.dpdServiceCode);
   if (credentials.serviceCodes !== undefined) {
     credentials.serviceCodes = normalizeWeGrowServiceCodeMap(credentials.serviceCodes);
   }
@@ -144,9 +147,21 @@ const WEGROW_SERVICE_OPTIONS = {
 };
 
 const normalizeWeGrowServiceCodeMap = (rawServiceCodeMap) => {
-  if (!rawServiceCodeMap || typeof rawServiceCodeMap !== 'object') return {};
+  if (!rawServiceCodeMap) return {};
 
-  return Object.entries(rawServiceCodeMap).reduce((accumulator, [key, value]) => {
+  // Handle double-serialized JSON (e.g. stored as a string instead of an object)
+  let map = rawServiceCodeMap;
+  if (typeof map === 'string') {
+    try {
+      map = JSON.parse(map);
+    } catch {
+      return {};
+    }
+  }
+
+  if (typeof map !== 'object' || Array.isArray(map)) return {};
+
+  return Object.entries(map).reduce((accumulator, [key, value]) => {
     const normalizedKey = String(key || '').trim().toLowerCase();
     const normalizedValue = value === undefined || value === null ? '' : String(value).trim();
     if (!normalizedKey || !normalizedValue) return accumulator;
