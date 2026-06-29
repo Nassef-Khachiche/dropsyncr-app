@@ -1086,12 +1086,27 @@ export const generateCarrierLabels = async (req, res) => {
         : '';
       const genericServiceCode = String(credentials.serviceCode || '').trim();
 
+      // Determine whether any per-carrier service codes have been explicitly configured.
+      // When NONE are set the contract is a legacy single-service-code setup: allow the
+      // generic serviceCode to act as a universal fallback so existing contracts keep
+      // working without requiring migration to the new per-carrier fields.
+      // When at least one per-carrier code IS set, disable the generic fallback to prevent
+      // accidentally routing a DHL shipment with a DPD service code (or vice-versa).
+      const hasAnyCarrierSpecificCode = Boolean(
+        (credentials.dhlServiceCode && String(credentials.dhlServiceCode).trim()) ||
+        (credentials.postnlServiceCode && String(credentials.postnlServiceCode).trim()) ||
+        (credentials.dpdServiceCode && String(credentials.dpdServiceCode).trim()) ||
+        Object.keys(serviceCodeMapFromCredentials).length > 0
+      );
+
       // Check if any package is a return shipment
       const isReturnShipment = (packages || []).some((pkg) => pkg.isReturn === true);
 
       // For return shipments, use the returnServiceCode if available
       const returnServiceCode = String(credentials.returnServiceCode || '').trim();
-      const resolvedServiceCode = selectedWeGrowCarrier ? selectedCarrierServiceCode : genericServiceCode;
+      const resolvedServiceCode = selectedWeGrowCarrier
+        ? (selectedCarrierServiceCode || (!hasAnyCarrierSpecificCode ? genericServiceCode : ''))
+        : genericServiceCode;
       const serviceCode = isReturnShipment && returnServiceCode ? returnServiceCode : resolvedServiceCode;
 
       if (!apiKey) {
