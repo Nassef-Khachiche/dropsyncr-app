@@ -279,8 +279,39 @@ const WEGROW_STANDARD_SERVICE_CODE_PREFERENCE_BY_COUNTRY = {
   ROW: ['home_premium'],
 };
 
+const WEGROW_COUNTRY_NAME_TO_ISO2 = {
+  GERMANY: 'DE',
+  DEUTSCHLAND: 'DE',
+  FRANCE: 'FR',
+  NETHERLANDS: 'NL',
+  BELGIUM: 'BE',
+  BELGIE: 'BE',
+  'BELGIË': 'BE',
+  AUSTRIA: 'AT',
+  ITALY: 'IT',
+  SPAIN: 'ES',
+  'UNITED KINGDOM': 'GB',
+  UK: 'GB',
+  ENGLAND: 'GB',
+  IRELAND: 'IE',
+  PORTUGAL: 'PT',
+  DENMARK: 'DK',
+  SLOVAKIA: 'SK',
+  SLOVENIA: 'SI',
+  SWEDEN: 'SE',
+  FINLAND: 'FI',
+  NORWAY: 'NO',
+};
+
+const normalizeCountryToIso2 = (country) => {
+  const normalized = String(country || '').trim().toUpperCase();
+  if (!normalized) return '';
+  if (normalized.length === 2 && /^[A-Z]{2}$/.test(normalized)) return normalized;
+  return WEGROW_COUNTRY_NAME_TO_ISO2[normalized] || normalized;
+};
+
 const resolveWeGrowStandardServiceCode = (destinationCountry, options = {}) => {
-  const normalizedCountry = String(destinationCountry || '').trim().toUpperCase();
+  const normalizedCountry = normalizeCountryToIso2(destinationCountry);
   if (!normalizedCountry) return '';
 
   const countryMatrix = WEGROW_STANDARD_SERVICE_CODE_BY_COUNTRY[normalizedCountry] || WEGROW_STANDARD_SERVICE_CODE_BY_COUNTRY.ROW || {};
@@ -1250,7 +1281,12 @@ export const generateCarrierLabels = async (req, res) => {
       const serviceCode = isReturnShipment && returnServiceCode ? returnServiceCode : resolvedServiceCode;
 
       const getPackageServiceCode = (pkg = {}) => {
-        const destinationCountry = String(pkg.country || pkg.shippingCountry || pkg.shipmentDetails?.countryCode || 'NL').trim().toUpperCase() || 'NL';
+        const destinationCountry = normalizeCountryToIso2(pkg.country || pkg.shippingCountry || pkg.shipmentDetails?.countryCode || 'NL') || 'NL';
+
+        if (selectedWeGrowCarrier === 'postnl-belgie-standaard-0-23kg' && destinationCountry === 'BE' && pkg.isReturn !== true) {
+          return 'wegrow_home_economy';
+        }
+
         const standardServiceCode = resolveWeGrowStandardServiceCode(destinationCountry, {
           selectedCarrier: selectedWeGrowCarrier,
           isReturnShipment: pkg.isReturn === true,
