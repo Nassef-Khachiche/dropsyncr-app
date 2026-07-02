@@ -686,7 +686,9 @@ export async function sendKauflandTracking(installationId, orderNumber, tracking
       'wegrow-dhl-for-you': 'DHL',
       'wegrow-postnl-nederland-brievenbuspakketje-0-2kg': 'PostNL',
       'wegrow-postnl-belgie-standaard-0-23kg': 'PostNL',
-      wegrow: 'Other',
+      'wegrow-dpd-standaard': 'DPD',
+      'dpd-standaard': 'DPD',
+      wegrow: 'DPD',
     };
 
     const normalizedShippingMethod = String(shippingMethod || '').toLowerCase();
