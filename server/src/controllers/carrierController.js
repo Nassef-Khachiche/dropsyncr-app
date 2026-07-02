@@ -259,6 +259,26 @@ const WEGROW_STANDARD_SERVICE_CODE_BY_COUNTRY = {
   },
 };
 
+const WEGROW_STANDARD_SERVICE_CODE_PREFERENCE_BY_COUNTRY = {
+  DE: ['home_premium', 'letterbox_premium'],
+  FR: ['home_premium', 'home_economy'],
+  NL: ['home_premium', 'home_economy', 'letterbox_premium', 'letterbox_economy'],
+  BE: ['home_economy', 'home_premium', 'letterbox_premium'],
+  AT: ['home_premium', 'home_economy', 'letterbox_premium'],
+  IT: ['home_premium', 'home_economy'],
+  ES: ['home_premium', 'home_economy'],
+  GB: ['home_economy'],
+  IE: ['home_premium', 'home_economy'],
+  PT: ['home_premium', 'home_economy'],
+  DK: ['home_premium', 'pudo_premium'],
+  SK: ['home_premium', 'home_economy'],
+  SI: ['home_premium', 'home_economy'],
+  SE: ['home_premium'],
+  FI: ['home_premium', 'pudo_premium'],
+  NO: ['home_premium'],
+  ROW: ['home_premium'],
+};
+
 const resolveWeGrowStandardServiceCode = (destinationCountry, options = {}) => {
   const normalizedCountry = String(destinationCountry || '').trim().toUpperCase();
   if (!normalizedCountry) return '';
@@ -266,6 +286,7 @@ const resolveWeGrowStandardServiceCode = (destinationCountry, options = {}) => {
   const countryMatrix = WEGROW_STANDARD_SERVICE_CODE_BY_COUNTRY[normalizedCountry] || WEGROW_STANDARD_SERVICE_CODE_BY_COUNTRY.ROW || {};
   const selectedCarrier = String(options.selectedCarrier || '').trim().toLowerCase();
   const isReturnShipment = Boolean(options.isReturnShipment);
+  const countryPreference = WEGROW_STANDARD_SERVICE_CODE_PREFERENCE_BY_COUNTRY[normalizedCountry] || WEGROW_STANDARD_SERVICE_CODE_PREFERENCE_BY_COUNTRY.ROW || [];
 
   const preference = [];
   if (isReturnShipment) {
@@ -276,11 +297,11 @@ const resolveWeGrowStandardServiceCode = (destinationCountry, options = {}) => {
     selectedCarrier.includes('mailbox') ||
     selectedCarrier.includes('letterbox')
   ) {
-    preference.push('letterbox_premium', 'letterbox_economy', 'home_premium', 'home_economy', 'pudo_premium');
+    preference.push('letterbox_premium', 'letterbox_economy', ...countryPreference.filter((candidate) => !candidate.startsWith('letterbox_')));
   } else if (selectedCarrier.includes('pudo') || normalizedCountry === 'DK' || normalizedCountry === 'FI') {
-    preference.push('pudo_premium', 'home_premium', 'home_economy');
+    preference.push('pudo_premium', ...countryPreference.filter((candidate) => candidate !== 'pudo_premium'));
   } else {
-    preference.push('home_premium', 'home_economy', 'letterbox_premium', 'letterbox_economy', 'pudo_premium');
+    preference.push(...countryPreference);
   }
 
   for (const candidateKey of preference) {
