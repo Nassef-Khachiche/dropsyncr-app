@@ -18,6 +18,72 @@ const normalizeProductName = (value) => {
   return normalized || 'Onbekend product';
 };
 
+const persistBolTrackingForOrders = async ({
+  orderNumber,
+  installationId = null,
+  orderDbIds = [],
+  trackingCode,
+  transporterCode,
+  source = 'bol_label_generation',
+}) => {
+  const normalizedTrackingCode = String(trackingCode || '').trim();
+  if (!normalizedTrackingCode) return;
+
+  let targetOrderIds = Array.isArray(orderDbIds)
+    ? orderDbIds
+      .map((id) => Number(id))
+      .filter((id) => Number.isInteger(id) && id > 0)
+    : [];
+
+  if (targetOrderIds.length === 0) {
+    const normalizedOrderNumber = String(orderNumber || '').trim();
+    if (!normalizedOrderNumber) return;
+
+    const installationIdNumber = Number.isFinite(Number(installationId))
+      ? Number(installationId)
+      : null;
+
+    const matchingOrders = await prisma.order.findMany({
+      where: {
+        orderNumber: normalizedOrderNumber,
+        ...(installationIdNumber ? { installationId: installationIdNumber } : {}),
+      },
+      select: { id: true },
+    });
+
+    targetOrderIds = matchingOrders
+      .map((order) => Number(order.id))
+      .filter((id) => Number.isInteger(id) && id > 0);
+  }
+
+  if (targetOrderIds.length === 0) return;
+
+  await prisma.$transaction([
+    prisma.order.updateMany({
+      where: { id: { in: targetOrderIds } },
+      data: { supplierTracking: normalizedTrackingCode },
+    }),
+    ...targetOrderIds.map((orderId) =>
+      prisma.tracking.upsert({
+        where: { orderId },
+        update: {
+          trackingCode: normalizedTrackingCode,
+          supplier: String(transporterCode || 'bol.com').trim() || 'bol.com',
+          source,
+          status: 'linked',
+        },
+        create: {
+          orderId,
+          trackingCode: normalizedTrackingCode,
+          supplier: String(transporterCode || 'bol.com').trim() || 'bol.com',
+          source,
+          status: 'linked',
+        },
+      })
+    ),
+  ]);
+};
+
 /**
  * Bol.com API Integration Controller
  * Handles orders, tracking, labels, and returns from Bol.com
@@ -2733,6 +2799,16 @@ export const getBolShippingLabel = async (req, res) => {
       },
     });
 
+    if (labelData?.trackingCode) {
+      await persistBolTrackingForOrders({
+        orderNumber: normalizedOrderId,
+        orderDbIds: targetOrderDbIds,
+        trackingCode: labelData.trackingCode,
+        transporterCode: labelData?.transporterCode || 'bol.com',
+        source: 'bol_label_generation',
+      });
+    }
+
     // Confirm shipment with Bol.com so the order is marked as shipped on their side.
     // For VVB orders the carrier is assigned by Bol; for FBR we pass whatever the label returned.
     // Failures here are non-fatal — the label has already been generated and saved.
@@ -2800,6 +2876,16 @@ export const getBolShippingLabel = async (req, res) => {
             },
             data: { status: 'verzonden', orderStatus: 'verzonden', orderStatusCode: 'SHIPPED' },
           });
+
+          if (labelData?.trackingCode) {
+            await persistBolTrackingForOrders({
+              orderNumber: normalizedOrderId,
+              orderDbIds: targetOrderDbIds,
+              trackingCode: labelData.trackingCode,
+              transporterCode: labelData?.transporterCode || 'bol.com',
+              source: 'bol_shipment_confirmation',
+            });
+          }
         } else {
           console.warn('[BOL LABEL] Kon order items niet oplossen om shipment te bevestigen', { orderId: normalizedOrderId });
         }
@@ -2956,7 +3042,7 @@ export const getBolDeliveryOptions = async (req, res) => {
  */
 export const getBolLabelPdf = async (req, res) => {
   try {
-    const { installationId, shippingLabelId, integrationId } = req.query;
+    const { installationId, shippingLabelId, integrationId, orderId } = req.query;
 
     if (!installationId || !shippingLabelId) {
       return res.status(400).json({ error: 'installationId and shippingLabelId are required' });
@@ -2993,6 +3079,20 @@ export const getBolLabelPdf = async (req, res) => {
       } catch (saveError) {
         console.warn('[BOL LABEL PDF] Failed to save label PDF to disk:', saveError?.message);
         // fall back to data URI
+      }
+    }
+
+    if (result?.trackingCode && orderId) {
+      try {
+        await persistBolTrackingForOrders({
+          orderNumber: String(orderId || '').trim(),
+          installationId,
+          trackingCode: result.trackingCode,
+          transporterCode: result.transporterCode || 'bol.com',
+          source: 'bol_label_pdf_poll',
+        });
+      } catch (persistError) {
+        console.warn('[BOL LABEL PDF] Failed to persist tracking from poll result:', persistError?.message);
       }
     }
 
@@ -3106,6 +3206,22 @@ export const getBolLabelByOrder = async (req, res) => {
     }
 
     console.log('[BOL LABEL BY ORDER] PDF ready', { normalizedOrderId, persistedUrl });
+
+    if (result?.trackingCode) {
+      try {
+        await persistBolTrackingForOrders({
+          orderNumber: normalizedOrderId,
+          installationId,
+          orderDbIds: dbOrder?.id ? [dbOrder.id] : [],
+          trackingCode: result.trackingCode,
+          transporterCode: result.transporterCode || 'bol.com',
+          source: 'bol_label_order_poll',
+        });
+      } catch (persistError) {
+        console.warn('[BOL LABEL BY ORDER] Failed to persist tracking from order poll:', persistError?.message);
+      }
+    }
+
     return res.json({ ready: true, labelUrl: persistedUrl, shippingLabelId: foundShippingLabelId });
   } catch (error) {
     console.error('getBolLabelByOrder error:', error);

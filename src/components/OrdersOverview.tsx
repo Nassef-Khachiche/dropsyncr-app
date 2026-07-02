@@ -612,11 +612,45 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
           pendingLabelShippingId,
           pendingLabelInstallationId,
           pendingLabelIntegrationId ?? undefined,
+          String(labelOrder?.orderNumber || '').trim() || undefined,
         );
         if (cancelled) return;
         if (result.ready && result.labelUrl) {
           const resolvedUrl = resolveToAbsoluteLabelUrl(result.labelUrl);
           setLabelPreviewUrl(resolvedUrl);
+          if (result.trackingCode || result.transporterCode) {
+            setGeneratedLabelMeta((prev) => ({
+              shipmentId: prev?.shipmentId || String(labelOrder?.orderNumber || ''),
+              trackingCode: result.trackingCode || prev?.trackingCode || null,
+              trackingUrl: prev?.trackingUrl || null,
+            }));
+            if (typeof labelOrder?.id === 'number' && result.trackingCode) {
+              setOrders((prevOrders) => prevOrders.map((entry) => (
+                entry.id === labelOrder.id
+                  ? {
+                      ...entry,
+                      supplierTracking: result.trackingCode,
+                      tracking: {
+                        ...(entry.tracking || {}),
+                        trackingCode: result.trackingCode,
+                      },
+                    }
+                  : entry
+              )));
+              setLabelOrder((prevLabelOrder: any) => (
+                prevLabelOrder
+                  ? {
+                      ...prevLabelOrder,
+                      supplierTracking: result.trackingCode,
+                      tracking: {
+                        ...(prevLabelOrder.tracking || {}),
+                        trackingCode: result.trackingCode,
+                      },
+                    }
+                  : prevLabelOrder
+              ));
+            }
+          }
           setPendingLabelShippingId(null);
         } else {
           pollOnce();
@@ -628,7 +662,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
 
     pollOnce();
     return () => { cancelled = true; };
-  }, [pendingLabelShippingId, pendingLabelInstallationId, pendingLabelIntegrationId, showLabelDialog]);
+  }, [pendingLabelShippingId, pendingLabelInstallationId, pendingLabelIntegrationId, showLabelDialog, labelOrder?.orderNumber]);
 
   // Order-based polling: used when no shippingLabelId was returned in the initial label response.
   // Queries /bol/label-by-order which checks Bol's /shipments endpoint and fetches the PDF.
@@ -1217,6 +1251,13 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
             entry.id === labelOrder.id
               ? {
                   ...entry,
+                  ...(trackingCode ? {
+                    supplierTracking: trackingCode,
+                    tracking: {
+                      ...(entry.tracking || {}),
+                      trackingCode,
+                    },
+                  } : {}),
                   shippingMethod: 'Bol.com',
                   label: {
                     ...(entry.label || {}),
@@ -1231,6 +1272,13 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
             prevLabelOrder
               ? {
                   ...prevLabelOrder,
+                  ...(trackingCode ? {
+                    supplierTracking: trackingCode,
+                    tracking: {
+                      ...(prevLabelOrder.tracking || {}),
+                      trackingCode,
+                    },
+                  } : {}),
                   shippingMethod: 'Bol.com',
                   label: {
                     ...(prevLabelOrder.label || {}),
@@ -1326,6 +1374,13 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
           entry.id === labelOrder.id
             ? {
                 ...entry,
+                ...(label?.trackingCode ? {
+                  supplierTracking: label.trackingCode,
+                  tracking: {
+                    ...(entry.tracking || {}),
+                    trackingCode: label.trackingCode,
+                  },
+                } : {}),
                 shippingMethod: selectedShippingMethod,
                 label: {
                   ...(entry.label || {}),
@@ -1339,6 +1394,13 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
           prevLabelOrder
             ? {
                 ...prevLabelOrder,
+                ...(label?.trackingCode ? {
+                  supplierTracking: label.trackingCode,
+                  tracking: {
+                    ...(prevLabelOrder.tracking || {}),
+                    trackingCode: label.trackingCode,
+                  },
+                } : {}),
                 shippingMethod: selectedShippingMethod,
                 label: {
                   ...(prevLabelOrder.label || {}),

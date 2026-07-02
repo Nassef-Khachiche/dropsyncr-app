@@ -672,11 +672,17 @@ class ApiService {
     }>(`/bol/delivery-options?${queryParams.toString()}`);
   }
 
-  async getBolLabelPdf(shippingLabelId: string, installationId: string, integrationId?: string) {
+  async getBolLabelPdf(
+    shippingLabelId: string,
+    installationId: string,
+    integrationId?: string,
+    orderId?: string,
+  ) {
     const queryParams = new URLSearchParams();
     queryParams.append('shippingLabelId', shippingLabelId);
     queryParams.append('installationId', installationId);
     if (integrationId) queryParams.append('integrationId', integrationId);
+    if (orderId) queryParams.append('orderId', orderId);
     return this.request<{
       ready: boolean;
       shippingLabelId?: string;
