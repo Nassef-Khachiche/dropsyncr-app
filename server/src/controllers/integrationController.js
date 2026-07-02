@@ -226,10 +226,10 @@ export const createIntegration = async (req, res) => {
         return res.status(400).json({ error: 'Client ID and Client Secret are required for Bol.com' });
       }
     } else if (platform === 'shopify') {
-      if (!credentials.shopDomain || !credentials.accessToken || !credentials.clientId || !credentials.clientSecret) {
+      if (!credentials.shopDomain || !credentials.clientId || !credentials.clientSecret) {
         console.error('[Integration] Missing Shopify credentials');
         return res.status(400).json({
-          error: 'Shop Domain, Access Token, Client ID, and Client Secret are required for Shopify',
+          error: 'Shop Domain, Client ID, and Client Secret are required for Shopify',
         });
       }
     }
@@ -334,15 +334,14 @@ export const updateIntegration = async (req, res) => {
     } else if (integration.platform === 'shopify') {
       const hasCredentialChanges = !!normalizedIncomingCredentials && (
         Object.prototype.hasOwnProperty.call(normalizedIncomingCredentials, 'shopDomain') ||
-        Object.prototype.hasOwnProperty.call(normalizedIncomingCredentials, 'accessToken') ||
         Object.prototype.hasOwnProperty.call(normalizedIncomingCredentials, 'clientId') ||
         Object.prototype.hasOwnProperty.call(normalizedIncomingCredentials, 'clientSecret')
       );
 
       if (hasCredentialChanges) {
-        if (!mergedCredentials.shopDomain || !mergedCredentials.accessToken || !mergedCredentials.clientId || !mergedCredentials.clientSecret) {
+        if (!mergedCredentials.shopDomain || !mergedCredentials.clientId || !mergedCredentials.clientSecret) {
           return res.status(400).json({
-            error: 'Shop Domain, Access Token, Client ID, and Client Secret are required for Shopify',
+            error: 'Shop Domain, Client ID, and Client Secret are required for Shopify',
           });
         }
       }

@@ -195,7 +195,7 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
       setShopName(credentialsResponse.credentials?.shopName || store.name || '');
       if (store.platformId === 'shopify') {
         setApiKey((credentialsResponse.credentials as any)?.shopDomain || '');
-        setApiSecret((credentialsResponse.credentials as any)?.accessToken || '');
+        setApiSecret('');
         setShopifyClientId((credentialsResponse.credentials as any)?.clientId || '');
         setShopifyClientSecret((credentialsResponse.credentials as any)?.clientSecret || '');
       } else {
@@ -231,7 +231,7 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
 
     const isShopify = selectedPlatform?.id === 'shopify';
 
-    if (!editingStore && isShopify && (!apiKey || !apiSecret || !shopifyClientId || !shopifyClientSecret)) {
+    if (!editingStore && isShopify && (!apiKey || !shopifyClientId || !shopifyClientSecret)) {
       toast.error('Vul alle verplichte Shopify velden in');
       return;
     }
@@ -258,7 +258,6 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
         credentials: isShopify
           ? {
               ...(apiKey ? { shopDomain: apiKey } : {}),
-              ...(apiSecret ? { accessToken: apiSecret } : {}),
               ...(shopifyClientId ? { clientId: shopifyClientId } : {}),
               ...(shopifyClientSecret ? { clientSecret: shopifyClientSecret } : {}),
               shopName: normalizedShopName,
@@ -282,6 +281,8 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
         hasSecret: !!(integrationData.credentials as any).clientSecret || !!(integrationData.credentials as any).accessToken,
       });
 
+      let savedIntegrationId = editingStore?.id;
+
       if (editingStore) {
         const result = await api.updateIntegration(editingStore.id, {
           credentials: integrationData.credentials,
@@ -290,15 +291,32 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
         });
 
         console.log('[Integration] Integration updated:', result);
+        savedIntegrationId = result?.integration?.id || editingStore.id;
         toast.success(`${selectedPlatform?.name} instellingen bijgewerkt!`, {
           description: `${normalizedShopName} wijzigingen zijn opgeslagen`
         });
       } else {
         const result = await api.createIntegration(integrationData);
         console.log('[Integration] Integration created:', result);
+        savedIntegrationId = result?.integration?.id;
         toast.success(`${selectedPlatform?.name} winkel succesvol gekoppeld!`, {
           description: `${normalizedShopName} is nu actief in Dropsyncr`
         });
+      }
+
+      if (isShopify && savedIntegrationId) {
+        const oauthStart = await api.startShopifyOAuth(String(integrationData.installationId), savedIntegrationId);
+        const oauthWindow = window.open(oauthStart.authUrl, '_blank', 'noopener,noreferrer');
+
+        if (!oauthWindow) {
+          toast.error('Pop-up geblokkeerd. Sta pop-ups toe om Shopify te autoriseren.', {
+            description: 'Open de Shopify autorisatie opnieuw via Instellingen > Shopify > Wijzigingen Opslaan',
+          });
+        } else {
+          toast.info('Shopify autorisatie gestart', {
+            description: 'Rond de autorisatie af in het nieuwe tabblad om orders te kunnen synchroniseren',
+          });
+        }
       }
       
       setShowConnectionDialog(false);
@@ -690,35 +708,29 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="apisecret">
-                {selectedPlatform?.id === 'bol'
-                  ? 'Client Secret'
-                  : selectedPlatform?.id === 'shopify'
-                    ? 'Access Token'
-                    : 'API Secret'}
-              </Label>
-              <Input
-                id="apisecret"
-                type="password"
-                placeholder={
-                  editingStore
-                    ? selectedPlatform?.id === 'shopify'
-                      ? 'Laat leeg om huidige Access Token te behouden'
-                      : selectedPlatform?.id === 'bol'
+            {selectedPlatform?.id !== 'shopify' && (
+              <div className="space-y-2">
+                <Label htmlFor="apisecret">
+                  {selectedPlatform?.id === 'bol' ? 'Client Secret' : 'API Secret'}
+                </Label>
+                <Input
+                  id="apisecret"
+                  type="password"
+                  placeholder={
+                    editingStore
+                      ? selectedPlatform?.id === 'bol'
                         ? 'Laat leeg om huidige Client Secret te behouden'
                         : 'Laat leeg om huidige API secret te behouden'
-                    : selectedPlatform?.id === 'shopify'
-                      ? 'Voer je Admin API access token in'
                       : selectedPlatform?.id === 'bol'
                         ? 'Voer je Client Secret in'
                         : 'Voer je API secret in'
-                }
-                value={apiSecret}
-                onChange={(e) => setApiSecret(e.target.value)}
-                className="border-slate-200"
-              />
-            </div>
+                  }
+                  value={apiSecret}
+                  onChange={(e) => setApiSecret(e.target.value)}
+                  className="border-slate-200"
+                />
+              </div>
+            )}
 
             {selectedPlatform?.id === 'shopify' && (
               <>

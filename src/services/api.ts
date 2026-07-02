@@ -628,6 +628,13 @@ class ApiService {
     );
   }
 
+  async startShopifyOAuth(installationId: string, integrationId: number) {
+    return this.request<{ success: boolean; authUrl: string }>('/shopify/oauth/start', {
+      method: 'POST',
+      body: JSON.stringify({ installationId, integrationId }),
+    });
+  }
+
   // Bol.com Integration
   async syncBolOrders(installationId: string, integrationId?: number) {
     const queryParams = new URLSearchParams();

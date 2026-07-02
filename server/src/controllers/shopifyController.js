@@ -1,6 +1,7 @@
 import prisma from '../config/database.js';
 import fetch from 'node-fetch';
 import crypto from 'crypto';
+import { getJwtSecret } from '../utils/security.js';
 
 /**
  * Shopify Admin API Integration Controller
@@ -8,6 +9,121 @@ import crypto from 'crypto';
  */
 
 const SHOPIFY_API_VERSION = '2024-04';
+const SHOPIFY_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+
+function normalizeShopDomain(value) {
+  return String(value || '')
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .replace(/\/$/, '')
+    .toLowerCase();
+}
+
+function buildOAuthRedirectUri(req) {
+  if (process.env.SHOPIFY_OAUTH_REDIRECT_URI) {
+    return process.env.SHOPIFY_OAUTH_REDIRECT_URI;
+  }
+
+  const backendBaseUrl = process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`;
+  return `${String(backendBaseUrl).replace(/\/$/, '')}/api/shopify/oauth/callback`;
+}
+
+function buildSignedOauthState(payload) {
+  const serialized = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const signature = crypto
+    .createHmac('sha256', getJwtSecret())
+    .update(serialized)
+    .digest('base64url');
+  return `${serialized}.${signature}`;
+}
+
+function verifySignedOauthState(state) {
+  const parts = String(state || '').split('.');
+  if (parts.length !== 2) {
+    throw new Error('Invalid OAuth state');
+  }
+
+  const [serialized, signature] = parts;
+  const expectedSignature = crypto
+    .createHmac('sha256', getJwtSecret())
+    .update(serialized)
+    .digest('base64url');
+
+  const providedBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expectedSignature);
+  if (providedBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(providedBuffer, expectedBuffer)) {
+    throw new Error('Invalid OAuth state signature');
+  }
+
+  const payload = JSON.parse(Buffer.from(serialized, 'base64url').toString('utf8'));
+  if (!payload?.integrationId || !payload?.iat) {
+    throw new Error('Invalid OAuth state payload');
+  }
+
+  const stateAgeMs = Date.now() - Number(payload.iat);
+  if (!Number.isFinite(stateAgeMs) || stateAgeMs < 0 || stateAgeMs > SHOPIFY_OAUTH_STATE_TTL_MS) {
+    throw new Error('OAuth state expired');
+  }
+
+  return payload;
+}
+
+function isValidShopifyOauthHmac(query, clientSecret) {
+  const { hmac, signature, ...rest } = query;
+  if (!hmac || !clientSecret) return false;
+
+  const message = Object.keys(rest)
+    .sort()
+    .map((key) => {
+      const rawValue = rest[key];
+      if (Array.isArray(rawValue)) {
+        return `${key}=${rawValue.join(',')}`;
+      }
+      return `${key}=${rawValue}`;
+    })
+    .join('&');
+
+  const digest = crypto.createHmac('sha256', clientSecret).update(message).digest('hex');
+  const digestBuffer = Buffer.from(digest);
+  const hmacBuffer = Buffer.from(String(hmac));
+
+  return digestBuffer.length === hmacBuffer.length && crypto.timingSafeEqual(digestBuffer, hmacBuffer);
+}
+
+async function exchangeShopifyOAuthCode({ shopDomain, clientId, clientSecret, code }) {
+  const domain = normalizeShopDomain(shopDomain);
+  const response = await fetch(`https://${domain}/admin/oauth/access_token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      client_id: clientId,
+      client_secret: clientSecret,
+      code,
+    }),
+  });
+
+  const responseText = await response.text();
+  let payload = null;
+  try {
+    payload = JSON.parse(responseText);
+  } catch {
+    payload = null;
+  }
+
+  if (!response.ok) {
+    throw new Error(`Shopify OAuth token exchange failed (${response.status}): ${responseText}`);
+  }
+
+  const accessToken = payload?.access_token;
+  if (!accessToken) {
+    throw new Error('Shopify OAuth token exchange did not return an access token');
+  }
+
+  return {
+    accessToken,
+    scope: payload?.scope || null,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Currency conversion helpers (same rates as kauflandController)
@@ -105,11 +221,11 @@ async function shopifyApiRequest(credentials, path, method = 'GET', body = null)
   const { shopDomain, accessToken } = credentials;
 
   if (!shopDomain || !accessToken) {
-    throw new Error('Missing Shopify credentials: shopDomain and accessToken are required');
+    throw new Error('Missing Shopify access token. Complete Shopify OAuth authorization first.');
   }
 
   // Normalise domain — strip protocol if accidentally included
-  const domain = String(shopDomain).replace(/^https?:\/\//, '').replace(/\/$/, '');
+  const domain = normalizeShopDomain(shopDomain);
   const url = `https://${domain}/admin/api/${SHOPIFY_API_VERSION}${path}`;
 
   const headers = {
@@ -360,6 +476,168 @@ export async function syncShopifyOrders(req, res) {
   } catch (error) {
     console.error('[SHOPIFY] syncShopifyOrders error:', error.message);
     return res.status(500).json({ error: error.message });
+  }
+}
+
+/**
+ * POST /api/shopify/oauth/start
+ * Body: { installationId, integrationId }
+ * Returns Shopify authorization URL for the merchant to approve app scopes.
+ */
+export async function startShopifyOAuth(req, res) {
+  const { installationId, integrationId } = req.body || {};
+
+  if (!installationId || !integrationId) {
+    return res.status(400).json({ error: 'installationId and integrationId are required' });
+  }
+
+  try {
+    const integration = await prisma.integration.findUnique({
+      where: { id: parseInt(integrationId, 10) },
+      select: {
+        id: true,
+        installationId: true,
+        platform: true,
+        credentials: true,
+      },
+    });
+
+    if (!integration || integration.platform !== 'shopify') {
+      return res.status(404).json({ error: 'Shopify integration not found' });
+    }
+
+    if (parseInt(installationId, 10) !== integration.installationId) {
+      return res.status(400).json({ error: 'installationId does not match integration' });
+    }
+
+    if (!req.user?.isGlobalAdmin) {
+      const hasAccess = await prisma.userInstallation.findFirst({
+        where: {
+          userId: req.user.id,
+          installationId: integration.installationId,
+        },
+      });
+
+      if (!hasAccess) {
+        return res.status(403).json({ error: 'Access denied to this installation' });
+      }
+    }
+
+    const credentials = typeof integration.credentials === 'string'
+      ? JSON.parse(integration.credentials)
+      : (integration.credentials || {});
+
+    const shopDomain = normalizeShopDomain(credentials.shopDomain);
+    const clientId = String(credentials.clientId || '').trim();
+    const clientSecret = String(credentials.clientSecret || '').trim();
+
+    if (!shopDomain || !clientId || !clientSecret) {
+      return res.status(400).json({
+        error: 'Shop Domain, Client ID, and Client Secret are required before Shopify OAuth can start',
+      });
+    }
+
+    const state = buildSignedOauthState({
+      integrationId: integration.id,
+      installationId: integration.installationId,
+      iat: Date.now(),
+    });
+
+    const redirectUri = buildOAuthRedirectUri(req);
+    const scopes = process.env.SHOPIFY_API_SCOPES || 'read_orders,read_all_orders,write_fulfillments,read_fulfillments';
+
+    const authUrl = `https://${shopDomain}/admin/oauth/authorize?${new URLSearchParams({
+      client_id: clientId,
+      scope: scopes,
+      redirect_uri: redirectUri,
+      state,
+    }).toString()}`;
+
+    return res.json({ success: true, authUrl });
+  } catch (error) {
+    console.error('[SHOPIFY] startShopifyOAuth error:', error.message);
+    return res.status(500).json({ error: error.message });
+  }
+}
+
+/**
+ * GET /api/shopify/oauth/callback
+ * Public callback route hit by Shopify after merchant approves app scopes.
+ */
+export async function handleShopifyOAuthCallback(req, res) {
+  const frontendBase = String(process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
+  const successRedirect = `${frontendBase}/?shopify_oauth=success`;
+
+  try {
+    const { code, state, shop } = req.query || {};
+
+    if (!code || !state || !shop) {
+      return res.status(400).send('Missing required Shopify OAuth callback parameters.');
+    }
+
+    const parsedState = verifySignedOauthState(state);
+
+    const integration = await prisma.integration.findUnique({
+      where: { id: parseInt(parsedState.integrationId, 10) },
+      select: {
+        id: true,
+        installationId: true,
+        platform: true,
+        credentials: true,
+      },
+    });
+
+    if (!integration || integration.platform !== 'shopify') {
+      return res.status(404).send('Shopify integration not found.');
+    }
+
+    const credentials = typeof integration.credentials === 'string'
+      ? JSON.parse(integration.credentials)
+      : (integration.credentials || {});
+
+    const shopDomain = normalizeShopDomain(credentials.shopDomain);
+    const callbackShopDomain = normalizeShopDomain(shop);
+    const clientId = String(credentials.clientId || '').trim();
+    const clientSecret = String(credentials.clientSecret || '').trim();
+
+    if (!shopDomain || !clientId || !clientSecret) {
+      return res.status(400).send('Integration credentials are incomplete for OAuth callback.');
+    }
+
+    if (shopDomain !== callbackShopDomain) {
+      return res.status(400).send('Shop domain mismatch during Shopify OAuth callback.');
+    }
+
+    if (!isValidShopifyOauthHmac(req.query, clientSecret)) {
+      return res.status(401).send('Invalid Shopify OAuth callback signature.');
+    }
+
+    const tokenResult = await exchangeShopifyOAuthCode({
+      shopDomain,
+      clientId,
+      clientSecret,
+      code,
+    });
+
+    await prisma.integration.update({
+      where: { id: integration.id },
+      data: {
+        active: true,
+        credentials: JSON.stringify({
+          ...credentials,
+          shopDomain,
+          accessToken: tokenResult.accessToken,
+          oauthScope: tokenResult.scope,
+          oauthConnectedAt: new Date().toISOString(),
+        }),
+      },
+    });
+
+    return res.redirect(successRedirect);
+  } catch (error) {
+    console.error('[SHOPIFY] handleShopifyOAuthCallback error:', error.message);
+    const errorRedirect = `${frontendBase}/?shopify_oauth=error&message=${encodeURIComponent(error.message || 'OAuth failed')}`;
+    return res.redirect(errorRedirect);
   }
 }
 
