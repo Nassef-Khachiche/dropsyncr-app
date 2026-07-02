@@ -171,6 +171,125 @@ const normalizeWeGrowServiceCodeMap = (rawServiceCodeMap) => {
   }, {});
 };
 
+const WEGROW_STANDARD_SERVICE_CODE_BY_COUNTRY = {
+  DE: {
+    home_premium: 'wegrow_home_premium',
+    letterbox_premium: 'wegrow_letterbox_premium',
+    domestic_return: 'wegrow_domestic_return',
+  },
+  FR: {
+    home_premium: 'wegrow_home_premium',
+    home_economy: 'wegrow_home_economy',
+    direct_return: 'wegrow_direct_return',
+  },
+  NL: {
+    home_premium: 'wegrow_home_premium',
+    home_economy: 'wegrow_home_economy',
+    letterbox_premium: 'wegrow_letterbox_premium',
+    letterbox_economy: 'wegrow_letterbox_economy',
+    direct_return: 'wegrow_direct_return',
+  },
+  BE: {
+    home_premium: 'wegrow_home_premium',
+    home_economy: 'wegrow_home_economy',
+    letterbox_premium: 'wegrow_letterbox_premium',
+    domestic_return: 'wegrow_domestic_return',
+    direct_return: 'wegrow_direct_return',
+  },
+  AT: {
+    home_premium: 'wegrow_home_premium',
+    home_economy: 'wegrow_home_economy',
+    letterbox_premium: 'wegrow_letterbox_premium',
+    direct_return: 'wegrow_direct_return',
+  },
+  IT: {
+    home_premium: 'wegrow_home_premium',
+    home_economy: 'wegrow_home_economy',
+    direct_return: 'wegrow_direct_return',
+  },
+  ES: {
+    home_premium: 'wegrow_home_premium',
+    home_economy: 'wegrow_home_economy',
+    domestic_return: 'wegrow_domestic_return',
+    direct_return: 'wegrow_direct_return',
+  },
+  GB: {
+    home_economy: 'wegrow_home_economy',
+  },
+  IE: {
+    home_premium: 'wegrow_home_premium',
+    home_economy: 'wegrow_home_economy',
+  },
+  PT: {
+    home_premium: 'wegrow_home_premium',
+    home_economy: 'wegrow_home_economy',
+    domestic_return: 'wegrow_domestic_return',
+    direct_return: 'wegrow_direct_return',
+  },
+  DK: {
+    home_premium: 'wegrow_home_premium',
+    pudo_premium: 'wegrow_pudo_premium',
+    direct_return: 'wegrow_direct_return',
+  },
+  SK: {
+    home_premium: 'wegrow_home_premium',
+    home_economy: 'wegrow_home_economy',
+    direct_return: 'wegrow_direct_return',
+  },
+  SI: {
+    home_premium: 'wegrow_home_premium',
+    home_economy: 'wegrow_home_economy',
+    direct_return: 'wegrow_direct_return',
+  },
+  SE: {
+    home_premium: 'wegrow_home_premium',
+    direct_return: 'wegrow_direct_return',
+  },
+  FI: {
+    home_premium: 'wegrow_home_premium',
+    pudo_premium: 'wegrow_pudo_premium',
+    direct_return: 'wegrow_direct_return',
+  },
+  NO: {
+    home_premium: 'wegrow_home_premium',
+  },
+  ROW: {
+    home_premium: 'wegrow_home_premium',
+    direct_return: 'wegrow_direct_return',
+  },
+};
+
+const resolveWeGrowStandardServiceCode = (destinationCountry, options = {}) => {
+  const normalizedCountry = String(destinationCountry || '').trim().toUpperCase();
+  if (!normalizedCountry) return '';
+
+  const countryMatrix = WEGROW_STANDARD_SERVICE_CODE_BY_COUNTRY[normalizedCountry] || WEGROW_STANDARD_SERVICE_CODE_BY_COUNTRY.ROW || {};
+  const selectedCarrier = String(options.selectedCarrier || '').trim().toLowerCase();
+  const isReturnShipment = Boolean(options.isReturnShipment);
+
+  const preference = [];
+  if (isReturnShipment) {
+    preference.push('direct_return', 'domestic_return');
+  } else if (
+    selectedCarrier.includes('brievenbus') ||
+    selectedCarrier.includes('envelop') ||
+    selectedCarrier.includes('mailbox') ||
+    selectedCarrier.includes('letterbox')
+  ) {
+    preference.push('letterbox_premium', 'letterbox_economy', 'home_premium', 'home_economy', 'pudo_premium');
+  } else if (selectedCarrier.includes('pudo') || normalizedCountry === 'DK' || normalizedCountry === 'FI') {
+    preference.push('pudo_premium', 'home_premium', 'home_economy');
+  } else {
+    preference.push('home_premium', 'home_economy', 'letterbox_premium', 'letterbox_economy', 'pudo_premium');
+  }
+
+  for (const candidateKey of preference) {
+    if (countryMatrix[candidateKey]) return countryMatrix[candidateKey];
+  }
+
+  return Object.values(countryMatrix).find(Boolean) || '';
+};
+
 const stringifyApiErrorDetail = (value) => {
   if (value === undefined || value === null) return '';
   if (typeof value === 'string') return value.trim();
@@ -1109,6 +1228,26 @@ export const generateCarrierLabels = async (req, res) => {
         : genericServiceCode;
       const serviceCode = isReturnShipment && returnServiceCode ? returnServiceCode : resolvedServiceCode;
 
+      const getPackageServiceCode = (pkg = {}) => {
+        const destinationCountry = String(pkg.country || pkg.shippingCountry || pkg.shipmentDetails?.countryCode || 'NL').trim().toUpperCase() || 'NL';
+        const standardServiceCode = resolveWeGrowStandardServiceCode(destinationCountry, {
+          selectedCarrier: selectedWeGrowCarrier,
+          isReturnShipment: pkg.isReturn === true,
+        });
+
+        if (pkg.isReturn === true && returnServiceCode) {
+          return returnServiceCode;
+        }
+
+        if (selectedWeGrowCarrier) {
+          return selectedCarrierServiceCode || standardServiceCode || (!hasAnyCarrierSpecificCode ? genericServiceCode : '');
+        }
+
+        return standardServiceCode || genericServiceCode;
+      };
+
+      const hasAnyPackageServiceCode = Array.isArray(packages) && packages.some((pkg) => Boolean(getPackageServiceCode(pkg)));
+
       if (!apiKey) {
         return res.status(400).json({
           error: 'WeGrow x-key ontbreekt',
@@ -1123,12 +1262,12 @@ export const generateCarrierLabels = async (req, res) => {
         });
       }
 
-      if (!serviceCode) {
+      if (!serviceCode && !hasAnyPackageServiceCode) {
         return res.status(400).json({
           error: 'WeGrow service code ontbreekt',
           details: selectedWeGrowCarrier
             ? `Geen service code gevonden voor WeGrow optie ${selectedServiceOption?.label || selectedWeGrowCarrier.toUpperCase()}.`
-            : 'Stel een algemene WeGrow service code in, of kies een WeGrow vervoerder met service code mapping.',
+            : 'Stel een algemene WeGrow service code in, of gebruik de standaard service code mapping voor het land van bestemming.',
         });
       }
 
@@ -1198,6 +1337,16 @@ export const generateCarrierLabels = async (req, res) => {
         }
 
         const weightValue = Number(pkg.weightKg ?? pkg.weight ?? 1);
+        const packageServiceCode = getPackageServiceCode(pkg);
+
+        if (!packageServiceCode) {
+          return res.status(400).json({
+            error: 'WeGrow service code ontbreekt',
+            details: `Geen WeGrow service code gevonden voor order ${String(pkg.orderNumber || pkg.id || index)} en land ${destinationCountry}.`,
+            packageId: pkg.id || index,
+            country: destinationCountry,
+          });
+        }
 
         // For return shipments: customer is origin (sender), warehouse is destination (receiver)
         // senderStreet/senderZipCode/senderCity/senderCountry are set explicitly on returnPackage from frontend
@@ -1240,7 +1389,7 @@ export const generateCarrierLabels = async (req, res) => {
 
         const payload = {
           label_format: credentials.labelFormat || 'pdf',
-          service: { code: serviceCode },
+          service: { code: packageServiceCode },
           shipment: {
             references: {
               order_reference: String(pkg.orderNumber || pkg.id || `ORD-${Date.now()}-${index}`),
@@ -1307,7 +1456,7 @@ export const generateCarrierLabels = async (req, res) => {
             details: `${normalizedErrorDetail || (likelyAuthIssue ? 'Unauthorized - controleer WeGrow API key (x-key), live endpoint, API version (v1) en service code permissies' : 'Unknown WeGrow error')}${diagnosticSummary}`,
             statusCode: responseStatus || null,
             baseUrl,
-            serviceCode,
+            serviceCode: packageServiceCode,
             selectedWeGrowCarrier: selectedWeGrowCarrier || null,
             usedHeaders: ['x-key', 'x-version'],
             diagnostic: diagnosticDetails,
@@ -1328,7 +1477,7 @@ export const generateCarrierLabels = async (req, res) => {
         labels.push({
           packageId: pkg.id || index,
           carrierType: carrier.carrierType,
-          shippingMethod: selectedShippingMethod || selectedWeGrowCarrier || serviceCode,
+          shippingMethod: selectedShippingMethod || selectedWeGrowCarrier || packageServiceCode,
           trackingCode: firstLabel.carrier_tracking_id || `${carrier.carrierType.toUpperCase()}-${Date.now()}-${index}`,
           labelUrl: `data:${mimeType};base64,${firstLabel.base64_label}`,
           trackingUrl: firstLabel.carrier_tracking_url || null,
