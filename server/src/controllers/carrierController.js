@@ -1261,7 +1261,7 @@ export const generateCarrierLabels = async (req, res) => {
         }
 
         if (selectedWeGrowCarrier) {
-          return selectedCarrierServiceCode || standardServiceCode || (!hasAnyCarrierSpecificCode ? genericServiceCode : '');
+          return standardServiceCode || selectedCarrierServiceCode || (!hasAnyCarrierSpecificCode ? genericServiceCode : '');
         }
 
         return standardServiceCode || genericServiceCode;
