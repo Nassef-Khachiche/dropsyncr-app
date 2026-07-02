@@ -11,6 +11,32 @@ import { getJwtSecret } from '../utils/security.js';
 const SHOPIFY_API_VERSION = '2024-04';
 const SHOPIFY_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 
+function createHttpError(statusCode, message) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+}
+
+function parseIntegrationCredentials(rawCredentials, contextLabel = 'Shopify integration') {
+  if (rawCredentials === null || rawCredentials === undefined || rawCredentials === '') {
+    return {};
+  }
+
+  if (typeof rawCredentials === 'object') {
+    return rawCredentials;
+  }
+
+  try {
+    const parsed = JSON.parse(rawCredentials);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    throw createHttpError(
+      400,
+      `${contextLabel} credentials contain invalid JSON. Please save the integration credentials again.`
+    );
+  }
+}
+
 function normalizeShopDomain(value) {
   return String(value || '')
     .trim()
@@ -207,9 +233,7 @@ async function getShopifyIntegration(installationId, integrationId = null) {
     throw new Error('Shopify integration not found or not active');
   }
 
-  const credentials = typeof integration.credentials === 'string'
-    ? JSON.parse(integration.credentials)
-    : integration.credentials;
+  const credentials = parseIntegrationCredentials(integration.credentials, 'Shopify integration');
 
   return { integration, credentials };
 }
@@ -475,7 +499,8 @@ export async function syncShopifyOrders(req, res) {
     return res.json(result);
   } catch (error) {
     console.error('[SHOPIFY] syncShopifyOrders error:', error.message);
-    return res.status(500).json({ error: error.message });
+    const statusCode = Number.isInteger(error?.statusCode) ? error.statusCode : 500;
+    return res.status(statusCode).json({ error: error.message });
   }
 }
 
@@ -523,9 +548,7 @@ export async function startShopifyOAuth(req, res) {
       }
     }
 
-    const credentials = typeof integration.credentials === 'string'
-      ? JSON.parse(integration.credentials)
-      : (integration.credentials || {});
+    const credentials = parseIntegrationCredentials(integration.credentials, 'Shopify integration');
 
     const shopDomain = normalizeShopDomain(credentials.shopDomain);
     const clientId = String(credentials.clientId || '').trim();
@@ -556,7 +579,8 @@ export async function startShopifyOAuth(req, res) {
     return res.json({ success: true, authUrl });
   } catch (error) {
     console.error('[SHOPIFY] startShopifyOAuth error:', error.message);
-    return res.status(500).json({ error: error.message });
+    const statusCode = Number.isInteger(error?.statusCode) ? error.statusCode : 500;
+    return res.status(statusCode).json({ error: error.message });
   }
 }
 
@@ -591,9 +615,7 @@ export async function handleShopifyOAuthCallback(req, res) {
       return res.status(404).send('Shopify integration not found.');
     }
 
-    const credentials = typeof integration.credentials === 'string'
-      ? JSON.parse(integration.credentials)
-      : (integration.credentials || {});
+    const credentials = parseIntegrationCredentials(integration.credentials, 'Shopify integration');
 
     const shopDomain = normalizeShopDomain(credentials.shopDomain);
     const callbackShopDomain = normalizeShopDomain(shop);
@@ -694,7 +716,8 @@ export async function fulfillShopifyOrder(req, res) {
     return res.json({ success: true, fulfillment: result?.fulfillment });
   } catch (error) {
     console.error('[SHOPIFY] fulfillShopifyOrder error:', error.message);
-    return res.status(500).json({ error: error.message });
+    const statusCode = Number.isInteger(error?.statusCode) ? error.statusCode : 500;
+    return res.status(statusCode).json({ error: error.message });
   }
 }
 
@@ -801,6 +824,7 @@ export async function getShopifyShopInfo(req, res) {
     });
   } catch (error) {
     console.error('[SHOPIFY] getShopifyShopInfo error:', error.message);
-    return res.status(500).json({ error: error.message });
+    const statusCode = Number.isInteger(error?.statusCode) ? error.statusCode : 500;
+    return res.status(statusCode).json({ error: error.message });
   }
 }
