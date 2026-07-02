@@ -100,6 +100,8 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
   const [shopName, setShopName] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [apiSecret, setApiSecret] = useState('');
+  const [shopifyClientId, setShopifyClientId] = useState('');
+  const [shopifyClientSecret, setShopifyClientSecret] = useState('');
   const [processOrders, setProcessOrders] = useState(true);
   const [isActive, setIsActive] = useState(true);
   const [selectedStoreFilter, setSelectedStoreFilter] = useState<string>('all');
@@ -171,6 +173,8 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
     setShopName('');
     setApiKey('');
     setApiSecret('');
+    setShopifyClientId('');
+    setShopifyClientSecret('');
     setProcessOrders(true);
     setIsActive(true);
   };
@@ -192,9 +196,13 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
       if (store.platformId === 'shopify') {
         setApiKey((credentialsResponse.credentials as any)?.shopDomain || '');
         setApiSecret((credentialsResponse.credentials as any)?.accessToken || '');
+        setShopifyClientId((credentialsResponse.credentials as any)?.clientId || '');
+        setShopifyClientSecret((credentialsResponse.credentials as any)?.clientSecret || '');
       } else {
         setApiKey(credentialsResponse.credentials?.clientId || '');
         setApiSecret(credentialsResponse.credentials?.clientSecret || '');
+        setShopifyClientId('');
+        setShopifyClientSecret('');
       }
     } catch (error: any) {
       console.error('Failed to load integration credentials:', error);
@@ -205,6 +213,8 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
       setShopName(store.name || '');
       setApiKey('');
       setApiSecret('');
+      setShopifyClientId('');
+      setShopifyClientSecret('');
     }
 
     setProcessOrders(store.processOrders ?? false);
@@ -219,7 +229,14 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
       return;
     }
 
-    if (!editingStore && (!apiKey || !apiSecret)) {
+    const isShopify = selectedPlatform?.id === 'shopify';
+
+    if (!editingStore && isShopify && (!apiKey || !apiSecret || !shopifyClientId || !shopifyClientSecret)) {
+      toast.error('Vul alle verplichte Shopify velden in');
+      return;
+    }
+
+    if (!editingStore && !isShopify && (!apiKey || !apiSecret)) {
       toast.error('Vul alle verplichte velden in');
       return;
     }
@@ -235,7 +252,6 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
     }
 
     try {
-      const isShopify = selectedPlatform?.id === 'shopify';
       const integrationData = {
         installationId: parseInt(activeProfile),
         platform: selectedPlatform?.id === 'bol' ? 'bol.com' : selectedPlatform?.id || '',
@@ -243,6 +259,8 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
           ? {
               ...(apiKey ? { shopDomain: apiKey } : {}),
               ...(apiSecret ? { accessToken: apiSecret } : {}),
+              ...(shopifyClientId ? { clientId: shopifyClientId } : {}),
+              ...(shopifyClientSecret ? { clientSecret: shopifyClientSecret } : {}),
               shopName: normalizedShopName,
             }
           : {
@@ -701,6 +719,41 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
                 className="border-slate-200"
               />
             </div>
+
+            {selectedPlatform?.id === 'shopify' && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="shopify-client-id">Client ID</Label>
+                  <Input
+                    id="shopify-client-id"
+                    placeholder={
+                      editingStore
+                        ? 'Laat leeg om huidige Client ID te behouden'
+                        : 'Voer je Shopify Client ID in'
+                    }
+                    value={shopifyClientId}
+                    onChange={(e) => setShopifyClientId(e.target.value)}
+                    className="border-slate-200"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="shopify-client-secret">Client Secret</Label>
+                  <Input
+                    id="shopify-client-secret"
+                    type="password"
+                    placeholder={
+                      editingStore
+                        ? 'Laat leeg om huidige Client Secret te behouden'
+                        : 'Voer je Shopify Client Secret in'
+                    }
+                    value={shopifyClientSecret}
+                    onChange={(e) => setShopifyClientSecret(e.target.value)}
+                    className="border-slate-200"
+                  />
+                </div>
+              </>
+            )}
 
             <div className="flex items-center space-x-2 py-2">
               <Checkbox 

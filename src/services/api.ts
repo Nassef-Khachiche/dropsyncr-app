@@ -575,6 +575,8 @@ class ApiService {
       platform: string;
       credentials: {
         shopName: string | null;
+        shopDomain?: string;
+        accessToken?: string;
         clientId: string;
         clientSecret: string;
       };

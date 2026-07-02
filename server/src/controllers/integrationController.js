@@ -10,6 +10,31 @@ const parseJsonSafely = (value, fallback = {}) => {
   }
 };
 
+const normalizeCredentials = (platform, rawCredentials = {}) => {
+  const credentials = { ...(rawCredentials || {}) };
+
+  const trimField = (key) => {
+    if (credentials[key] === undefined || credentials[key] === null) return;
+    if (typeof credentials[key] === 'string') {
+      credentials[key] = credentials[key].trim();
+    }
+  };
+
+  trimField('shopName');
+
+  if (platform === 'shopify') {
+    trimField('shopDomain');
+    trimField('accessToken');
+    trimField('clientId');
+    trimField('clientSecret');
+  } else {
+    trimField('clientId');
+    trimField('clientSecret');
+  }
+
+  return credentials;
+};
+
 /**
  * Get all integrations for an installation
  */
@@ -79,13 +104,19 @@ export const getIntegrations = async (req, res) => {
     const sanitizedIntegrations = integrations.map(integration => {
       const credentials = parseJsonSafely(integration.credentials);
       const settings = parseJsonSafely(integration.settings);
+      const isShopify = integration.platform === 'shopify';
 
       return {
         ...integration,
         credentials: {
           shopName: credentials.shopName || null,
-          clientId: credentials.clientId ? `${credentials.clientId.substring(0, 8)}...` : null,
-          hasSecret: !!credentials.clientSecret,
+          shopDomain: isShopify ? (credentials.shopDomain ? `${credentials.shopDomain.substring(0, 24)}...` : null) : null,
+          clientId: isShopify
+            ? (credentials.shopDomain ? `${credentials.shopDomain.substring(0, 16)}...` : null)
+            : (credentials.clientId ? `${credentials.clientId.substring(0, 8)}...` : null),
+          hasSecret: isShopify
+            ? !!credentials.accessToken
+            : !!credentials.clientSecret,
         },
         settings,
         installation: integration.installation,
@@ -139,12 +170,15 @@ export const getIntegrationCredentials = async (req, res) => {
     }
 
     const credentials = parseJsonSafely(integration.credentials);
+    const isShopify = integration.platform === 'shopify';
 
     return res.json({
       integrationId: integration.id,
       platform: integration.platform,
       credentials: {
         shopName: credentials.shopName || null,
+        shopDomain: isShopify ? (credentials.shopDomain || '') : '',
+        accessToken: isShopify ? (credentials.accessToken || '') : '',
         clientId: credentials.clientId || '',
         clientSecret: credentials.clientSecret || '',
       },
@@ -160,12 +194,13 @@ export const getIntegrationCredentials = async (req, res) => {
  */
 export const createIntegration = async (req, res) => {
   try {
-    const { installationId, platform, credentials, settings, active = true } = req.body;
+    const { installationId, platform, credentials: rawCredentials, settings, active = true } = req.body;
+    const credentials = normalizeCredentials(platform, rawCredentials);
 
     console.log('[Integration] Create request:', { installationId, platform, hasCredentials: !!credentials, active });
 
-    if (!installationId || !platform || !credentials) {
-      console.error('[Integration] Missing required fields:', { installationId, platform, credentials });
+    if (!installationId || !platform || !rawCredentials) {
+      console.error('[Integration] Missing required fields:', { installationId, platform, credentials: rawCredentials });
       return res.status(400).json({ error: 'Installation ID, platform, and credentials are required' });
     }
 
@@ -190,6 +225,13 @@ export const createIntegration = async (req, res) => {
         console.error('[Integration] Missing Bol.com credentials');
         return res.status(400).json({ error: 'Client ID and Client Secret are required for Bol.com' });
       }
+    } else if (platform === 'shopify') {
+      if (!credentials.shopDomain || !credentials.accessToken || !credentials.clientId || !credentials.clientSecret) {
+        console.error('[Integration] Missing Shopify credentials');
+        return res.status(400).json({
+          error: 'Shop Domain, Access Token, Client ID, and Client Secret are required for Shopify',
+        });
+      }
     }
 
     // Allow multiple integrations per platform - removed the duplicate check
@@ -210,8 +252,14 @@ export const createIntegration = async (req, res) => {
     const sanitizedIntegration = {
       ...integration,
       credentials: {
-        clientId: credentials.clientId ? `${credentials.clientId.substring(0, 8)}...` : null,
-        hasSecret: !!credentials.clientSecret,
+        shopName: credentials.shopName || null,
+        shopDomain: platform === 'shopify'
+          ? (credentials.shopDomain ? `${credentials.shopDomain.substring(0, 24)}...` : null)
+          : null,
+        clientId: platform === 'shopify'
+          ? (credentials.shopDomain ? `${credentials.shopDomain.substring(0, 16)}...` : null)
+          : (credentials.clientId ? `${credentials.clientId.substring(0, 8)}...` : null),
+        hasSecret: platform === 'shopify' ? !!credentials.accessToken : !!credentials.clientSecret,
       },
     };
 
@@ -228,7 +276,7 @@ export const createIntegration = async (req, res) => {
 export const updateIntegration = async (req, res) => {
   try {
     const { id } = req.params;
-    const { credentials, settings, active } = req.body;
+    const { credentials: incomingCredentials, settings, active } = req.body;
 
     const integration = await prisma.integration.findUnique({
       where: { id: parseInt(id) },
@@ -254,11 +302,14 @@ export const updateIntegration = async (req, res) => {
 
     const existingCredentials = parseJsonSafely(integration.credentials);
     const existingSettings = parseJsonSafely(integration.settings);
+    const normalizedIncomingCredentials = incomingCredentials
+      ? normalizeCredentials(integration.platform, incomingCredentials)
+      : null;
 
-    const mergedCredentials = credentials
+    const mergedCredentials = normalizedIncomingCredentials
       ? {
           ...existingCredentials,
-          ...credentials,
+          ...normalizedIncomingCredentials,
         }
       : existingCredentials;
 
@@ -270,9 +321,9 @@ export const updateIntegration = async (req, res) => {
       : existingSettings;
 
     if (integration.platform === 'bol.com') {
-      const hasCredentialChanges = !!credentials && (
-        Object.prototype.hasOwnProperty.call(credentials, 'clientId') ||
-        Object.prototype.hasOwnProperty.call(credentials, 'clientSecret')
+      const hasCredentialChanges = !!normalizedIncomingCredentials && (
+        Object.prototype.hasOwnProperty.call(normalizedIncomingCredentials, 'clientId') ||
+        Object.prototype.hasOwnProperty.call(normalizedIncomingCredentials, 'clientSecret')
       );
 
       if (hasCredentialChanges) {
@@ -280,10 +331,25 @@ export const updateIntegration = async (req, res) => {
           return res.status(400).json({ error: 'Client ID and Client Secret are required for Bol.com' });
         }
       }
+    } else if (integration.platform === 'shopify') {
+      const hasCredentialChanges = !!normalizedIncomingCredentials && (
+        Object.prototype.hasOwnProperty.call(normalizedIncomingCredentials, 'shopDomain') ||
+        Object.prototype.hasOwnProperty.call(normalizedIncomingCredentials, 'accessToken') ||
+        Object.prototype.hasOwnProperty.call(normalizedIncomingCredentials, 'clientId') ||
+        Object.prototype.hasOwnProperty.call(normalizedIncomingCredentials, 'clientSecret')
+      );
+
+      if (hasCredentialChanges) {
+        if (!mergedCredentials.shopDomain || !mergedCredentials.accessToken || !mergedCredentials.clientId || !mergedCredentials.clientSecret) {
+          return res.status(400).json({
+            error: 'Shop Domain, Access Token, Client ID, and Client Secret are required for Shopify',
+          });
+        }
+      }
     }
 
     const updateData = {};
-    if (credentials) updateData.credentials = JSON.stringify(mergedCredentials);
+    if (normalizedIncomingCredentials) updateData.credentials = JSON.stringify(mergedCredentials);
     if (settings) updateData.settings = JSON.stringify(mergedSettings);
     if (active !== undefined) updateData.active = active;
 
@@ -297,8 +363,15 @@ export const updateIntegration = async (req, res) => {
       ...updatedIntegration,
       credentials: {
         shopName: mergedCredentials.shopName || null,
-        clientId: mergedCredentials.clientId ? `${mergedCredentials.clientId.substring(0, 8)}...` : null,
-        hasSecret: !!mergedCredentials.clientSecret,
+        shopDomain: integration.platform === 'shopify'
+          ? (mergedCredentials.shopDomain ? `${mergedCredentials.shopDomain.substring(0, 24)}...` : null)
+          : null,
+        clientId: integration.platform === 'shopify'
+          ? (mergedCredentials.shopDomain ? `${mergedCredentials.shopDomain.substring(0, 16)}...` : null)
+          : (mergedCredentials.clientId ? `${mergedCredentials.clientId.substring(0, 8)}...` : null),
+        hasSecret: integration.platform === 'shopify'
+          ? !!mergedCredentials.accessToken
+          : !!mergedCredentials.clientSecret,
       },
       settings: mergedSettings,
     };
