@@ -1287,6 +1287,10 @@ export const generateCarrierLabels = async (req, res) => {
           return 'wegrow_home_economy';
         }
 
+        if (selectedWeGrowCarrier === 'dpd-standaard' && destinationCountry === 'NL' && pkg.isReturn !== true) {
+          return 'wegrow_home_economy';
+        }
+
         const standardServiceCode = resolveWeGrowStandardServiceCode(destinationCountry, {
           selectedCarrier: selectedWeGrowCarrier,
           isReturnShipment: pkg.isReturn === true,
