@@ -239,7 +239,7 @@ model Integration {
   installationId Int
   platform       String
   active         Boolean      @default(true)
-  credentials    String
+  credentials    String @db.Text
   settings       String?
   lastSync       DateTime?
   createdAt      DateTime     @default(now())

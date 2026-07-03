@@ -39,6 +39,7 @@ import { api } from '../services/api';
 import bolLogo from '../assets/bol-logo.png';
 import kauflandLogo from '../assets/kaufland-logo.png';
 import shopifyLogo from '../assets/shopify-logo.png';
+import bricobravoLogo from '../assets/bricobravo-logo.png';
 
 interface IntegrationsProps {
   activeProfile: string;
@@ -84,6 +85,14 @@ const availablePlatforms = [
     logo: shopifyLogo,
     color: 'from-green-500 to-emerald-600',
     bgColor: 'from-green-50 to-emerald-100/50',
+  },
+  {
+    id: 'bricobravo',
+    name: 'BricoBravo',
+    description: 'Koppel je BricoBravo winkel voor geautomatiseerde orderverwerking',
+    logo: bricobravoLogo,
+    color: 'from-purple-500 to-purple-600',
+    bgColor: 'from-purple-50 to-rose-100/50',
   },
 ];
 
@@ -236,8 +245,15 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
       return;
     }
 
-    if (!editingStore && !isShopify && (!apiKey || !apiSecret)) {
+    const isBricoBravo = selectedPlatform?.id === 'bricobravo';
+
+    if (!editingStore && !isShopify && !isBricoBravo && (!apiKey || !apiSecret)) {
       toast.error('Vul alle verplichte velden in');
+      return;
+    }
+
+    if (!editingStore && isBricoBravo && !apiKey) {
+      toast.error('API Key is verplicht');
       return;
     }
 
@@ -367,7 +383,7 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
     if (!activeProfile) return;
 
     const store = connectedStores.find(s => s.id === storeId);
-    if (!store || (store.platform !== 'bol.com' && store.platform !== 'kaufland' && store.platform !== 'shopify')) {
+    if (!store || (store.platform !== 'bol.com' && store.platform !== 'kaufland' && store.platform !== 'shopify' && store.platform !== 'bricobravo')) {
       toast.error('Sync wordt niet ondersteund voor dit platform');
       return;
     }
@@ -385,9 +401,11 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
       setSyncing(true);
       const result = store.platform === 'kaufland'
         ? await api.syncKauflandOrders(syncInstallationId, storeId)
-        : store.platform === 'shopify'
-          ? await api.syncShopifyOrders(syncInstallationId, storeId)
-          : await api.syncBolOrders(syncInstallationId, storeId);
+        : store.platform === 'bricobravo'
+          ? await api.syncBricoBravoOrders(syncInstallationId, storeId)
+          : store.platform === 'shopify'
+            ? await api.syncShopifyOrders(syncInstallationId, storeId)
+            : await api.syncBolOrders(syncInstallationId, storeId);
       
       toast.success('Orders gesynchroniseerd!', {
         description: `${result.imported} nieuwe orders, ${result.updated} bijgewerkt`
@@ -521,7 +539,7 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
                         >
                           <Settings className="w-3.5 h-3.5" />
                         </Button>
-                        {(store.platform === 'bol.com' || store.platform === 'kaufland' || store.platform === 'shopify') && (
+                        {(store.platform === 'bol.com' || store.platform === 'kaufland' || store.platform === 'shopify' || store.platform === 'bricobravo') && (
                           <Button 
                             variant="outline" 
                             size="sm" 
@@ -708,7 +726,7 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
               />
             </div>
 
-            {selectedPlatform?.id !== 'shopify' && (
+            {selectedPlatform?.id !== 'shopify' && selectedPlatform?.id !== 'bricobravo' && (
               <div className="space-y-2">
                 <Label htmlFor="apisecret">
                   {selectedPlatform?.id === 'bol' ? 'Client Secret' : 'API Secret'}
