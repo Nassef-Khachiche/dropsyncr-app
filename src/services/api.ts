@@ -594,6 +594,17 @@ class ApiService {
     );
   }
 
+  // BricoBravo Integration
+  async syncBricoBravoOrders(installationId: string, integrationId?: number) {
+    const queryParams = new URLSearchParams();
+    queryParams.append('installationId', installationId);
+    if (integrationId) queryParams.append('integrationId', String(integrationId));
+
+    return this.request<{ success: boolean; imported: number; updated: number; total: number }>(
+      `/bricobravo/sync-orders?${queryParams.toString()}`
+    );
+  }
+
   // Shopify Integration
   async syncShopifyOrders(installationId: string, integrationId?: number) {
     const queryParams = new URLSearchParams();
