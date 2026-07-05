@@ -144,7 +144,7 @@ const WEGROW_SERVICE_OPTIONS = {
   'dhl-for-you': { label: 'DHL For You', defaultServiceCode: null, fallbackServiceKeys: ['dhl'] },
   'postnl-nederland-brievenbuspakketje-0-2kg': { label: 'PostNL Brievenbuspakketje 0-2kg', defaultServiceCode: null, fallbackServiceKeys: ['postnl'] },
   'postnl-belgie-standaard-0-23kg': { label: 'PostNL België Standaard 0-23kg', defaultServiceCode: null, fallbackServiceKeys: ['postnl'] },
-  'dpd-standaard': { label: 'DPD Standaard', defaultServiceCode: 'wegrow_postal_tracked_parcel', fallbackServiceKeys: ['dpd'] },
+  'dpd-standaard': { label: 'DPD Standaard', defaultServiceCode: 'wegrow_home_economy', fallbackServiceKeys: ['dpd'] },
 };
 
 const normalizeWeGrowServiceCodeMap = (rawServiceCodeMap) => {
