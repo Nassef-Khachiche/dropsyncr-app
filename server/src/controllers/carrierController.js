@@ -1341,6 +1341,10 @@ export const generateCarrierLabels = async (req, res) => {
           return returnServiceCode;
         }
 
+        if (selectedWeGrowCarrier === 'dpd-standaard') {
+          return selectedCarrierServiceCode || (!hasAnyCarrierSpecificCode ? genericServiceCode : '');
+        }
+
         if (selectedWeGrowCarrier) {
           return standardServiceCode || selectedCarrierServiceCode || (!hasAnyCarrierSpecificCode ? genericServiceCode : '');
         }
