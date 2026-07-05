@@ -1,6 +1,7 @@
 import prisma from '../config/database.js';
 import fetch from 'node-fetch';
 import { sendKauflandTracking } from './kauflandController.js';
+import { sendBricoBravoTracking } from './bricobravocontroller.js';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -842,6 +843,16 @@ export const generateCarrierLabels = async (req, res) => {
               carrier.carrierType,
               selectedShippingMethod,
             ).catch(err => console.error('[KAUFLAND TRACKING] Async error:', err.message));
+          }
+          if (orderRecord?.platform === 'bricobravo' && generatedLabel?.trackingCode) {
+            await sendBricoBravoTracking(
+              String(orderRecord.installationId),
+              orderRecord.orderNumber,
+              generatedLabel.trackingCode,
+              carrier.carrierType,
+              selectedShippingMethod,
+              generatedLabel.trackingUrl || null,
+            ).catch(err => console.error('[BRICOBRAVO TRACKING] Async error:', err.message));
           }
         }
       }
