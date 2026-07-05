@@ -144,7 +144,7 @@ const WEGROW_SERVICE_OPTIONS = {
   'dhl-for-you': { label: 'DHL For You', defaultServiceCode: null, fallbackServiceKeys: ['dhl'] },
   'postnl-nederland-brievenbuspakketje-0-2kg': { label: 'PostNL Brievenbuspakketje 0-2kg', defaultServiceCode: null, fallbackServiceKeys: ['postnl'] },
   'postnl-belgie-standaard-0-23kg': { label: 'PostNL België Standaard 0-23kg', defaultServiceCode: null, fallbackServiceKeys: ['postnl'] },
-  'dpd-standaard': { label: 'DPD Standaard', defaultServiceCode: 'wegrow_home_economy', fallbackServiceKeys: ['dpd'] },
+  'dpd-standaard': { label: 'DPD Standaard', defaultServiceCode: 'wegrow_home_premium', fallbackServiceKeys: ['dpd'] },
 };
 
 const normalizeWeGrowServiceCodeMap = (rawServiceCodeMap) => {
@@ -285,12 +285,12 @@ const WEGROW_SELECTED_CARRIER_COUNTRY_SERVICE_CODE_OVERRIDES = {
     BE: 'wegrow_home_economy',
   },
   'dpd-standaard': {
-    NL: 'wegrow_home_economy',
-    AT: 'wegrow_home_economy',
-    IT: 'wegrow_home_economy',
-    ES: 'wegrow_home_economy',
-    PT: 'wegrow_home_economy',
-    SI: 'wegrow_home_economy',
+    NL: 'wegrow_home_premium',
+    AT: 'wegrow_home_premium',
+    IT: 'wegrow_home_premium',
+    ES: 'wegrow_home_premium',
+    PT: 'wegrow_home_premium',
+    SI: 'wegrow_home_premium',
   },
 };
 
