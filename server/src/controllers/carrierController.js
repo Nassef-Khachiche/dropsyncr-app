@@ -279,6 +279,21 @@ const WEGROW_STANDARD_SERVICE_CODE_PREFERENCE_BY_COUNTRY = {
   ROW: ['home_premium'],
 };
 
+const WEGROW_SELECTED_CARRIER_COUNTRY_SERVICE_CODE_OVERRIDES = {
+  'postnl-belgie-standaard-0-23kg': {
+    BE: 'wegrow_home_economy',
+  },
+  'dpd-standaard': {
+    NL: 'wegrow_home_economy',
+    AT: 'wegrow_home_economy',
+    IT: 'wegrow_home_economy',
+    ES: 'wegrow_home_economy',
+    PT: 'wegrow_home_economy',
+    SK: 'wegrow_home_economy',
+    SI: 'wegrow_home_economy',
+  },
+};
+
 const WEGROW_COUNTRY_NAME_TO_ISO2 = {
   GERMANY: 'DE',
   DEUTSCHLAND: 'DE',
@@ -308,6 +323,19 @@ const normalizeCountryToIso2 = (country) => {
   if (!normalized) return '';
   if (normalized.length === 2 && /^[A-Z]{2}$/.test(normalized)) return normalized;
   return WEGROW_COUNTRY_NAME_TO_ISO2[normalized] || normalized;
+};
+
+const resolveWeGrowSelectedCarrierCountryOverride = (selectedCarrier, destinationCountry, options = {}) => {
+  if (options.isReturnShipment) return '';
+
+  const normalizedCarrier = String(selectedCarrier || '').trim().toLowerCase();
+  const normalizedCountry = normalizeCountryToIso2(destinationCountry);
+  if (!normalizedCarrier || !normalizedCountry) return '';
+
+  const carrierOverrides = WEGROW_SELECTED_CARRIER_COUNTRY_SERVICE_CODE_OVERRIDES[normalizedCarrier];
+  if (!carrierOverrides) return '';
+
+  return carrierOverrides[normalizedCountry] || '';
 };
 
 const resolveWeGrowStandardServiceCode = (destinationCountry, options = {}) => {
@@ -1283,12 +1311,14 @@ export const generateCarrierLabels = async (req, res) => {
       const getPackageServiceCode = (pkg = {}) => {
         const destinationCountry = normalizeCountryToIso2(pkg.country || pkg.shippingCountry || pkg.shipmentDetails?.countryCode || 'NL') || 'NL';
 
-        if (selectedWeGrowCarrier === 'postnl-belgie-standaard-0-23kg' && destinationCountry === 'BE' && pkg.isReturn !== true) {
-          return 'wegrow_home_economy';
-        }
+        const selectedCarrierCountryOverride = resolveWeGrowSelectedCarrierCountryOverride(
+          selectedWeGrowCarrier,
+          destinationCountry,
+          { isReturnShipment: pkg.isReturn === true }
+        );
 
-        if (selectedWeGrowCarrier === 'dpd-standaard' && pkg.isReturn !== true) {
-          return 'wegrow_home_economy';
+        if (selectedCarrierCountryOverride) {
+          return selectedCarrierCountryOverride;
         }
 
         const standardServiceCode = resolveWeGrowStandardServiceCode(destinationCountry, {
