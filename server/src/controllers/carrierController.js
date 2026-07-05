@@ -290,7 +290,6 @@ const WEGROW_SELECTED_CARRIER_COUNTRY_SERVICE_CODE_OVERRIDES = {
     IT: 'wegrow_home_economy',
     ES: 'wegrow_home_economy',
     PT: 'wegrow_home_economy',
-    SK: 'wegrow_home_economy',
     SI: 'wegrow_home_economy',
   },
 };
