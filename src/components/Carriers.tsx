@@ -138,7 +138,7 @@ const availableCarriers: CarrierOption[] = [
       { name: 'serviceCode', label: 'Service Code (generiek / fallback)', type: 'text', placeholder: 'Bijv. wegrow_home_premium' },
       { name: 'dhlServiceCode', label: 'DHL Service Code (voor DHL NL / DHL For You opties)', type: 'text', placeholder: 'Bijv. wegrow_dhl_home', required: false },
       { name: 'postnlServiceCode', label: 'PostNL Service Code (voor PostNL opties)', type: 'text', placeholder: 'Bijv. wegrow_postnl_standard', required: false },
-      { name: 'dpdServiceCode', label: 'DPD Service Code (voor DPD Standaard optie)', type: 'text', placeholder: 'Bijv. wegrow_home_premium', required: false },
+      { name: 'dpdServiceCode', label: 'DPD Service Code (voor DPD Standaard optie)', type: 'text', placeholder: 'Bijv. wegrow_home_premium_2', required: false },
       { name: 'returnServiceCode', label: 'Return Service Code', type: 'text', placeholder: 'Bijv. wegrow_direct_return', required: false },
       { name: 'baseUrl', label: 'Base URL', type: 'text', placeholder: 'Bijv. https://api-sandbox.wegrow.eu', required: false },
       { name: 'apiVersion', label: 'API Version', type: 'text', placeholder: 'Bijv. v1', required: false },
