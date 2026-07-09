@@ -322,11 +322,13 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
 
       if (isShopify && savedIntegrationId) {
         // Open a placeholder tab synchronously (inside user gesture) to avoid popup blockers.
-        const pendingOAuthWindow = window.open('', '_blank', 'noopener,noreferrer');
+        const pendingOAuthWindow = window.open('about:blank', '_blank');
         const oauthStart = await api.startShopifyOAuth(String(integrationData.installationId), savedIntegrationId);
 
         if (pendingOAuthWindow) {
-          pendingOAuthWindow.location.href = oauthStart.authUrl;
+          // Detach opener before navigating for basic tab-nabbing protection.
+          pendingOAuthWindow.opener = null;
+          pendingOAuthWindow.location.replace(oauthStart.authUrl);
           toast.info('Shopify autorisatie gestart', {
             description: 'Rond de autorisatie af in het nieuwe tabblad om orders te kunnen synchroniseren',
           });

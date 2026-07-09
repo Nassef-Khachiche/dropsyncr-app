@@ -72,7 +72,20 @@ function buildOAuthRedirectUri(req) {
 
   const backendBaseUrlFromEnv = String(process.env.BACKEND_URL || '').trim();
   if (backendBaseUrlFromEnv) {
-    return `${backendBaseUrlFromEnv.replace(/\/$/, '')}/api/shopify/oauth/callback`;
+    try {
+      const parsed = new URL(backendBaseUrlFromEnv);
+      const normalizedPath = parsed.pathname
+        .replace(/\/+$/, '')
+        .replace(/\/api$/i, '');
+      parsed.pathname = normalizedPath || '';
+      const normalizedOrigin = parsed.toString().replace(/\/$/, '');
+      return `${normalizedOrigin}/api/shopify/oauth/callback`;
+    } catch {
+      const normalizedBase = backendBaseUrlFromEnv
+        .replace(/\/$/, '')
+        .replace(/\/api$/i, '');
+      return `${normalizedBase}/api/shopify/oauth/callback`;
+    }
   }
 
   const forwardedProto = String(req.get('x-forwarded-proto') || '').split(',')[0].trim();
