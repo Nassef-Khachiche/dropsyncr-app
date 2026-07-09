@@ -616,7 +616,7 @@ export async function startShopifyOAuth(req, res) {
     });
 
     const redirectUri = buildOAuthRedirectUri(req);
-    const scopes = process.env.SHOPIFY_API_SCOPES || 'read_orders,read_all_orders,write_fulfillments,read_fulfillments';
+    const scopes = process.env.SHOPIFY_API_SCOPES || 'read_orders,write_fulfillments,read_fulfillments';
 
     const authUrl = `https://${shopDomain}/admin/oauth/authorize?${new URLSearchParams({
       client_id: clientId,
