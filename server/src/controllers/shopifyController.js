@@ -38,19 +38,49 @@ function parseIntegrationCredentials(rawCredentials, contextLabel = 'Shopify int
 }
 
 function normalizeShopDomain(value) {
-  return String(value || '')
-    .trim()
-    .replace(/^https?:\/\//i, '')
-    .replace(/\/$/, '')
-    .toLowerCase();
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+
+  // Accept either bare domain or full URL and always keep only the hostname.
+  const withProtocol = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  try {
+    const parsed = new URL(withProtocol);
+    return String(parsed.hostname || '')
+      .trim()
+      .replace(/\.$/, '')
+      .toLowerCase();
+  } catch {
+    return raw
+      .replace(/^https?:\/\//i, '')
+      .split('/')[0]
+      .trim()
+      .replace(/\.$/, '')
+      .toLowerCase();
+  }
+}
+
+function isValidShopifyDomain(shopDomain) {
+  const normalized = normalizeShopDomain(shopDomain);
+  return /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i.test(normalized);
 }
 
 function buildOAuthRedirectUri(req) {
-  if (process.env.SHOPIFY_OAUTH_REDIRECT_URI) {
-    return process.env.SHOPIFY_OAUTH_REDIRECT_URI;
+  const explicitRedirectUri = String(process.env.SHOPIFY_OAUTH_REDIRECT_URI || '').trim();
+  if (explicitRedirectUri) {
+    return explicitRedirectUri;
   }
 
-  const backendBaseUrl = process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`;
+  const backendBaseUrlFromEnv = String(process.env.BACKEND_URL || '').trim();
+  if (backendBaseUrlFromEnv) {
+    return `${backendBaseUrlFromEnv.replace(/\/$/, '')}/api/shopify/oauth/callback`;
+  }
+
+  const forwardedProto = String(req.get('x-forwarded-proto') || '').split(',')[0].trim();
+  const forwardedHost = String(req.get('x-forwarded-host') || '').split(',')[0].trim();
+  const protocol = forwardedProto || req.protocol;
+  const host = forwardedHost || req.get('host');
+  const backendBaseUrl = `${protocol}://${host}`;
+
   return `${String(backendBaseUrl).replace(/\/$/, '')}/api/shopify/oauth/callback`;
 }
 
@@ -560,6 +590,12 @@ export async function startShopifyOAuth(req, res) {
       });
     }
 
+    if (!isValidShopifyDomain(shopDomain)) {
+      return res.status(400).json({
+        error: 'Invalid Shopify shop domain. Use the format: your-shop.myshopify.com',
+      });
+    }
+
     const state = buildSignedOauthState({
       integrationId: integration.id,
       installationId: integration.installationId,
@@ -624,6 +660,10 @@ export async function handleShopifyOAuthCallback(req, res) {
 
     if (!shopDomain || !clientId || !clientSecret) {
       return res.status(400).send('Integration credentials are incomplete for OAuth callback.');
+    }
+
+    if (!isValidShopifyDomain(shopDomain) || !isValidShopifyDomain(callbackShopDomain)) {
+      return res.status(400).send('Invalid Shopify shop domain format for OAuth callback.');
     }
 
     if (shopDomain !== callbackShopDomain) {
