@@ -321,17 +321,21 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
       }
 
       if (isShopify && savedIntegrationId) {
+        // Open a placeholder tab synchronously (inside user gesture) to avoid popup blockers.
+        const pendingOAuthWindow = window.open('', '_blank', 'noopener,noreferrer');
         const oauthStart = await api.startShopifyOAuth(String(integrationData.installationId), savedIntegrationId);
-        const oauthWindow = window.open(oauthStart.authUrl, '_blank', 'noopener,noreferrer');
 
-        if (!oauthWindow) {
-          toast.error('Pop-up geblokkeerd. Sta pop-ups toe om Shopify te autoriseren.', {
-            description: 'Open de Shopify autorisatie opnieuw via Instellingen > Shopify > Wijzigingen Opslaan',
-          });
-        } else {
+        if (pendingOAuthWindow) {
+          pendingOAuthWindow.location.href = oauthStart.authUrl;
           toast.info('Shopify autorisatie gestart', {
             description: 'Rond de autorisatie af in het nieuwe tabblad om orders te kunnen synchroniseren',
           });
+        } else {
+          toast.error('Pop-up geblokkeerd. Shopify autorisatie wordt in dit tabblad geopend.', {
+            description: 'Sta pop-ups toe voor een betere ervaring.',
+          });
+          window.location.assign(oauthStart.authUrl);
+          return;
         }
       }
       
