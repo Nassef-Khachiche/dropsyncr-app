@@ -94,6 +94,8 @@ interface CarrierContract {
 interface BolDeliveryOption {
   shippingLabelOfferId?: string;
   transporterCode?: string;
+  labelDisplayName?: string;
+  labelType?: string;
   recommended?: boolean;
   handoverDetails?: {
     earliestHandoverDateTime?: string;
@@ -355,6 +357,16 @@ const formatBolDeliveryOptionDateTime = (value?: string) => {
     hour: '2-digit',
     minute: '2-digit',
   });
+};
+
+const getBolDeliveryOptionTitle = (option?: BolDeliveryOption | null) => {
+  const labelDisplayName = String(option?.labelDisplayName || '').trim();
+  if (labelDisplayName) return labelDisplayName;
+
+  const transporter = String(option?.transporterCode || '').trim();
+  const labelType = String(option?.labelType || '').trim();
+  if (transporter && labelType) return `${transporter} - ${labelType}`;
+  return transporter || labelType || 'Onbekend';
 };
 
 const downloadLabelFile = async (url: string, filename = 'label.pdf') => {
@@ -2856,11 +2868,15 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
                     <SelectTrigger className="h-12 border-sky-200 bg-white shadow-sm data-[placeholder]:text-slate-500">
                       <SelectValue placeholder="Kies een delivery option">
                         {selectedBolDeliveryOption ? (() => {
-                          const transporter = String(selectedBolDeliveryOption?.transporterCode || 'Onbekend');
+                          const title = getBolDeliveryOptionTitle(selectedBolDeliveryOption);
+                          const transporter = String(selectedBolDeliveryOption?.transporterCode || '').trim();
                           return (
                             <div className="flex min-w-0 items-center gap-2 text-left">
                               <Truck className="w-4 h-4 text-sky-700 shrink-0" />
-                              <span className="truncate text-sm font-medium text-slate-900">{transporter}</span>
+                              <span className="truncate text-sm font-medium text-slate-900">{title}</span>
+                              {transporter && (
+                                <span className="truncate text-xs text-slate-500">({transporter})</span>
+                              )}
                               {selectedBolDeliveryOption?.recommended && (
                                 <span className="inline-flex shrink-0 items-center ms-3 px-3 py-1 rounded-full text-sm font-medium leading-none text-white transition-all bg-gradient-to-r from-emerald-500 to-teal-500 shadow-md">
                                   Aanbevolen
@@ -2876,7 +2892,9 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
                         const optionId = String(option?.shippingLabelOfferId || '').trim() || `option-${index}`;
                         const earliest = formatBolDeliveryOptionDateTime(option?.handoverDetails?.earliestHandoverDateTime);
                         const latest = formatBolDeliveryOptionDateTime(option?.handoverDetails?.latestHandoverDateTime);
+                        const title = getBolDeliveryOptionTitle(option);
                         const transporter = String(option?.transporterCode || 'Onbekend');
+                        const labelType = String(option?.labelType || '').trim();
                         const collectionMethod = String(option?.handoverDetails?.collectionMethod || '-');
 
                         return (
@@ -2887,12 +2905,15 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
                               </div>
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-sm font-medium text-slate-900">{transporter}</span>
+                                  <span className="text-sm font-medium text-slate-900">{title}</span>
                                   {option?.recommended && (
                                     <Badge className="rounded-full border-0 bg-gradient-to-r from-indigo-500 to-purple-500 px-4 py-2 text-sm font-medium text-white shadow-md transition-all hover:shadow-lg">
                                       Aanbevolen
                                     </Badge>
                                   )}
+                                </div>
+                                <div className="mt-1 text-xs text-slate-500">
+                                  Vervoerder: {transporter}{labelType ? ` - ${labelType}` : ''}
                                 </div>
                                 <div className="mt-1 text-xs text-slate-600">
                                   {earliest} {'->'} {latest}
