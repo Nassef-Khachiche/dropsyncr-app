@@ -111,6 +111,7 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
   const [apiSecret, setApiSecret] = useState('');
   const [shopifyClientId, setShopifyClientId] = useState('');
   const [shopifyClientSecret, setShopifyClientSecret] = useState('');
+  const [shopifyAccessToken, setShopifyAccessToken] = useState('');
   const [processOrders, setProcessOrders] = useState(true);
   const [isActive, setIsActive] = useState(true);
   const [selectedStoreFilter, setSelectedStoreFilter] = useState<string>('all');
@@ -184,6 +185,7 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
     setApiSecret('');
     setShopifyClientId('');
     setShopifyClientSecret('');
+    setShopifyAccessToken('');
     setProcessOrders(true);
     setIsActive(true);
   };
@@ -207,11 +209,13 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
         setApiSecret('');
         setShopifyClientId((credentialsResponse.credentials as any)?.clientId || '');
         setShopifyClientSecret((credentialsResponse.credentials as any)?.clientSecret || '');
+        setShopifyAccessToken((credentialsResponse.credentials as any)?.accessToken || '');
       } else {
         setApiKey(credentialsResponse.credentials?.clientId || '');
         setApiSecret(credentialsResponse.credentials?.clientSecret || '');
         setShopifyClientId('');
         setShopifyClientSecret('');
+        setShopifyAccessToken('');
       }
     } catch (error: any) {
       console.error('Failed to load integration credentials:', error);
@@ -224,6 +228,7 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
       setApiSecret('');
       setShopifyClientId('');
       setShopifyClientSecret('');
+      setShopifyAccessToken('');
     }
 
     setProcessOrders(store.processOrders ?? false);
@@ -239,9 +244,11 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
     }
 
     const isShopify = selectedPlatform?.id === 'shopify';
+    const hasShopifyOAuthCredentials = !!shopifyClientId && !!shopifyClientSecret;
+    const hasShopifyAccessToken = !!shopifyAccessToken;
 
-    if (!editingStore && isShopify && (!apiKey || !shopifyClientId || !shopifyClientSecret)) {
-      toast.error('Vul alle verplichte Shopify velden in');
+    if (!editingStore && isShopify && (!apiKey || (!hasShopifyOAuthCredentials && !hasShopifyAccessToken))) {
+      toast.error('Vul Shopify Shop Domain en (Client ID + Client Secret of Access Token) in');
       return;
     }
 
@@ -276,6 +283,7 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
               ...(apiKey ? { shopDomain: apiKey } : {}),
               ...(shopifyClientId ? { clientId: shopifyClientId } : {}),
               ...(shopifyClientSecret ? { clientSecret: shopifyClientSecret } : {}),
+              ...(shopifyAccessToken ? { accessToken: shopifyAccessToken } : {}),
               shopName: normalizedShopName,
             }
           : {
@@ -320,7 +328,7 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
         });
       }
 
-      if (isShopify && savedIntegrationId) {
+      if (isShopify && savedIntegrationId && !hasShopifyAccessToken && hasShopifyOAuthCredentials) {
         // Open a placeholder tab synchronously (inside user gesture) to avoid popup blockers.
         const pendingOAuthWindow = window.open('about:blank', '_blank');
         const oauthStart = await api.startShopifyOAuth(String(integrationData.installationId), savedIntegrationId);
@@ -339,6 +347,10 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
           window.location.assign(oauthStart.authUrl);
           return;
         }
+      } else if (isShopify && savedIntegrationId && hasShopifyAccessToken) {
+        toast.success('Shopify gekoppeld via access token', {
+          description: 'OAuth is overgeslagen. Sync kan direct worden gestart.',
+        });
       }
       
       setShowConnectionDialog(false);
@@ -758,6 +770,25 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
 
             {selectedPlatform?.id === 'shopify' && (
               <>
+                <div className="space-y-2">
+                  <Label htmlFor="shopify-access-token">Access Token (optioneel, zonder OAuth)</Label>
+                  <Input
+                    id="shopify-access-token"
+                    type="password"
+                    placeholder={
+                      editingStore
+                        ? 'Laat leeg om huidige Access Token te behouden'
+                        : 'Plak Shopify Admin API access token (custom app)'
+                    }
+                    value={shopifyAccessToken}
+                    onChange={(e) => setShopifyAccessToken(e.target.value)}
+                    className="border-slate-200"
+                  />
+                  <p className="text-xs text-slate-500">
+                    Gebruik óf Access Token (custom app), óf Client ID + Client Secret (OAuth app).
+                  </p>
+                </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="shopify-client-id">Client ID</Label>
                   <Input

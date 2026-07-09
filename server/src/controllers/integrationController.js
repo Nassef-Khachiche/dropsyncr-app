@@ -226,10 +226,12 @@ export const createIntegration = async (req, res) => {
         return res.status(400).json({ error: 'Client ID and Client Secret are required for Bol.com' });
       }
     } else if (platform === 'shopify') {
-      if (!credentials.shopDomain || !credentials.clientId || !credentials.clientSecret) {
+      const hasOAuthCredentials = !!credentials.clientId && !!credentials.clientSecret;
+      const hasAccessToken = !!credentials.accessToken;
+      if (!credentials.shopDomain || (!hasOAuthCredentials && !hasAccessToken)) {
         console.error('[Integration] Missing Shopify credentials');
         return res.status(400).json({
-          error: 'Shop Domain, Client ID, and Client Secret are required for Shopify',
+          error: 'Shop Domain and either (Client ID + Client Secret) or Access Token are required for Shopify',
         });
       }
     }
@@ -335,13 +337,16 @@ export const updateIntegration = async (req, res) => {
       const hasCredentialChanges = !!normalizedIncomingCredentials && (
         Object.prototype.hasOwnProperty.call(normalizedIncomingCredentials, 'shopDomain') ||
         Object.prototype.hasOwnProperty.call(normalizedIncomingCredentials, 'clientId') ||
-        Object.prototype.hasOwnProperty.call(normalizedIncomingCredentials, 'clientSecret')
+        Object.prototype.hasOwnProperty.call(normalizedIncomingCredentials, 'clientSecret') ||
+        Object.prototype.hasOwnProperty.call(normalizedIncomingCredentials, 'accessToken')
       );
 
       if (hasCredentialChanges) {
-        if (!mergedCredentials.shopDomain || !mergedCredentials.clientId || !mergedCredentials.clientSecret) {
+        const hasOAuthCredentials = !!mergedCredentials.clientId && !!mergedCredentials.clientSecret;
+        const hasAccessToken = !!mergedCredentials.accessToken;
+        if (!mergedCredentials.shopDomain || (!hasOAuthCredentials && !hasAccessToken)) {
           return res.status(400).json({
-            error: 'Shop Domain, Client ID, and Client Secret are required for Shopify',
+            error: 'Shop Domain and either (Client ID + Client Secret) or Access Token are required for Shopify',
           });
         }
       }
