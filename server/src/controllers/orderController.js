@@ -62,6 +62,14 @@ const normalizeLabelUrlForResponse = (labelUrl, req) => {
   return normalized;
 };
 
+const normalizeLabelsForResponse = (labels, req) => {
+  if (!Array.isArray(labels)) return [];
+  return labels.map((label) => ({
+    ...label,
+    labelUrl: normalizeLabelUrlForResponse(label?.labelUrl, req),
+  }));
+};
+
 const getShippingMethodForOrderId = async (orderId) => {
   const parsedOrderId = parseInt(orderId, 10);
   if (!Number.isInteger(parsedOrderId) || parsedOrderId <= 0) return null;
@@ -220,6 +228,7 @@ export const getOrders = async (req, res) => {
           orderItems: { include: { product: true } },
           tracking: true,
           label: true,
+          labels: { include: { carrier: true }, orderBy: { createdAt: 'desc' } },
           installation: { select: { id: true, name: true } },
         },
         orderBy: { createdAt: 'desc' },
@@ -243,11 +252,22 @@ export const getOrders = async (req, res) => {
 
     const shippingMethodMap = await getShippingMethodMapForOrderIds(orders.map((order) => order.id));
 
-    const normalizedOrders = orders.map((order) => ({
+    const normalizedOrders = orders.map((order) => {
+      const normalizedLabel = order.label
+        ? { ...order.label, labelUrl: normalizeLabelUrlForResponse(order.label.labelUrl, req) }
+        : order.label;
+      const normalizedLabels = normalizeLabelsForResponse(order.labels, req);
+      const latestHistoryLabel = normalizedLabels[0] || null;
+
+      return {
       ...order,
       shippingMethod: shippingMethodMap.get(order.id) || order.shippingMethod || null,
-      label: order.label ? { ...order.label, labelUrl: normalizeLabelUrlForResponse(order.label.labelUrl, req) } : order.label,
-    }));
+      label: latestHistoryLabel
+        ? { ...normalizedLabel, ...latestHistoryLabel }
+        : normalizedLabel,
+      labels: normalizedLabels,
+    };
+    });
 
     res.json({
       orders: normalizedOrders,
@@ -277,6 +297,7 @@ export const getOrder = async (req, res) => {
         orderItems: { include: { product: true } },
         tracking: true,
         label: { include: { carrier: true } },
+        labels: { include: { carrier: true }, orderBy: { createdAt: 'desc' } },
         installation: { select: { id: true, name: true } },
       },
     });
@@ -285,10 +306,19 @@ export const getOrder = async (req, res) => {
 
     const rawShippingMethod = await getShippingMethodForOrderId(order.id);
 
+    const normalizedLabel = order.label
+      ? { ...order.label, labelUrl: normalizeLabelUrlForResponse(order.label.labelUrl, req) }
+      : order.label;
+    const normalizedLabels = normalizeLabelsForResponse(order.labels, req);
+    const latestHistoryLabel = normalizedLabels[0] || null;
+
     res.json({
       ...order,
       shippingMethod: rawShippingMethod || order.shippingMethod || null,
-      label: order.label ? { ...order.label, labelUrl: normalizeLabelUrlForResponse(order.label.labelUrl, req) } : order.label,
+      label: latestHistoryLabel
+        ? { ...normalizedLabel, ...latestHistoryLabel }
+        : normalizedLabel,
+      labels: normalizedLabels,
     });
   } catch (error) {
     console.error('Get order error:', error);

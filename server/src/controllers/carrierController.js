@@ -824,6 +824,17 @@ export const generateCarrierLabels = async (req, res) => {
             create: { orderId, carrierId: carrier.id, labelUrl: persistedLabelUrl, status: 'generated' },
           })
         );
+
+        operations.push(
+          prisma.labelHistory.create({
+            data: {
+              orderId,
+              carrierId: carrier.id,
+              labelUrl: persistedLabelUrl,
+              status: 'generated',
+            },
+          })
+        );
       });
 
       await prisma.$transaction(operations);

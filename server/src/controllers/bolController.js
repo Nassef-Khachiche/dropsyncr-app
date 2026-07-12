@@ -84,6 +84,38 @@ const persistBolTrackingForOrders = async ({
   ]);
 };
 
+const persistLabelAndHistoryForOrderIds = async (orderIds = [], labelUrl = null, carrierId = null) => {
+  const normalizedLabelUrl = String(labelUrl || '').trim();
+  if (!normalizedLabelUrl) return;
+
+  const safeLabelUrl = normalizedLabelUrl.length <= 191 ? normalizedLabelUrl : null;
+  const targetOrderIds = Array.isArray(orderIds)
+    ? orderIds.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
+    : [];
+
+  if (targetOrderIds.length === 0) return;
+
+  await Promise.all(
+    targetOrderIds.map((orderId) =>
+      prisma.$transaction([
+        prisma.label.upsert({
+          where: { orderId },
+          update: { labelUrl: safeLabelUrl, status: 'generated', carrierId },
+          create: { orderId, labelUrl: safeLabelUrl, status: 'generated', carrierId },
+        }),
+        prisma.labelHistory.create({
+          data: {
+            orderId,
+            labelUrl: safeLabelUrl,
+            status: 'generated',
+            carrierId,
+          },
+        }),
+      ]),
+    ),
+  );
+};
+
 /**
  * Bol.com API Integration Controller
  * Handles orders, tracking, labels, and returns from Bol.com
@@ -2503,6 +2535,40 @@ export const getBolShippingLabel = async (req, res) => {
       select: { id: true, installationId: true, isVVB: true },
     });
 
+    const matchingOrderIds = matchingOrders
+      .map((order) => Number(order.id))
+      .filter((id) => Number.isInteger(id) && id > 0);
+
+    // Prevent duplicate Bol labels for the same order.
+    // Bol labels are stored with carrierId = null, while carrier-generated labels use carrierId.
+    if (matchingOrderIds.length > 0) {
+      const [existingBolHistoryLabel, existingBolLegacyLabel] = await Promise.all([
+        prisma.labelHistory.findFirst({
+          where: {
+            orderId: { in: matchingOrderIds },
+            carrierId: null,
+            status: 'generated',
+          },
+          select: { id: true, orderId: true, createdAt: true },
+        }),
+        prisma.label.findFirst({
+          where: {
+            orderId: { in: matchingOrderIds },
+            carrierId: null,
+            status: 'generated',
+          },
+          select: { id: true, orderId: true, createdAt: true },
+        }),
+      ]);
+
+      if (existingBolHistoryLabel || existingBolLegacyLabel) {
+        return res.status(409).json({
+          error: 'Bol label bestaat al voor deze order',
+          details: 'Voor Bol.com/VVB is slechts 1 label per order toegestaan. Gebruik het bestaande label in de orderdetails.',
+        });
+      }
+    }
+
     const orderScopedInstallations = Array.from(new Set(
       matchingOrders
         .map((order) => Number(order.installationId))
@@ -2759,15 +2825,7 @@ export const getBolShippingLabel = async (req, res) => {
     const targetOrderDbIds = matchingOrders.map((o) => o.id).filter(Boolean);
     if (targetOrderDbIds.length > 0 && persistedLabelUrl) {
       try {
-        await Promise.all(
-          targetOrderDbIds.map((dbOrderId) =>
-            prisma.label.upsert({
-              where: { orderId: dbOrderId },
-              update: { labelUrl: persistedLabelUrl.length <= 191 ? persistedLabelUrl : null, status: 'generated', carrierId: null },
-              create: { orderId: dbOrderId, labelUrl: persistedLabelUrl.length <= 191 ? persistedLabelUrl : null, status: 'generated', carrierId: null },
-            }),
-          ),
-        );
+        await persistLabelAndHistoryForOrderIds(targetOrderDbIds, persistedLabelUrl, null);
       } catch (labelDbError) {
         console.warn('[BOL LABEL] Failed to persist Label record to database', {
           orderId: normalizedOrderId,
@@ -3096,6 +3154,25 @@ export const getBolLabelPdf = async (req, res) => {
       }
     }
 
+    if (orderId && persistedLabelUrl) {
+      try {
+        const matchingOrders = await prisma.order.findMany({
+          where: {
+            orderNumber: String(orderId || '').trim(),
+            installationId: Number(installationId),
+          },
+          select: { id: true },
+        });
+
+        const targetOrderIds = matchingOrders.map((order) => order.id);
+        if (targetOrderIds.length > 0) {
+          await persistLabelAndHistoryForOrderIds(targetOrderIds, persistedLabelUrl, null);
+        }
+      } catch (persistLabelErr) {
+        console.warn('[BOL LABEL PDF] Failed to persist polled label URL:', persistLabelErr?.message);
+      }
+    }
+
     res.json({
       ready: true,
       labelUrl: persistedLabelUrl,
@@ -3128,10 +3205,13 @@ export const getBolLabelByOrder = async (req, res) => {
     // 1. Check DB for a previously-persisted label URL
     const dbOrder = await prisma.order.findFirst({
       where: { orderNumber: normalizedOrderId },
-      include: { label: true },
+      include: {
+        label: true,
+        labels: { orderBy: { createdAt: 'desc' }, take: 1 },
+      },
     });
 
-    const existingUrl = String(dbOrder?.label?.labelUrl || '').trim();
+    const existingUrl = String(dbOrder?.labels?.[0]?.labelUrl || dbOrder?.label?.labelUrl || '').trim();
     if (existingUrl && (existingUrl.startsWith('/labels/') || /^https?:\/\//.test(existingUrl))) {
       return res.json({ ready: true, labelUrl: existingUrl });
     }
@@ -3193,11 +3273,7 @@ export const getBolLabelByOrder = async (req, res) => {
           persistedUrl = `/labels/${fileName}`;
           // Update DB
           if (dbOrder?.id) {
-            await prisma.label.upsert({
-              where: { orderId: dbOrder.id },
-              update: { labelUrl: persistedUrl, status: 'generated' },
-              create: { orderId: dbOrder.id, labelUrl: persistedUrl, status: 'generated', carrierId: null },
-            });
+            await persistLabelAndHistoryForOrderIds([dbOrder.id], persistedUrl, null);
           }
         }
       } catch (saveErr) {

@@ -386,6 +386,32 @@ const downloadLabelFile = async (url: string, filename = 'label.pdf') => {
   }
 };
 
+const getOrderSavedLabels = (order: any) => {
+  const fromHistory = Array.isArray(order?.labels) ? order.labels : [];
+  const latest = order?.label ? [order.label] : [];
+  const combined = [...fromHistory, ...latest].filter(Boolean);
+  const seen = new Set<string>();
+
+  return combined
+    .map((label: any) => ({
+      ...label,
+      labelUrl: resolveToAbsoluteLabelUrl(String(label?.labelUrl || '').trim()),
+      createdAt: label?.createdAt || null,
+    }))
+    .filter((label: any) => String(label?.labelUrl || '').trim())
+    .filter((label: any) => {
+      const key = String(label.id || '') || String(label.labelUrl || '').trim();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a: any, b: any) => {
+      const aTime = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bTime = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return bTime - aTime;
+    });
+};
+
 export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersOverviewProps) {
   const ORDERS_PER_PAGE = 50;
 
@@ -439,6 +465,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
   const [selectedWeGrowCarrier, setSelectedWeGrowCarrier] = useState<string>('');
   const [generatingLabel, setGeneratingLabel] = useState(false);
   const [labelPreviewUrl, setLabelPreviewUrl] = useState<string>('');
+  const [selectedSavedLabelKey, setSelectedSavedLabelKey] = useState<string>('');
   const [generatedLabelMeta, setGeneratedLabelMeta] = useState<{
     shipmentId?: string | null;
     trackingCode?: string | null;
@@ -630,6 +657,19 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
         if (result.ready && result.labelUrl) {
           const resolvedUrl = resolveToAbsoluteLabelUrl(result.labelUrl);
           setLabelPreviewUrl(resolvedUrl);
+          setSelectedSavedLabelKey(String(resolvedUrl));
+          if (typeof labelOrder?.id === 'number') {
+            setOrders((prevOrders) => prevOrders.map((entry) => (
+              entry.id === labelOrder.id
+                ? appendGeneratedLabelToOrder(entry, resolvedUrl, null)
+                : entry
+            )));
+            setLabelOrder((prevLabelOrder: any) => (
+              prevLabelOrder
+                ? appendGeneratedLabelToOrder(prevLabelOrder, resolvedUrl, null)
+                : prevLabelOrder
+            ));
+          }
           if (result.trackingCode || result.transporterCode) {
             setGeneratedLabelMeta((prev) => ({
               shipmentId: prev?.shipmentId || String(labelOrder?.orderNumber || ''),
@@ -705,7 +745,21 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
         );
         if (cancelled) return;
         if (result.ready && result.labelUrl) {
-          setLabelPreviewUrl(resolveToAbsoluteLabelUrl(result.labelUrl));
+          const resolvedUrl = resolveToAbsoluteLabelUrl(result.labelUrl);
+          setLabelPreviewUrl(resolvedUrl);
+          setSelectedSavedLabelKey(String(resolvedUrl));
+          if (typeof labelOrder?.id === 'number') {
+            setOrders((prevOrders) => prevOrders.map((entry) => (
+              entry.id === labelOrder.id
+                ? appendGeneratedLabelToOrder(entry, resolvedUrl, null)
+                : entry
+            )));
+            setLabelOrder((prevLabelOrder: any) => (
+              prevLabelOrder
+                ? appendGeneratedLabelToOrder(prevLabelOrder, resolvedUrl, null)
+                : prevLabelOrder
+            ));
+          }
           setPendingLabelOrderId(null);
         } else if (result.shippingLabelId) {
           // Switch to the faster shippingLabelId-based poll
@@ -890,6 +944,8 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
 
   const handleOpenLabelDialog = (order: any) => {
     setLabelOrder(order);
+    const savedLabels = getOrderSavedLabels(order);
+    const initialLabel = savedLabels[0] || null;
     const normalizedOrderShippingMethod = String(order.shippingMethod || '').trim();
     let matchingContract = carrierContracts.find((contract) => (
       String(contract.id) === normalizedOrderShippingMethod || contract.contractName === normalizedOrderShippingMethod
@@ -916,9 +972,10 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
         ? initialWegrowCarrier
         : ''
     );
-    setLabelPreviewUrl(resolveToAbsoluteLabelUrl(order?.label?.labelUrl || ''));
+    setLabelPreviewUrl(resolveToAbsoluteLabelUrl(initialLabel?.labelUrl || order?.label?.labelUrl || ''));
+    setSelectedSavedLabelKey(String(initialLabel?.id || initialLabel?.labelUrl || ''));
     setGeneratedLabelMeta({
-      shipmentId: order?.label?.id ? String(order.label.id) : null,
+      shipmentId: initialLabel?.id ? String(initialLabel.id) : (order?.label?.id ? String(order.label.id) : null),
       trackingCode: order?.supplierTracking || order?.tracking?.trackingCode || null,
       trackingUrl: order?.tracking?.trackingUrl || null,
     });
@@ -1154,11 +1211,67 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
     }
   };
 
+  const appendGeneratedLabelToOrder = (order: any, labelUrl: string | null, carrierId: string | number | null = null) => {
+    if (!order) return order;
+    const normalizedUrl = resolveToAbsoluteLabelUrl(String(labelUrl || '').trim());
+    const timestamp = new Date().toISOString();
+    const generatedId = `generated-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    if (!normalizedUrl) return order;
+
+    const previousLabels = Array.isArray(order?.labels) ? order.labels : [];
+    const alreadyExists = previousLabels.some((existing: any) => (
+      resolveToAbsoluteLabelUrl(String(existing?.labelUrl || '').trim()) === normalizedUrl
+    ));
+
+    if (alreadyExists) {
+      return {
+        ...order,
+        label: {
+          ...(order.label || {}),
+          labelUrl: normalizedUrl,
+          status: 'generated',
+        },
+      };
+    }
+
+    const nextLabel = {
+      id: generatedId,
+      carrierId,
+      labelUrl: normalizedUrl,
+      status: 'generated',
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+
+    return {
+      ...order,
+      label: {
+        ...(order.label || {}),
+        ...nextLabel,
+      },
+      labels: [nextLabel, ...previousLabels],
+    };
+  };
+
   const handleGenerateLabel = async () => {
     if (!labelOrder) return;
     if (!selectedContractId) return;
 
     if (selectedContractId === VVB_CONTRACT_ID) {
+      const existingOrderLabels = getOrderSavedLabels(labelOrder);
+      const hasExistingBolLabel = existingOrderLabels.some((label: any) => {
+        const carrierId = label?.carrierId;
+        return carrierId === null || carrierId === undefined || String(carrierId).trim() === '';
+      });
+
+      if (hasExistingBolLabel) {
+        toast.error('Bol label bestaat al', {
+          description: 'Voor Bol.com/VVB is slechts 1 label per order toegestaan.',
+        });
+        return;
+      }
+
       try {
         setGeneratingLabel(true);
 
@@ -1227,7 +1340,9 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
               // keep original URL if conversion fails
             }
           }
-          setLabelPreviewUrl(resolveToAbsoluteLabelUrl(safePreviewUrl));
+          const resolvedSafeUrl = resolveToAbsoluteLabelUrl(safePreviewUrl);
+          setLabelPreviewUrl(resolvedSafeUrl);
+          setSelectedSavedLabelKey(String(resolvedSafeUrl));
         } else {
           // PDF not yet available from Bol — start polling with the shippingLabelId so the
           // dialog automatically shows the label as soon as Bol has it ready.
@@ -1261,7 +1376,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
 
           setOrders((prevOrders) => prevOrders.map((entry) => (
             entry.id === labelOrder.id
-              ? {
+              ? appendGeneratedLabelToOrder({
                   ...entry,
                   ...(trackingCode ? {
                     supplierTracking: trackingCode,
@@ -1271,18 +1386,13 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
                     },
                   } : {}),
                   shippingMethod: 'Bol.com',
-                  label: {
-                    ...(entry.label || {}),
-                    labelUrl: resolvedLabelPreviewUrl || entry.label?.labelUrl || null,
-                    status: resolvedLabelPreviewUrl ? 'generated' : (entry.label?.status || 'generated'),
-                  },
-                }
+                }, resolvedLabelPreviewUrl || entry.label?.labelUrl || null, null)
               : entry
           )));
 
           setLabelOrder((prevLabelOrder: any) => (
             prevLabelOrder
-              ? {
+              ? appendGeneratedLabelToOrder({
                   ...prevLabelOrder,
                   ...(trackingCode ? {
                     supplierTracking: trackingCode,
@@ -1292,12 +1402,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
                     },
                   } : {}),
                   shippingMethod: 'Bol.com',
-                  label: {
-                    ...(prevLabelOrder.label || {}),
-                    labelUrl: resolvedLabelPreviewUrl || prevLabelOrder.label?.labelUrl || null,
-                    status: resolvedLabelPreviewUrl ? 'generated' : (prevLabelOrder.label?.status || 'generated'),
-                  },
-                }
+                }, resolvedLabelPreviewUrl || prevLabelOrder.label?.labelUrl || null, null)
               : prevLabelOrder
           ));
 
@@ -1373,6 +1478,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
       if (label?.labelUrl) {
         const resolvedLabelUrl = resolveToAbsoluteLabelUrl(label.labelUrl);
         setLabelPreviewUrl(resolvedLabelUrl);
+        setSelectedSavedLabelKey(String(resolvedLabelUrl));
         window.open(resolvedLabelUrl, '_blank', 'noreferrer');
       }
       setGeneratedLabelMeta({
@@ -1384,7 +1490,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
       if (typeof labelOrder.id === 'number' && selectedShippingMethod) {
         setOrders((prevOrders) => prevOrders.map((entry) => (
           entry.id === labelOrder.id
-            ? {
+            ? appendGeneratedLabelToOrder({
                 ...entry,
                 ...(label?.trackingCode ? {
                   supplierTracking: label.trackingCode,
@@ -1394,17 +1500,12 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
                   },
                 } : {}),
                 shippingMethod: selectedShippingMethod,
-                label: {
-                  ...(entry.label || {}),
-                  labelUrl: label?.labelUrl || entry.label?.labelUrl || null,
-                  status: 'generated',
-                },
-              }
+              }, label?.labelUrl || entry.label?.labelUrl || null, selectedContract.id)
             : entry
         )));
         setLabelOrder((prevLabelOrder: any) => (
           prevLabelOrder
-            ? {
+            ? appendGeneratedLabelToOrder({
                 ...prevLabelOrder,
                 ...(label?.trackingCode ? {
                   supplierTracking: label.trackingCode,
@@ -1414,12 +1515,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
                   },
                 } : {}),
                 shippingMethod: selectedShippingMethod,
-                label: {
-                  ...(prevLabelOrder.label || {}),
-                  labelUrl: label?.labelUrl || prevLabelOrder.label?.labelUrl || null,
-                  status: 'generated',
-                },
-              }
+              }, label?.labelUrl || prevLabelOrder.label?.labelUrl || null, selectedContract.id)
             : prevLabelOrder
         ));
         setShippingMethodDrafts((prevDrafts) => ({
@@ -1765,6 +1861,11 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
   const selectedContract = carrierContracts.find((contract) => String(contract.id) === selectedContractId);
   const isWeGrowContractSelected = selectedContract?.carrierType === 'wegrow';
   const isVvbContractSelected = selectedContractId === VVB_CONTRACT_ID;
+  const savedLabels = getOrderSavedLabels(labelOrder);
+  const hasSavedBolLabel = savedLabels.some((label: any) => {
+    const carrierId = label?.carrierId;
+    return carrierId === null || carrierId === undefined || String(carrierId).trim() === '';
+  });
   const selectedBolDeliveryOption = bolDeliveryOptions.find(
     (option) => String(option?.shippingLabelOfferId || '').trim() === selectedBolDeliveryOptionId
   ) || null;
@@ -2739,6 +2840,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
           setShowLabelDialog(open);
           if (!open) {
             setSelectedWeGrowCarrier('');
+            setSelectedSavedLabelKey('');
             setLabelJustGenerated(false);
             setPendingLabelShippingId(null);
             setPendingLabelInstallationId(null);
@@ -2750,17 +2852,47 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
           <DialogHeader>
             <DialogTitle>Label genereren</DialogTitle>
             <DialogDescription>
-              {labelPreviewUrl && normalizeOrderStatus(labelOrder) === 'verzonden'
-                ? `Label voor order ${labelOrder?.orderNumber || ''}`
-                : `Selecteer een contract en genereer een verzendlabel voor ${labelOrder?.orderNumber || 'de order'}.`}
+              {`Selecteer een contract en genereer een verzendlabel voor ${labelOrder?.orderNumber || 'de order'}.`}
             </DialogDescription>
           </DialogHeader>
 
-          {(() => {
-            const isShippedWithLabel = Boolean(labelPreviewUrl && normalizeOrderStatus(labelOrder) === 'verzonden');
-            return (
-              <div className="space-y-4 flex-1 overflow-auto">
-                {!isShippedWithLabel && (
+          <div className="space-y-4 flex-1 overflow-auto">
+            {savedLabels.length > 0 && (
+              <div className="space-y-2">
+                <label className="text-sm text-slate-700">Opgeslagen labels</label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {savedLabels.map((savedLabel: any, index: number) => {
+                    const labelKey = String(savedLabel?.id || savedLabel?.labelUrl || `saved-${index}`);
+                    const labelDate = savedLabel?.createdAt
+                      ? new Date(savedLabel.createdAt).toLocaleString('nl-NL')
+                      : null;
+                    const isSelected = selectedSavedLabelKey === labelKey
+                      || (!selectedSavedLabelKey && labelPreviewUrl === String(savedLabel?.labelUrl || ''));
+
+                    return (
+                      <button
+                        key={labelKey}
+                        type="button"
+                        className={`text-left rounded-lg border px-3 py-2 transition-colors ${
+                          isSelected
+                            ? 'border-indigo-300 bg-indigo-50'
+                            : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                        }`}
+                        onClick={() => {
+                          const selectedUrl = resolveToAbsoluteLabelUrl(String(savedLabel?.labelUrl || ''));
+                          setSelectedSavedLabelKey(labelKey);
+                          setLabelPreviewUrl(selectedUrl);
+                        }}
+                      >
+                        <div className="text-sm font-medium text-slate-900">Label {savedLabels.length - index}</div>
+                        <div className="text-xs text-slate-500">{labelDate || 'Datum onbekend'}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <div className="space-y-2">
               <label className="text-sm text-slate-700">Contract</label>
               {loadingCarriers ? (
@@ -2840,9 +2972,8 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
                 </div>
               )}
             </div>
-            )}
 
-            {!isShippedWithLabel && isVvbContractSelected && (
+            {isVvbContractSelected && (
               <div className="space-y-3 rounded-xl border border-sky-200 bg-gradient-to-br from-sky-50 to-indigo-50/60 p-4">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-lg bg-white border border-sky-200 p-1.5 flex items-center justify-center shadow-sm">
@@ -3033,29 +3164,28 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
                 )}
               </div>
             )}
-              </div>
-            );
-          })()}
+          </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowLabelDialog(false)} className="border-slate-200">
               Sluiten
             </Button>
-            {!labelPreviewUrl || normalizeOrderStatus(labelOrder) !== 'verzonden' ? (
             <Button
               onClick={handleGenerateLabel}
               disabled={
                 !selectedContractId
                 || (isWeGrowContractSelected && !selectedWeGrowCarrier)
+                || (isVvbContractSelected && hasSavedBolLabel)
                 || (isVvbContractSelected && (!selectedBolDeliveryOptionId || loadingBolDeliveryOptions || bolDeliveryOptions.length === 0))
                 || generatingLabel
               }
               className="gap-2 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600"
             >
               {generatingLabel && <Loader2 className="w-4 h-4 animate-spin" />}
-              {isVvbContractSelected ? 'Bol label genereren' : 'Label genereren'}
+              {savedLabels.length > 0
+                ? (isVvbContractSelected ? 'Nog een Bol label genereren' : 'Nog een label genereren')
+                : (isVvbContractSelected ? 'Bol label genereren' : 'Label genereren')}
             </Button>
-            ) : null}
           </DialogFooter>
         </DialogContent>
       </Dialog>

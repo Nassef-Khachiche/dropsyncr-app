@@ -102,6 +102,7 @@ model Order {
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
   label            Label?
+  labels           LabelHistory[]
   installation     Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
   orderStatusRef   OrderStatus  @relation(fields: [orderStatusCode], references: [code])
   user             User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -451,4 +452,19 @@ model ProductEanAlias {
   product        Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@unique([ean, installationId])
+}
+
+model LabelHistory {
+  id        Int      @id @default(autoincrement())
+  orderId   Int
+  carrierId Int?
+  labelUrl  String?
+  status    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  carrier   Carrier? @relation(fields: [carrierId], references: [id])
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([carrierId], map: "LabelHistory_carrierId_fkey")
 }
