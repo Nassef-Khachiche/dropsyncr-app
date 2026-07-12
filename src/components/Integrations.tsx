@@ -102,7 +102,7 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
   const isAllStoresSelected = activeProfile === 'all';
   const [connectedStores, setConnectedStores] = useState<Store[]>([]);
   const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
+  const [syncingStoreId, setSyncingStoreId] = useState<number | null>(null);
   const [showConnectionDialog, setShowConnectionDialog] = useState(false);
   const [selectedPlatform, setSelectedPlatform] = useState<typeof availablePlatforms[0] | null>(null);
   const [editingStore, setEditingStore] = useState<Store | null>(null);
@@ -418,7 +418,7 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
     }
 
     try {
-      setSyncing(true);
+      setSyncingStoreId(storeId);
       const result = store.platform === 'kaufland'
         ? await api.syncKauflandOrders(syncInstallationId, storeId)
         : store.platform === 'bricobravo'
@@ -446,7 +446,7 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
         duration: 10000, // Show for 10 seconds for longer error messages
       });
     } finally {
-      setSyncing(false);
+      setSyncingStoreId(null);
     }
   };
 
@@ -565,9 +565,9 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
                             size="sm" 
                             className="flex-1 gap-2 border-slate-200"
                             onClick={() => handleSyncOrders(store.id)}
-                            disabled={syncing || !store.active}
+                            disabled={syncingStoreId !== null || !store.active}
                           >
-                            {syncing ? (
+                            {syncingStoreId === store.id ? (
                               <Loader2 className="w-4 h-4 animate-spin" />
                             ) : (
                               <RefreshCw className="w-4 h-4" />
