@@ -325,6 +325,167 @@ async function shopifyApiRequest(credentials, path, method = 'GET', body = null)
   return response.json();
 }
 
+async function shopifyGraphqlRequest(credentials, query, variables = {}) {
+  const { shopDomain, accessToken } = credentials;
+
+  if (!shopDomain || !accessToken) {
+    throw new Error('Missing Shopify access token. Complete Shopify OAuth authorization first.');
+  }
+
+  const domain = normalizeShopDomain(shopDomain);
+  const url = `https://${domain}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Shopify-Access-Token': accessToken,
+    },
+    body: JSON.stringify({ query, variables }),
+  });
+
+  const responseText = await response.text();
+  let payload = null;
+  try {
+    payload = responseText ? JSON.parse(responseText) : null;
+  } catch {
+    payload = null;
+  }
+
+  if (!response.ok) {
+    throw new Error(`Shopify GraphQL error ${response.status}: ${responseText}`);
+  }
+
+  if (payload?.errors?.length) {
+    throw new Error(`Shopify GraphQL returned errors: ${JSON.stringify(payload.errors)}`);
+  }
+
+  return payload?.data || {};
+}
+
+function mapCarrierTypeToShopifyCompany(carrierType) {
+  const normalized = String(carrierType || '').trim().toLowerCase();
+  if (!normalized) return null;
+
+  if (normalized === 'dpd') return 'DPD';
+  if (normalized === 'dhl') return 'DHL';
+  if (normalized === 'postnl') return 'PostNL';
+  if (normalized === 'ups') return 'UPS';
+  if (normalized === 'fedex') return 'FedEx';
+  if (normalized === 'wegrow') return 'WeGrow';
+
+  return normalized.toUpperCase();
+}
+
+function parseShopifyOrderToken(orderNumber) {
+  const raw = String(orderNumber || '').trim();
+  if (!raw) return '';
+  return raw.replace(/^shopify-/i, '').trim();
+}
+
+async function resolveShopifyOrderIdFromLocalOrderNumber(credentials, localOrderNumber) {
+  const token = parseShopifyOrderToken(localOrderNumber);
+  if (!token) {
+    throw new Error(`Invalid Shopify order number: ${localOrderNumber}`);
+  }
+
+  // First try direct numeric ID lookup.
+  if (/^\d+$/.test(token)) {
+    try {
+      const directOrderResponse = await shopifyApiRequest(credentials, `/orders/${token}.json`);
+      const directOrderId = directOrderResponse?.order?.id;
+      if (directOrderId) {
+        return String(directOrderId);
+      }
+    } catch {
+      // Continue with search fallbacks.
+    }
+  }
+
+  // GraphQL search fallback to resolve legacy numeric resource ID by order name/number.
+  const searchQueries = [
+    `name:'#${token}'`,
+    `name:${token}`,
+    `order_number:${token}`,
+    `id:${token}`,
+  ];
+
+  const query = `
+    query ResolveOrder($query: String!) {
+      orders(first: 1, query: $query, sortKey: PROCESSED_AT, reverse: true) {
+        edges {
+          node {
+            legacyResourceId
+            name
+          }
+        }
+      }
+    }
+  `;
+
+  for (const searchQuery of searchQueries) {
+    try {
+      const data = await shopifyGraphqlRequest(credentials, query, { query: searchQuery });
+      const edge = data?.orders?.edges?.[0];
+      const legacyResourceId = edge?.node?.legacyResourceId;
+      if (legacyResourceId) {
+        return String(legacyResourceId);
+      }
+    } catch {
+      // Keep trying fallback queries.
+    }
+  }
+
+  throw new Error(`Could not resolve Shopify order ID for local order ${localOrderNumber}`);
+}
+
+async function createShopifyFulfillmentWithTracking({
+  credentials,
+  shopifyOrderId,
+  trackingNumber,
+  trackingCompany,
+  trackingUrl,
+}) {
+  const fulfillmentOrdersResponse = await shopifyApiRequest(
+    credentials,
+    `/orders/${shopifyOrderId}/fulfillment_orders.json`
+  );
+
+  const fulfillmentOrders = fulfillmentOrdersResponse?.fulfillment_orders || [];
+  const openFulfillmentOrder = fulfillmentOrders.find(
+    (fo) => fo.status === 'open' || fo.status === 'in_progress'
+  );
+
+  if (!openFulfillmentOrder) {
+    throw new Error(`No open fulfillment order found for Shopify order ${shopifyOrderId}`);
+  }
+
+  const normalizedTrackingNumber = String(trackingNumber || '').trim();
+  const normalizedTrackingCompany = String(trackingCompany || '').trim() || null;
+  const normalizedTrackingUrl = String(trackingUrl || '').trim() || null;
+
+  const fulfillmentPayload = {
+    fulfillment: {
+      line_items_by_fulfillment_order: [
+        { fulfillment_order_id: openFulfillmentOrder.id },
+      ],
+      ...(normalizedTrackingNumber
+        ? {
+            tracking_info: {
+              number: normalizedTrackingNumber,
+              company: normalizedTrackingCompany,
+              url: normalizedTrackingUrl,
+            },
+            notify_customer: true,
+          }
+        : {}),
+    },
+  };
+
+  const result = await shopifyApiRequest(credentials, '/fulfillments.json', 'POST', fulfillmentPayload);
+  return result?.fulfillment || null;
+}
+
 // ---------------------------------------------------------------------------
 // Fetch orders with cursor-based pagination
 // ---------------------------------------------------------------------------
@@ -730,48 +891,53 @@ export async function fulfillShopifyOrder(req, res) {
 
   try {
     const { credentials } = await getShopifyIntegration(installationId, integrationId);
-
-    // Get fulfillment orders for this order
-    const fulfillmentOrdersResponse = await shopifyApiRequest(
+    const fulfillment = await createShopifyFulfillmentWithTracking({
       credentials,
-      `/orders/${shopifyOrderId}/fulfillment_orders.json`
-    );
+      shopifyOrderId,
+      trackingNumber,
+      trackingCompany,
+      trackingUrl: null,
+    });
 
-    const fulfillmentOrders = fulfillmentOrdersResponse?.fulfillment_orders || [];
-    const openFulfillmentOrder = fulfillmentOrders.find(
-      (fo) => fo.status === 'open' || fo.status === 'in_progress'
-    );
-
-    if (!openFulfillmentOrder) {
-      return res.status(400).json({ error: 'No open fulfillment order found for this Shopify order' });
-    }
-
-    const fulfillmentPayload = {
-      fulfillment: {
-        line_items_by_fulfillment_order: [
-          { fulfillment_order_id: openFulfillmentOrder.id },
-        ],
-        ...(trackingNumber
-          ? {
-              tracking_info: {
-                number: trackingNumber,
-                company: trackingCompany || null,
-                url: null,
-              },
-              notify_customer: true,
-            }
-          : {}),
-      },
-    };
-
-    const result = await shopifyApiRequest(credentials, '/fulfillments.json', 'POST', fulfillmentPayload);
-
-    return res.json({ success: true, fulfillment: result?.fulfillment });
+    return res.json({ success: true, fulfillment });
   } catch (error) {
     console.error('[SHOPIFY] fulfillShopifyOrder error:', error.message);
     const statusCode = Number.isInteger(error?.statusCode) ? error.statusCode : 500;
     return res.status(statusCode).json({ error: error.message });
   }
+}
+
+export async function sendShopifyTracking(
+  installationId,
+  localOrderNumber,
+  trackingCode,
+  carrierType,
+  trackingUrl = null,
+  integrationId = null,
+) {
+  const trackingNumber = String(trackingCode || '').trim();
+  if (!trackingNumber) {
+    console.warn('[SHOPIFY TRACKING] Skipping: missing tracking code', { localOrderNumber });
+    return { success: false, skipped: true, reason: 'missing_tracking_code' };
+  }
+
+  const { credentials } = await getShopifyIntegration(installationId, integrationId);
+  const shopifyOrderId = await resolveShopifyOrderIdFromLocalOrderNumber(credentials, localOrderNumber);
+  const trackingCompany = mapCarrierTypeToShopifyCompany(carrierType);
+
+  const fulfillment = await createShopifyFulfillmentWithTracking({
+    credentials,
+    shopifyOrderId,
+    trackingNumber,
+    trackingCompany,
+    trackingUrl,
+  });
+
+  return {
+    success: true,
+    shopifyOrderId,
+    fulfillmentId: fulfillment?.id ? String(fulfillment.id) : null,
+  };
 }
 
 /**

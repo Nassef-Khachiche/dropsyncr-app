@@ -96,6 +96,8 @@ const availablePlatforms = [
   },
 ];
 
+const SHOPIFY_CONNECTION_GUIDE_PDF_URL = '/shopify-koppelen.pdf';
+
 export function Integrations({ activeProfile }: IntegrationsProps) {
   const isAllStoresSelected = activeProfile === 'all';
   const [connectedStores, setConnectedStores] = useState<Store[]>([]);
@@ -690,9 +692,14 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
                 </DialogTitle>
               </div>
               <a 
-                href="#" 
+                href={selectedPlatform?.id === 'shopify' && !editingStore ? SHOPIFY_CONNECTION_GUIDE_PDF_URL : '#'}
+                target={selectedPlatform?.id === 'shopify' && !editingStore ? '_blank' : undefined}
+                rel={selectedPlatform?.id === 'shopify' && !editingStore ? 'noopener noreferrer' : undefined}
                 className="text-sm text-teal-600 hover:text-teal-700 flex items-center gap-1"
                 onClick={(e) => {
+                  if (selectedPlatform?.id === 'shopify' && !editingStore) {
+                    return;
+                  }
                   e.preventDefault();
                   toast.info('Help documentatie wordt geladen...');
                 }}

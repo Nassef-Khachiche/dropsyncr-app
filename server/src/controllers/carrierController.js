@@ -2,6 +2,7 @@ import prisma from '../config/database.js';
 import fetch from 'node-fetch';
 import { sendKauflandTracking } from './kauflandController.js';
 import { sendBricoBravoTracking } from './bricobravocontroller.js';
+import { sendShopifyTracking } from './shopifyController.js';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -863,6 +864,15 @@ export const generateCarrierLabels = async (req, res) => {
               selectedShippingMethod,
               generatedLabel.trackingUrl || null,
             ).catch(err => console.error('[BRICOBRAVO TRACKING] Async error:', err.message));
+          }
+          if (orderRecord?.platform === 'shopify' && generatedLabel?.trackingCode) {
+            await sendShopifyTracking(
+              String(orderRecord.installationId),
+              orderRecord.orderNumber,
+              generatedLabel.trackingCode,
+              carrier.carrierType,
+              generatedLabel.trackingUrl || null,
+            ).catch(err => console.error('[SHOPIFY TRACKING] Async error:', err.message));
           }
         }
       }
