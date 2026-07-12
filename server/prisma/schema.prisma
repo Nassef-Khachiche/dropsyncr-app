@@ -231,6 +231,7 @@ model Carrier {
   updatedAt      DateTime     @updatedAt
   installation   Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
   labels         Label[]
+  labelHistories LabelHistory[]
 
   @@index([installationId])
 }
