@@ -38,6 +38,7 @@ import {
   Printer, 
   CheckCircle2, 
   Package,
+  Plus,
   Scan,
   Trash2,
   CheckCheck,
@@ -51,12 +52,12 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { Alert, AlertDescription } from './ui/alert';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { api } from '../services/api';
-import dhlLogo from '../assets/dhl-logo.png';
-import dpdLogo from '../assets/dpd-logo.png';
-import postnlLogo from '../assets/postnl-logo.png';
-import bpostLogo from '../assets/bpost-logo.png';
+
+const dhlLogo = new URL('../assets/dhl-logo.png', import.meta.url).href;
+const dpdLogo = new URL('../assets/dpd-logo.png', import.meta.url).href;
+const postnlLogo = new URL('../assets/postnl-logo.png', import.meta.url).href;
 
 interface LabelPrintingProps {
   activeProfile: string;
@@ -86,16 +87,16 @@ interface CarrierContract {
 }
 
 const baseShippingMethods = [
-  { id: 'dhl-parcel', name: 'DHL Parcel Connect', carrier: 'DHL', carrierType: 'dhl' },
-  { id: 'dhl-express', name: 'DHL Express', carrier: 'DHL', carrierType: 'dhl' },
-  { id: 'dpd-classic', name: 'DPD Classic', carrier: 'DPD', carrierType: 'dpd' },
+  { id: 'dhl', name: 'DHL', carrier: 'DHL', carrierType: 'dhl' },
+  { id: 'dpd', name: 'DPD', carrier: 'DPD', carrierType: 'dpd' },
   { id: 'wegrow', name: 'WeGrow', carrier: 'WeGrow', carrierType: 'wegrow' },
 ];
 
 const wegrowCarrierOptions = [
-  { id: 'dhl', name: 'DHL', logo: dhlLogo },
-  { id: 'postnl', name: 'PostNL', logo: postnlLogo },
-  { id: 'bpost', name: 'Bpost', logo: bpostLogo },
+  { id: 'dhl-nl', name: 'DHL', logo: dhlLogo },
+  { id: 'dpd-standaard', name: 'DPD', logo: dpdLogo },
+  { id: 'postnl-belgie-standaard-0-23kg', name: 'PostNL België Standaard 0-23kg', logo: postnlLogo },
+  { id: 'poste-italiane-standaard', name: 'Poste Italiane', logo: postnlLogo },
 ];
 
 export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
@@ -112,12 +113,27 @@ export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
   const [selectedPackages, setSelectedPackages] = useState<number[]>([]);
   const [currentPackagesPage, setCurrentPackagesPage] = useState(1);
   const [showShippingDialog, setShowShippingDialog] = useState(false);
+  const [showManualLabelDialog, setShowManualLabelDialog] = useState(false);
   const [selectedShippingMethod, setSelectedShippingMethod] = useState<string>('');
   const [selectedWeGrowCarrier, setSelectedWeGrowCarrier] = useState<string>('');
+  const [manualSelectedShippingMethod, setManualSelectedShippingMethod] = useState<string>('');
+  const [manualSelectedWeGrowCarrier, setManualSelectedWeGrowCarrier] = useState<string>('');
   const [carrierContracts, setCarrierContracts] = useState<CarrierContract[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [loadingCarriers, setLoadingCarriers] = useState(false);
   const [generatingLabels, setGeneratingLabels] = useState(false);
+  const [generatingManualLabel, setGeneratingManualLabel] = useState(false);
+  const [manualForm, setManualForm] = useState({
+    customerName: '',
+    address: '',
+    country: 'NL',
+    street: '',
+    zipCode: '',
+    city: '',
+    email: '',
+    phone: '',
+    weightKg: '1',
+  });
 
   useEffect(() => {
     if (activeProfile) {
@@ -226,6 +242,9 @@ export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
   const selectedMethod = availableShippingMethods.find(m => m.id === selectedShippingMethod);
   const isWeGrowMethod = selectedMethod?.carrierType === 'wegrow';
   const selectedWeGrowCarrierName = wegrowCarrierOptions.find(option => option.id === selectedWeGrowCarrier)?.name;
+  const manualSelectedMethod = availableShippingMethods.find((method) => method.id === manualSelectedShippingMethod);
+  const isManualWeGrowMethod = manualSelectedMethod?.carrierType === 'wegrow';
+  const manualSelectedWeGrowCarrierName = wegrowCarrierOptions.find((option) => option.id === manualSelectedWeGrowCarrier)?.name;
 
   const totalPackagesPages = Math.max(1, Math.ceil(scannedPackages.length / PACKAGES_PER_PAGE));
   const packageStartIndex = (currentPackagesPage - 1) * PACKAGES_PER_PAGE;
@@ -329,7 +348,7 @@ export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
     }
 
     if (selectedMethod.carrierType === 'wegrow' && !selectedWeGrowCarrier) {
-      toast.error('Selecteer een WeGrow vervoerder (DHL, PostNL of Bpost)');
+      toast.error('Selecteer een WeGrow verzendoptie');
       return;
     }
 
@@ -429,6 +448,120 @@ export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
     setShowShippingDialog(true);
   };
 
+  const handleCreateManualLabel = async () => {
+    if (!manualSelectedShippingMethod) {
+      toast.error('Selecteer een verzendmethode');
+      return;
+    }
+
+    if (!activeProfile) {
+      toast.error('Selecteer eerst een installatie');
+      return;
+    }
+
+    const selectedMethod = availableShippingMethods.find((method) => method.id === manualSelectedShippingMethod);
+    if (!selectedMethod?.contractId) {
+      toast.error('Geen actief contract gevonden voor deze verzendmethode');
+      return;
+    }
+
+    if (selectedMethod.carrierType === 'wegrow' && !manualSelectedWeGrowCarrier) {
+      toast.error('Selecteer een WeGrow verzendoptie');
+      return;
+    }
+
+    if (!String(manualForm.customerName || '').trim() || !String(manualForm.address || '').trim()) {
+      toast.error('Vul minimaal klantnaam en adres in');
+      return;
+    }
+
+    const parsedWeight = Number(manualForm.weightKg || '1');
+    const safeWeight = Number.isFinite(parsedWeight) && parsedWeight > 0 ? parsedWeight : 1;
+    const manualPackageId = Date.now();
+    const manualOrderRef = `MANUAL-${manualPackageId}`;
+
+    try {
+      setGeneratingManualLabel(true);
+
+      const resolvedShippingMethod = selectedMethod.carrierType === 'wegrow'
+        ? `wegrow-${manualSelectedWeGrowCarrier}`
+        : selectedMethod.id;
+
+      const result = await api.generateCarrierLabels(selectedMethod.contractId, {
+        shippingMethod: resolvedShippingMethod,
+        ...(selectedMethod.carrierType === 'wegrow' ? { wegrowCarrier: manualSelectedWeGrowCarrier } : {}),
+        packages: [
+          {
+            id: manualPackageId,
+            orderId: null,
+            orderNumber: manualOrderRef,
+            customerName: manualForm.customerName,
+            address: manualForm.address,
+            country: String(manualForm.country || 'NL').trim().toUpperCase() || 'NL',
+            street: String(manualForm.street || '').trim() || undefined,
+            zipCode: String(manualForm.zipCode || '').trim() || undefined,
+            city: String(manualForm.city || '').trim() || undefined,
+            email: String(manualForm.email || '').trim() || undefined,
+            phone: String(manualForm.phone || '').trim() || undefined,
+            weightKg: safeWeight,
+            weight: safeWeight,
+          },
+        ],
+      });
+
+      const label = (result.labels || [])[0] || null;
+      const methodLabel = selectedMethod.carrierType === 'wegrow' && manualSelectedWeGrowCarrierName
+        ? `${selectedMethod.name} - ${manualSelectedWeGrowCarrierName}`
+        : selectedMethod.name;
+
+      setScannedPackages((prev) => [
+        {
+          id: manualPackageId,
+          orderId: manualPackageId,
+          trackingCode: String(label?.trackingCode || '').trim(),
+          orderNumber: manualOrderRef,
+          customerName: manualForm.customerName,
+          address: manualForm.address,
+          supplier: 'Handmatig',
+          scannedAt: new Date(),
+          labelGenerated: Boolean(label?.labelUrl),
+          country: String(manualForm.country || 'NL').trim().toUpperCase() || 'NL',
+          productImage: 'https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?w=200',
+          labelUrl: label?.labelUrl || undefined,
+          labelCarrier: methodLabel,
+        },
+        ...prev,
+      ]);
+
+      setCurrentPackagesPage(1);
+      setShowManualLabelDialog(false);
+      setManualSelectedShippingMethod('');
+      setManualSelectedWeGrowCarrier('');
+      setManualForm({
+        customerName: '',
+        address: '',
+        country: 'NL',
+        street: '',
+        zipCode: '',
+        city: '',
+        email: '',
+        phone: '',
+        weightKg: '1',
+      });
+
+      toast.success('Handmatig label succesvol aangemaakt', {
+        description: methodLabel,
+      });
+    } catch (error: any) {
+      console.error('Failed to generate manual label:', error);
+      toast.error('Kon handmatig label niet genereren', {
+        description: error?.message || 'Probeer het opnieuw',
+      });
+    } finally {
+      setGeneratingManualLabel(false);
+    }
+  };
+
   const handleProcessOrders = () => {
     const count = selectedPackages.length || scannedPackages.length;
     toast.success(`${count} order(s) worden verwerkt in Bol.com...`, {
@@ -479,12 +612,23 @@ export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
       {/* Scanner Interface */}
       <Card className="border-slate-200 shadow-sm bg-gradient-to-br from-white to-indigo-50/20">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <div className="p-2 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-lg">
-              <Scan className="w-4 h-4 text-white" />
-            </div>
-            Barcode Scanner
-          </CardTitle>
+          <div className="flex items-center justify-between gap-3">
+            <CardTitle className="flex items-center gap-2">
+              <div className="p-2 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-lg">
+                <Scan className="w-4 h-4 text-white" />
+              </div>
+              Barcode Scanner
+            </CardTitle>
+            <Button
+              type="button"
+              variant="outline"
+              className="gap-2 border-slate-200 shadow-sm"
+              onClick={() => setShowManualLabelDialog(true)}
+            >
+              <Plus className="w-4 h-4" />
+              Handmatige label maken
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-5">
           <Alert className="border-indigo-200 bg-indigo-50/50">
@@ -807,7 +951,7 @@ export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
               <label className="text-sm text-slate-700">Verzendmethode</label>
               <Select
                 value={selectedShippingMethod}
-                onValueChange={(value) => {
+                onValueChange={(value: string) => {
                   setSelectedShippingMethod(value);
                   if (value !== 'wegrow') {
                     setSelectedWeGrowCarrier('');
@@ -865,7 +1009,7 @@ export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
                 <label className="text-sm text-slate-700">WeGrow vervoerder</label>
                 <Select value={selectedWeGrowCarrier} onValueChange={setSelectedWeGrowCarrier}>
                   <SelectTrigger className="border-slate-200 shadow-sm">
-                    <SelectValue placeholder="Kies DHL, PostNL of Bpost..." />
+                    <SelectValue placeholder="Kies een WeGrow vervoerder..." />
                   </SelectTrigger>
                   <SelectContent className="border-slate-200 shadow-lg">
                     {wegrowCarrierOptions.map((option) => (
@@ -920,6 +1064,172 @@ export function LabelPrinting({ activeProfile }: LabelPrintingProps) {
                 <Printer className="w-4 h-4" />
               )}
               {generatingLabels ? 'Genereren...' : 'Print Labels'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showManualLabelDialog} onOpenChange={setShowManualLabelDialog}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="w-5 h-5 text-indigo-600" />
+              Handmatige label maken
+            </DialogTitle>
+            <DialogDescription>
+              Maak direct een nieuw label aan met handmatig ingevulde adresgegevens.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 py-2">
+            <div className="space-y-1.5 md:col-span-2">
+              <label className="text-sm text-slate-700">Klantnaam</label>
+              <Input
+                value={manualForm.customerName}
+                onChange={(e) => setManualForm((prev) => ({ ...prev, customerName: e.target.value }))}
+                placeholder="Naam ontvanger"
+              />
+            </div>
+
+            <div className="space-y-1.5 md:col-span-2">
+              <label className="text-sm text-slate-700">Adres (volledig)</label>
+              <Input
+                value={manualForm.address}
+                onChange={(e) => setManualForm((prev) => ({ ...prev, address: e.target.value }))}
+                placeholder="Straat 1, 1234AB Plaats"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm text-slate-700">Straat</label>
+              <Input
+                value={manualForm.street}
+                onChange={(e) => setManualForm((prev) => ({ ...prev, street: e.target.value }))}
+                placeholder="Straat + huisnr"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm text-slate-700">Postcode</label>
+              <Input
+                value={manualForm.zipCode}
+                onChange={(e) => setManualForm((prev) => ({ ...prev, zipCode: e.target.value }))}
+                placeholder="1234AB"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm text-slate-700">Plaats</label>
+              <Input
+                value={manualForm.city}
+                onChange={(e) => setManualForm((prev) => ({ ...prev, city: e.target.value }))}
+                placeholder="Amsterdam"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm text-slate-700">Landcode</label>
+              <Input
+                value={manualForm.country}
+                onChange={(e) => setManualForm((prev) => ({ ...prev, country: e.target.value.toUpperCase() }))}
+                placeholder="NL"
+                maxLength={2}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm text-slate-700">E-mail (optioneel)</label>
+              <Input
+                value={manualForm.email}
+                onChange={(e) => setManualForm((prev) => ({ ...prev, email: e.target.value }))}
+                placeholder="klant@email.nl"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm text-slate-700">Telefoon (optioneel)</label>
+              <Input
+                value={manualForm.phone}
+                onChange={(e) => setManualForm((prev) => ({ ...prev, phone: e.target.value }))}
+                placeholder="+31612345678"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm text-slate-700">Gewicht (kg)</label>
+              <Input
+                value={manualForm.weightKg}
+                onChange={(e) => setManualForm((prev) => ({ ...prev, weightKg: e.target.value }))}
+                placeholder="1"
+              />
+            </div>
+
+            <div className="space-y-1.5 md:col-span-2">
+              <label className="text-sm text-slate-700">Verzendmethode</label>
+              <Select
+                value={manualSelectedShippingMethod}
+                onValueChange={(value: string) => {
+                  setManualSelectedShippingMethod(value);
+                  if (value !== 'wegrow') {
+                    setManualSelectedWeGrowCarrier('');
+                  }
+                }}
+              >
+                <SelectTrigger className="border-slate-200 shadow-sm">
+                  <SelectValue placeholder="Kies een verzendmethode..." />
+                </SelectTrigger>
+                <SelectContent className="border-slate-200 shadow-lg">
+                  {availableShippingMethods.map((method) => (
+                    <SelectItem key={method.id} value={method.id}>{method.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {isManualWeGrowMethod && (
+              <div className="space-y-1.5 md:col-span-2">
+                <label className="text-sm text-slate-700">WeGrow vervoerder</label>
+                <Select value={manualSelectedWeGrowCarrier} onValueChange={setManualSelectedWeGrowCarrier}>
+                  <SelectTrigger className="border-slate-200 shadow-sm">
+                    <SelectValue placeholder="Kies een WeGrow vervoerder..." />
+                  </SelectTrigger>
+                  <SelectContent className="border-slate-200 shadow-lg">
+                    {wegrowCarrierOptions.map((option) => (
+                      <SelectItem key={option.id} value={option.id}>{option.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {manualSelectedShippingMethod && (
+              <div className="md:col-span-2 p-3 rounded-lg border border-indigo-200 bg-indigo-50 text-sm text-indigo-900">
+                <strong>Geselecteerd:</strong> {manualSelectedMethod?.name}
+                {isManualWeGrowMethod && manualSelectedWeGrowCarrierName ? ` - ${manualSelectedWeGrowCarrierName}` : ''}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="sm:justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowManualLabelDialog(false)}
+            >
+              Annuleren
+            </Button>
+            <Button
+              type="button"
+              onClick={handleCreateManualLabel}
+              disabled={!manualSelectedShippingMethod || (isManualWeGrowMethod && !manualSelectedWeGrowCarrier) || generatingManualLabel}
+              className="gap-2 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600"
+            >
+              {generatingManualLabel ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Printer className="w-4 h-4" />
+              )}
+              {generatingManualLabel ? 'Genereren...' : 'Label maken'}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -159,6 +159,23 @@ class ApiService {
     return this.request<any>(`/orders/${id}`);
   }
 
+  async getShipments(params?: {
+    installationId?: string;
+    userScoped?: boolean;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const queryParams = new URLSearchParams();
+    if (params?.installationId) queryParams.append('installationId', params.installationId);
+    if (params?.userScoped) queryParams.append('userScoped', 'true');
+    if (params?.search) queryParams.append('search', params.search);
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+
+    return this.request<{ shipments: any[]; pagination: any }>(`/orders/shipments?${queryParams.toString()}`);
+  }
+
   async createOrder(data: any) {
     return this.request<any>('/orders', {
       method: 'POST',

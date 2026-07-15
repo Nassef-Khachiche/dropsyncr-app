@@ -23,6 +23,12 @@ export function ProfileSwitcher({ activeProfile, onProfileChange }: ProfileSwitc
   const { t } = useLanguage();
   const [installations, setInstallations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const isGlobalAdmin =
+    user?.isGlobalAdmin === true ||
+    user?.isGlobalAdmin === 1 ||
+    user?.isGlobalAdmin === '1' ||
+    user?.isGlobalAdmin === 'true' ||
+    user?.email === 'admin@dropsyncr.com';
 
   useEffect(() => {
     // Only load installations if user is authenticated and token exists
@@ -55,6 +61,10 @@ export function ProfileSwitcher({ activeProfile, onProfileChange }: ProfileSwitc
       
       // Set first installation as active if none selected or current one is invalid
       if (data && data.length > 0) {
+        const canUseInternalAllStores = isGlobalAdmin && data.some((installation: any) => Number(installation.id) === 1);
+        if (activeProfile === 'all' && canUseInternalAllStores) {
+          return;
+        }
         const currentExists = data.some(i => i.id.toString() === activeProfile);
         if (!activeProfile || !currentExists) {
           onProfileChange(data[0].id.toString());
@@ -90,7 +100,10 @@ export function ProfileSwitcher({ activeProfile, onProfileChange }: ProfileSwitc
     }
   };
 
-  const currentInstallation = installations.find(i => i.id.toString() === activeProfile) || installations[0];
+  const canUseInternalAllStores = isGlobalAdmin && installations.some((installation) => Number(installation.id) === 1);
+  const currentInstallation = activeProfile === 'all' && canUseInternalAllStores
+    ? { name: 'Dropsyncr Intern (Alle stores)' }
+    : (installations.find(i => i.id.toString() === activeProfile) || installations[0]);
   
   const ownStores = installations.filter(i => i.type === 'own');
   const fulfilmentStores = installations.filter(i => i.type === 'fulfilment');
@@ -150,6 +163,22 @@ export function ProfileSwitcher({ activeProfile, onProfileChange }: ProfileSwitc
                 </div>
               </DropdownMenuItem>
             ))}
+          </>
+        )}
+
+        {canUseInternalAllStores && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel className="text-slate-500">Dropsyncr Intern</DropdownMenuLabel>
+            <DropdownMenuItem
+              onClick={() => onProfileChange('all')}
+              className={activeProfile === 'all' ? 'bg-indigo-50 text-indigo-900' : ''}
+            >
+              <div className="flex flex-col gap-1">
+                <span>Alle stores</span>
+                <span className="text-xs text-slate-500">Centrale verwerking</span>
+              </div>
+            </DropdownMenuItem>
           </>
         )}
         

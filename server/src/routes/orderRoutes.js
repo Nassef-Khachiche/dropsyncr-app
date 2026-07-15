@@ -1,6 +1,7 @@
 import express from 'express';
 import {
   getOrders,
+  getShipments,
   getOrder,
   createOrder,
   updateOrder,
@@ -16,6 +17,7 @@ router.use(authenticate);
 // Picklist routes — voor /:id anders vangt die ze op
 router.get('/picklist', getPicklist);
 router.post('/pick', pickOrders);
+router.get('/shipments', getShipments);
 
 router.get('/', getOrders);
 router.get('/:id', getOrder);

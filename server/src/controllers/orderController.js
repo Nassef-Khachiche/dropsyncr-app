@@ -540,6 +540,115 @@ export const updateOrder = async (req, res) => {
   }
 };
 
+export const getShipments = async (req, res) => {
+  try {
+    const { installationId, userScoped, search, page = 1, limit = 50 } = req.query;
+    const parsedPage = Math.max(1, parseInt(page, 10) || 1);
+    const parsedLimit = Math.min(200, Math.max(1, parseInt(limit, 10) || 50));
+    const skip = (parsedPage - 1) * parsedLimit;
+    const isAllStoresMode = !installationId || installationId === 'all';
+    const forceUserScope = userScoped === 'true';
+
+    let baseOrderWhere = {};
+    if (req.user.isGlobalAdmin && !forceUserScope) {
+      if (!isAllStoresMode) {
+        const parsedInstallationId = parseInt(installationId, 10);
+        if (Number.isNaN(parsedInstallationId)) {
+          return res.status(400).json({ error: 'Invalid installation ID' });
+        }
+        baseOrderWhere = { installationId: parsedInstallationId };
+      }
+    } else {
+      const userInstallations = await prisma.userInstallation.findMany({
+        where: { userId: req.user.id },
+        select: { installationId: true },
+      });
+      const installationIds = userInstallations.map((entry) => entry.installationId);
+
+      if (!isAllStoresMode) {
+        const parsedInstallationId = parseInt(installationId, 10);
+        if (Number.isNaN(parsedInstallationId)) {
+          return res.status(400).json({ error: 'Invalid installation ID' });
+        }
+        if (!installationIds.includes(parsedInstallationId)) {
+          return res.status(403).json({ error: 'Access denied to this installation' });
+        }
+        baseOrderWhere = { installationId: parsedInstallationId };
+      } else {
+        baseOrderWhere = { installationId: { in: installationIds } };
+      }
+    }
+
+    const searchValue = String(search || '').trim();
+    const where = {
+      ...(searchValue
+        ? {
+            OR: [
+              { labelUrl: { contains: searchValue } },
+              { status: { contains: searchValue } },
+              { order: { orderNumber: { contains: searchValue } } },
+              { order: { customerName: { contains: searchValue } } },
+              { order: { supplierTracking: { contains: searchValue } } },
+              { carrier: { contractName: { contains: searchValue } } },
+              { carrier: { carrierType: { contains: searchValue } } },
+            ],
+          }
+        : {}),
+      order: baseOrderWhere,
+    };
+
+    const [shipments, total] = await Promise.all([
+      prisma.labelHistory.findMany({
+        where,
+        include: {
+          carrier: {
+            select: {
+              id: true,
+              carrierType: true,
+              contractName: true,
+            },
+          },
+          order: {
+            select: {
+              id: true,
+              orderNumber: true,
+              customerName: true,
+              supplierTracking: true,
+              shippingMethod: true,
+              installationId: true,
+              storeName: true,
+              country: true,
+              createdAt: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: parsedLimit,
+      }),
+      prisma.labelHistory.count({ where }),
+    ]);
+
+    const normalizedShipments = shipments.map((shipment) => ({
+      ...shipment,
+      labelUrl: normalizeLabelUrlForResponse(shipment.labelUrl, req),
+    }));
+
+    res.json({
+      shipments: normalizedShipments,
+      pagination: {
+        page: parsedPage,
+        limit: parsedLimit,
+        total,
+        pages: Math.max(1, Math.ceil(total / parsedLimit)),
+      },
+    });
+  } catch (error) {
+    console.error('Get shipments error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
 export const deleteOrder = async (req, res) => {
   try {
     const { id } = req.params;

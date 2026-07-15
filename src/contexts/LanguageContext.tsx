@@ -10,6 +10,7 @@ type TranslationKey =
   | 'orders'
   | 'tracking'
   | 'labels'
+  | 'shipments'
   | 'integrations'
   | 'carriers'
   | 'settings'
@@ -314,6 +315,7 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     orders: 'Orders',
     tracking: 'Tracking',
     labels: 'Labels',
+    shipments: 'Shipments',
     integrations: 'Integrations',
     carriers: 'Carriers',
     settings: 'Settings',
@@ -615,6 +617,7 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     orders: 'Bestellingen',
     tracking: 'Tracking',
     labels: 'Labels',
+    shipments: 'Shipments',
     integrations: 'Integraties',
     carriers: 'Vervoerders',
     settings: 'Instellingen',
@@ -916,6 +919,7 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     orders: 'Bestellungen',
     tracking: 'Sendungsverfolgung',
     labels: 'Etiketten',
+    shipments: 'Sendungen',
     integrations: 'Integrationen',
     carriers: 'Versanddienstleister',
     settings: 'Einstellungen',

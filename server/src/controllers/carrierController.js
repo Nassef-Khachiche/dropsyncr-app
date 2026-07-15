@@ -139,13 +139,11 @@ const getWeGrowAuthConfig = (rawCredentials = {}) => {
 };
 
 const WEGROW_SERVICE_OPTIONS = {
-  'dhl-nl': { label: 'DHL NL', defaultServiceCode: null, fallbackServiceKeys: ['dhl'] },
-  'dhl-for-you-envelop': { label: 'DHL For You - Envelop', defaultServiceCode: null, fallbackServiceKeys: ['dhl'] },
-  'dhl-for-you-brievenbuspakje': { label: 'DHL For You Brievenbuspakje', defaultServiceCode: null, fallbackServiceKeys: ['dhl'] },
-  'dhl-for-you': { label: 'DHL For You', defaultServiceCode: null, fallbackServiceKeys: ['dhl'] },
+  'dhl-nl': { label: 'DHL', defaultServiceCode: null, fallbackServiceKeys: ['dhl'] },
   'postnl-nederland-brievenbuspakketje-0-2kg': { label: 'PostNL Brievenbuspakketje 0-2kg', defaultServiceCode: null, fallbackServiceKeys: ['postnl'] },
   'postnl-belgie-standaard-0-23kg': { label: 'PostNL België Standaard 0-23kg', defaultServiceCode: null, fallbackServiceKeys: ['postnl'] },
-  'dpd-standaard': { label: 'DPD Standaard', defaultServiceCode: 'wegrow_home_premium', fallbackServiceKeys: ['dpd'] },
+  'dpd-standaard': { label: 'DPD', defaultServiceCode: 'wegrow_postal_tracked_parcel', fallbackServiceKeys: ['dpd'] },
+  'poste-italiane-standaard': { label: 'Poste Italiane', defaultServiceCode: null, fallbackServiceKeys: ['postnl'] },
 };
 
 const normalizeWeGrowServiceCodeMap = (rawServiceCodeMap) => {
@@ -297,12 +295,11 @@ const WEGROW_SELECTED_CARRIER_COUNTRY_SERVICE_CODE_OVERRIDES = {
     BE: 'wegrow_home_economy',
   },
   'dpd-standaard': {
-    NL: 'wegrow_home_premium',
-    AT: 'wegrow_home_premium',
+    NL: 'wegrow_home_economy',
+    BE: 'wegrow_home_economy',
+  },
+  'poste-italiane-standaard': {
     IT: 'wegrow_home_premium',
-    ES: 'wegrow_home_premium',
-    PT: 'wegrow_home_premium',
-    SI: 'wegrow_home_premium',
   },
 };
 
@@ -1139,6 +1136,23 @@ export const generateCarrierLabels = async (req, res) => {
           ? Math.max(1, Math.round(rawWeightGrams / 1000))
           : 1;
 
+        const recipientCountry = String(pkg.country || 'NL').trim().toUpperCase();
+        const senderAddress = recipientCountry === 'DE'
+          ? {
+              name: 'Dropsyncr Warehouse',
+              street: 'Georg-Elser-Straße 14',
+              country: 'DE',
+              zipCode: '46446',
+              city: 'Emmerich am Rhein',
+            }
+          : {
+              name: 'Dropsyncr Warehouse',
+              street: 'Warehouse Street 1',
+              country: 'NL',
+              zipCode: '1012AB',
+              city: 'Amsterdam',
+            };
+
         return `<?xml version="1.0" encoding="UTF-8"?>
   <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
                     xmlns:auth="http://dpd.com/common/service/types/Authentication/2.0"
@@ -1161,11 +1175,11 @@ export const generateCarrierLabels = async (req, res) => {
             <sendingDepot>${depotNumber}</sendingDepot>
             <product>CL</product>
             <sender>
-              <name1>Sender Company</name1>
-              <street>Warehouse Street 1</street>
-              <country>NL</country>
-              <zipCode>1012AB</zipCode>
-              <city>Amsterdam</city>
+              <name1>${senderAddress.name}</name1>
+              <street>${senderAddress.street}</street>
+              <country>${senderAddress.country}</country>
+              <zipCode>${senderAddress.zipCode}</zipCode>
+              <city>${senderAddress.city}</city>
             </sender>
             <recipient>
               <name1>${pkg.customerName || 'Recipient'}</name1>

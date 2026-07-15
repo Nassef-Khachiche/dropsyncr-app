@@ -3,6 +3,7 @@ import { AppSidebar } from './components/AppSidebar';
 import { OrdersOverview } from './components/OrdersOverview';
 import { TrackingManager } from './components/TrackingManager';
 import { LabelPrinting } from './components/LabelPrinting';
+import { Shipments } from './components/Shipments';
 import { Integrations } from './components/Integrations';
 import { Carriers } from './components/Carriers';
 import { ProfileSwitcher } from './components/ProfileSwitcher';
@@ -63,6 +64,8 @@ export default function App() {
         return <TrackingManager activeProfile={activeProfile} />;
       case 'labels':
         return <LabelPrinting activeProfile={activeProfile} />;
+      case 'shipments':
+        return <Shipments activeProfile={activeProfile} />;
       case 'returns':
         return <Retouren activeProfile={activeProfile} />;
       case 'integrations':

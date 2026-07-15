@@ -107,13 +107,11 @@ interface BolDeliveryOption {
 const VVB_CONTRACT_ID = 'vvb';
 
 const wegrowCarrierOptions = [
-  { id: 'dhl-nl', name: 'DHL NL', logo: dhlLogo },
-  { id: 'dhl-for-you-envelop', name: 'DHL For You - Envelop', logo: dhlLogo },
-  { id: 'dhl-for-you-brievenbuspakje', name: 'DHL For You Brievenbuspakje', logo: dhlLogo },
-  { id: 'dhl-for-you', name: 'DHL For You', logo: dhlLogo },
+  { id: 'dhl-nl', name: 'DHL', logo: dhlLogo },
   { id: 'postnl-nederland-brievenbuspakketje-0-2kg', name: 'PostNL Brievenbuspakketje 0-2kg', logo: postnlLogo },
   { id: 'postnl-belgie-standaard-0-23kg', name: 'PostNL België Standaard 0-23kg', logo: postnlLogo },
   { id: 'dpd-standaard', name: 'DPD', logo: dpdLogo },
+  { id: 'poste-italiane-standaard', name: 'Poste Italiane', logo: postnlLogo },
 ];
 
 const getWegrowCarrierOptionById = (carrierId: string) => {
@@ -785,7 +783,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
       const [data, integrationsData] = await Promise.all([
         api.getOrders({
           installationId: isAllStoresSelected ? undefined : activeProfile,
-          userScoped: isAllStoresSelected,
+          userScoped: isAllStoresSelected && !isGlobalAdmin,
           status: filterStatus !== 'all' ? filterStatus : undefined,
           search: searchQuery || undefined,
           page: currentPage,
@@ -795,7 +793,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
           storeName: filterStore !== 'all' ? filterStore : undefined,
           vvbWindow: filterVvbWindow || undefined,
         }),
-        isAllStoresSelected ? api.getIntegrations(undefined, true) : Promise.resolve(null),
+        isAllStoresSelected ? api.getIntegrations(undefined, !isGlobalAdmin) : Promise.resolve(null),
       ]);
 
       if (integrationsData) {
@@ -1869,23 +1867,38 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
   const selectedBolDeliveryOption = bolDeliveryOptions.find(
     (option) => String(option?.shippingLabelOfferId || '').trim() === selectedBolDeliveryOptionId
   ) || null;
+  const isLabelOrderVvb = Boolean(labelOrder?.isVVB)
+    || String(labelOrder?.shippingMethod || '').trim().toLowerCase() === 'bol.com';
+
+  const isVvbContract = (contract: CarrierContract) => {
+    const normalizedId = String(contract.id || '').trim().toLowerCase();
+    const normalizedName = String(contract.contractName || '').trim().toLowerCase();
+    return normalizedId === VVB_CONTRACT_ID || normalizedName === 'vvb';
+  };
+
   const hasNativeVvbContract = carrierContracts.some((contract) => {
     const normalizedId = String(contract.id || '').trim().toLowerCase();
     const normalizedName = String(contract.contractName || '').trim().toLowerCase();
     return normalizedId === VVB_CONTRACT_ID || normalizedName === 'vvb';
   });
 
-  const labelDialogContracts: CarrierContract[] = hasNativeVvbContract
-    ? carrierContracts
-    : [
-        ...carrierContracts,
-        {
-          id: VVB_CONTRACT_ID,
-          carrierType: 'bol',
-          contractName: 'VVB',
-          active: true,
-        },
-      ];
+  const nonVvbCarrierContracts = carrierContracts.filter((contract) => !isVvbContract(contract));
+
+  const labelDialogContracts: CarrierContract[] = isLabelOrderVvb
+    ? (
+        hasNativeVvbContract
+          ? carrierContracts
+          : [
+              ...nonVvbCarrierContracts,
+              {
+                id: VVB_CONTRACT_ID,
+                carrierType: 'bol',
+                contractName: 'VVB',
+                active: true,
+              },
+            ]
+      )
+    : nonVvbCarrierContracts;
 
   const selectedReturnContract = returnCarrierContracts.find(
     (contract) => String(contract.id) === selectedReturnContractId
