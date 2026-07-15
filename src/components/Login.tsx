@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { LogIn, Mail, Lock, Loader2, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import logo from '../assets/dropsyncr-logo.png';
+import logo from '../assets/dropsyncr-wit-transparant.png';
 
 export function Login() {
   const [email, setEmail] = useState('');

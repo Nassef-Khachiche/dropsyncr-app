@@ -21,7 +21,7 @@ import { useState } from 'react';
 import { cn } from './ui/utils';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
-import logo from '../assets/dropsyncr-logo.png';
+import logo from '../assets/dropsyncr-wit.png';
 
 
 interface AppSidebarProps {
