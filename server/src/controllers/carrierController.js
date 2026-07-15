@@ -173,6 +173,17 @@ const normalizeWeGrowServiceCodeMap = (rawServiceCodeMap) => {
   }, {});
 };
 
+const normalizeWeGrowDpdServiceCode = (serviceCode, selectedCarrier) => {
+  const normalizedCarrier = String(selectedCarrier || '').trim().toLowerCase();
+  const normalizedServiceCode = String(serviceCode || '').trim();
+
+  if (normalizedCarrier === 'dpd-standaard' && normalizedServiceCode === 'wegrow_home_economy') {
+    return 'wegrow_home_premium';
+  }
+
+  return normalizedServiceCode;
+};
+
 const WEGROW_STANDARD_SERVICE_CODE_BY_COUNTRY = {
   DE: {
     home_premium: 'wegrow_home_premium',
@@ -1305,7 +1316,7 @@ export const generateCarrierLabels = async (req, res) => {
       const optionFallbackServiceCodeValue = optionFallbackServiceCode
         ? String(serviceCodeByCarrier[optionFallbackServiceCode]).trim()
         : '';
-      const selectedCarrierServiceCode = selectedWeGrowCarrier
+      const rawSelectedCarrierServiceCode = selectedWeGrowCarrier
         ? (
           serviceCodeMapFromCredentials[selectedWeGrowCarrier]
           || (serviceCodeByCarrier[selectedWeGrowCarrier] ? String(serviceCodeByCarrier[selectedWeGrowCarrier]).trim() : '')
@@ -1314,6 +1325,10 @@ export const generateCarrierLabels = async (req, res) => {
           || ''
         )
         : '';
+      const selectedCarrierServiceCode = normalizeWeGrowDpdServiceCode(
+        rawSelectedCarrierServiceCode,
+        selectedWeGrowCarrier
+      );
       const genericServiceCode = String(credentials.serviceCode || '').trim();
 
       // Determine whether any per-carrier service codes have been explicitly configured.
