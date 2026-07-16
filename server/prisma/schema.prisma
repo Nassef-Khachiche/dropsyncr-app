@@ -15,11 +15,15 @@ model User {
   name          String
   role          String             @default("user")
   isGlobalAdmin Boolean            @default(false)
+  defaultInstallationId Int?
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
   orders        Order[]
   tickets       Ticket[]
   installations UserInstallation[]
+  defaultInstallation Installation? @relation("UserDefaultInstallation", fields: [defaultInstallationId], references: [id], onDelete: SetNull)
+
+  @@index([defaultInstallationId])
 }
 
 model Installation {
@@ -39,6 +43,7 @@ model Installation {
   returns      Return[]
   products     Product[]
   users        UserInstallation[]
+  defaultForUsers User[]          @relation("UserDefaultInstallation")
   warehouseAddress WarehouseAddress?
   warehouseLocations WarehouseLocation[]
 }

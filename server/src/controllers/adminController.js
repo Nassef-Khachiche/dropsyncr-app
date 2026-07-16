@@ -24,7 +24,14 @@ export const getUsers = async (req, res) => {
           name: true,
           role: true,
           isGlobalAdmin: true,
+          defaultInstallationId: true,
           createdAt: true,
+          defaultInstallation: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
           installations: {
             include: {
               installation: {
@@ -63,7 +70,7 @@ export const getUsers = async (req, res) => {
 
 export const createUser = async (req, res) => {
   try {
-    const { email, password, name, role, isGlobalAdmin, installationIds } = req.body;
+    const { email, password, name, role, isGlobalAdmin, installationIds, defaultInstallationId } = req.body;
 
     // Validation
     if (!email || !password || !name) {
@@ -87,6 +94,29 @@ export const createUser = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    const parsedInstallationIds = Array.from(new Set(
+      (Array.isArray(installationIds) ? installationIds : [])
+        .map((id) => parseInt(id, 10))
+        .filter((id) => Number.isInteger(id) && id > 0)
+    ));
+
+    const parsedDefaultInstallationId = defaultInstallationId !== undefined && defaultInstallationId !== null && String(defaultInstallationId).trim() !== ''
+      ? parseInt(defaultInstallationId, 10)
+      : null;
+
+    if (parsedDefaultInstallationId !== null && !Number.isInteger(parsedDefaultInstallationId)) {
+      return res.status(400).json({ error: 'Invalid default installation ID' });
+    }
+
+    if (
+      parsedDefaultInstallationId !== null
+      && !parsedInstallationIds.includes(parsedDefaultInstallationId)
+    ) {
+      return res.status(400).json({ error: 'Default installation must be one of the assigned installations' });
+    }
+
+    const resolvedDefaultInstallationId = parsedDefaultInstallationId ?? (parsedInstallationIds[0] || null);
+
     const user = await prisma.user.create({
       data: {
         email,
@@ -94,8 +124,9 @@ export const createUser = async (req, res) => {
         name,
         role: role || 'user',
         isGlobalAdmin: isGlobalAdmin || false,
-        installations: installationIds && installationIds.length > 0 ? {
-          create: installationIds.map((id) => ({
+        defaultInstallationId: resolvedDefaultInstallationId,
+        installations: parsedInstallationIds.length > 0 ? {
+          create: parsedInstallationIds.map((id) => ({
             installationId: parseInt(id),
           })),
         } : undefined,
@@ -106,7 +137,14 @@ export const createUser = async (req, res) => {
         name: true,
         role: true,
         isGlobalAdmin: true,
+        defaultInstallationId: true,
         createdAt: true,
+        defaultInstallation: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
       },
     });
 
@@ -123,7 +161,23 @@ export const createUser = async (req, res) => {
 export const updateUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const { email, name, role, isGlobalAdmin, password, installationIds } = req.body;
+    const { email, name, role, isGlobalAdmin, password, installationIds, defaultInstallationId } = req.body;
+    const userId = parseInt(id, 10);
+
+    const existingUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        defaultInstallationId: true,
+        installations: {
+          select: { installationId: true },
+        },
+      },
+    });
+
+    if (!existingUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
 
     const updateData = {};
     if (email !== undefined) updateData.email = email;
@@ -134,26 +188,56 @@ export const updateUser = async (req, res) => {
       updateData.password = await bcrypt.hash(password, 10);
     }
 
+    const parsedInstallationIds = installationIds !== undefined
+      ? Array.from(new Set(
+          (Array.isArray(installationIds) ? installationIds : [])
+            .map((instId) => parseInt(instId, 10))
+            .filter((instId) => Number.isInteger(instId) && instId > 0)
+        ))
+      : existingUser.installations.map((entry) => entry.installationId);
+
+    const parsedDefaultInstallationId = defaultInstallationId !== undefined
+      ? (
+          defaultInstallationId === null || String(defaultInstallationId).trim() === ''
+            ? null
+            : parseInt(defaultInstallationId, 10)
+        )
+      : existingUser.defaultInstallationId;
+
+    if (parsedDefaultInstallationId !== null && !Number.isInteger(parsedDefaultInstallationId)) {
+      return res.status(400).json({ error: 'Invalid default installation ID' });
+    }
+
+    if (
+      parsedDefaultInstallationId !== null
+      && !parsedInstallationIds.includes(parsedDefaultInstallationId)
+    ) {
+      return res.status(400).json({ error: 'Default installation must be one of the assigned installations' });
+    }
+
+    const resolvedDefaultInstallationId = parsedDefaultInstallationId ?? (parsedInstallationIds[0] || null);
+    updateData.defaultInstallationId = resolvedDefaultInstallationId;
+
     // Handle installation assignments
     if (installationIds !== undefined) {
       // Remove existing assignments
       await prisma.userInstallation.deleteMany({
-        where: { userId: parseInt(id) },
+        where: { userId },
       });
 
       // Create new assignments
-      if (installationIds.length > 0) {
+      if (parsedInstallationIds.length > 0) {
         await prisma.userInstallation.createMany({
-          data: installationIds.map((instId) => ({
-            userId: parseInt(id),
-            installationId: parseInt(instId),
+          data: parsedInstallationIds.map((instId) => ({
+            userId,
+            installationId: instId,
           })),
         });
       }
     }
 
     const user = await prisma.user.update({
-      where: { id: parseInt(id) },
+      where: { id: userId },
       data: updateData,
       select: {
         id: true,
@@ -161,7 +245,14 @@ export const updateUser = async (req, res) => {
         name: true,
         role: true,
         isGlobalAdmin: true,
+        defaultInstallationId: true,
         createdAt: true,
+        defaultInstallation: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
         installations: {
           include: {
             installation: {

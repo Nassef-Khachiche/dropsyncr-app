@@ -61,6 +61,18 @@ export function ProfileSwitcher({ activeProfile, onProfileChange }: ProfileSwitc
       
       // Set first installation as active if none selected or current one is invalid
       if (data && data.length > 0) {
+        const defaultInstallationId = user?.defaultInstallationId !== undefined && user?.defaultInstallationId !== null
+          ? String(user.defaultInstallationId)
+          : null;
+        const defaultExists = defaultInstallationId
+          ? data.some((installation: any) => String(installation.id) === defaultInstallationId)
+          : false;
+
+        if (defaultExists && activeProfile !== defaultInstallationId) {
+          onProfileChange(defaultInstallationId as string);
+          return;
+        }
+
         const canUseInternalAllStores = isGlobalAdmin && data.some((installation: any) => Number(installation.id) === 1);
         if (activeProfile === 'all' && canUseInternalAllStores) {
           return;
@@ -74,7 +86,7 @@ export function ProfileSwitcher({ activeProfile, onProfileChange }: ProfileSwitc
       console.error('[ProfileSwitcher] Failed to load installations:', error.message);
       
       // Retry once after a short delay if it's an auth error (might be timing issue)
-      if (retryCount === 0 && error.message?.includes('session') || error.message?.includes('Authentication')) {
+      if (retryCount === 0 && (error.message?.includes('session') || error.message?.includes('Authentication'))) {
         console.log('[ProfileSwitcher] Retrying installation load after delay...');
         setTimeout(() => {
           loadInstallations(1);

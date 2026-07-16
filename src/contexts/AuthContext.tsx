@@ -7,6 +7,7 @@ interface User {
   name: string;
   role?: string;
   isGlobalAdmin?: boolean;
+  defaultInstallationId?: number | null;
 }
 
 interface AuthContextType {
@@ -45,6 +46,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const applyPreferredActiveProfile = async (userData: User) => {
+    try {
+      const availableInstallations = await api.getInstallations();
+      if (!Array.isArray(availableInstallations) || availableInstallations.length === 0) {
+        localStorage.removeItem('activeProfile');
+        return;
+      }
+
+      const defaultInstallationId = userData.defaultInstallationId;
+      const defaultInstallationExists = defaultInstallationId !== undefined
+        && defaultInstallationId !== null
+        && availableInstallations.some((installation) => Number(installation.id) === Number(defaultInstallationId));
+
+      if (defaultInstallationExists && defaultInstallationId !== null && defaultInstallationId !== undefined) {
+        localStorage.setItem('activeProfile', String(defaultInstallationId));
+        return;
+      }
+
+      const currentProfile = localStorage.getItem('activeProfile');
+      const canUseInternalAllStores = Boolean(userData.isGlobalAdmin)
+        && availableInstallations.some((installation) => Number(installation.id) === 1);
+
+      if (currentProfile === 'all' && canUseInternalAllStores) {
+        return;
+      }
+
+      const currentExists = currentProfile
+        ? availableInstallations.some((installation) => String(installation.id) === currentProfile)
+        : false;
+
+      if (!currentExists) {
+        localStorage.setItem('activeProfile', String(availableInstallations[0].id));
+      }
+    } catch (error) {
+      console.error('Failed to apply preferred active profile:', error);
+    }
+  };
+
   const verifyToken = async (tokenToVerify: string) => {
     try {
       const data = await api.verify();
@@ -58,6 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Update localStorage with fresh user data (including isGlobalAdmin)
       localStorage.setItem('user', JSON.stringify(userData));
       localStorage.setItem('token', tokenToVerify); // Ensure token is stored
+      await applyPreferredActiveProfile(userData);
     } catch (error) {
       console.error('Token verification failed:', error);
       // Clear invalid token and user data
@@ -92,11 +132,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('user', JSON.stringify(verifiedUserData));
       setToken(data.token);
       setUser(verifiedUserData);
+      await applyPreferredActiveProfile(verifiedUserData);
     } catch (error) {
       console.error('Token verification after login failed:', error);
       // If verification fails, still set the token (might be a temporary issue)
       setToken(data.token);
       setUser(userData);
+      await applyPreferredActiveProfile(userData);
       throw new Error('Login successful but token verification failed. Please try again.');
     }
   };

@@ -20,6 +20,15 @@ export const login = async (req, res) => {
 
     const user = await prisma.user.findUnique({
       where: { email },
+      select: {
+        id: true,
+        email: true,
+        password: true,
+        name: true,
+        role: true,
+        isGlobalAdmin: true,
+        defaultInstallationId: true,
+      },
     });
 
     if (!user) {
@@ -69,6 +78,7 @@ export const login = async (req, res) => {
         name: user.name,
         role: user.role,
         isGlobalAdmin: user.isGlobalAdmin,
+        defaultInstallationId: user.defaultInstallationId,
       },
     });
   } catch (error) {
@@ -87,6 +97,7 @@ export const verify = async (req, res) => {
         name: true,
         role: true,
         isGlobalAdmin: true,
+        defaultInstallationId: true,
       },
     });
 

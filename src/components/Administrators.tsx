@@ -11,7 +11,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
 } from './ui/dialog';
 import {
@@ -29,7 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from './ui/select';
-import { Plus, Search, Edit, Trash2, Shield, Mail, User, Loader2 } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Shield, Mail, User, Loader2, ChevronLeft, ChevronRight, Building2 } from 'lucide-react';
 import { api } from '../services/api';
 import { toast } from 'sonner';
 
@@ -40,8 +39,18 @@ interface User {
   role: string;
   isGlobalAdmin: boolean;
   installations: Array<{ id: number; name: string }>;
+  defaultInstallationId?: number | null;
   createdAt: string;
 }
+
+interface Installation {
+  id: number;
+  name: string;
+  type?: string;
+  country?: string;
+}
+
+const INSTALLATIONS_PER_PAGE = 8;
 
 export function Administrators() {
   const [users, setUsers] = useState<User[]>([]);
@@ -49,8 +58,11 @@ export function Administrators() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isAssignmentDialogOpen, setIsAssignmentDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [installations, setInstallations] = useState<any[]>([]);
+  const [installations, setInstallations] = useState<Installation[]>([]);
+  const [installationSearchQuery, setInstallationSearchQuery] = useState('');
+  const [installationPage, setInstallationPage] = useState(1);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -58,6 +70,7 @@ export function Administrators() {
     role: 'user',
     isGlobalAdmin: false,
     installationIds: [] as number[],
+    defaultInstallationId: null as number | null,
   });
 
   useEffect(() => {
@@ -108,6 +121,7 @@ export function Administrators() {
       role: 'user',
       isGlobalAdmin: false,
       installationIds: [],
+      defaultInstallationId: null,
     });
     setIsDialogOpen(true);
   };
@@ -121,6 +135,7 @@ export function Administrators() {
       role: user.role,
       isGlobalAdmin: user.isGlobalAdmin,
       installationIds: user.installations.map(i => i.id),
+      defaultInstallationId: user.defaultInstallationId ?? user.installations[0]?.id ?? null,
     });
     setIsDialogOpen(true);
   };
@@ -145,13 +160,32 @@ export function Administrators() {
       return;
     }
 
+    if (!formData.isGlobalAdmin && formData.installationIds.length === 0) {
+      toast.error('Selecteer minimaal 1 installatie voor deze gebruiker');
+      return;
+    }
+
+    if (
+      !formData.isGlobalAdmin
+      && formData.defaultInstallationId !== null
+      && !formData.installationIds.includes(formData.defaultInstallationId)
+    ) {
+      toast.error('Standaard installatie moet onderdeel zijn van de geselecteerde installaties');
+      return;
+    }
+
     try {
+      const resolvedDefaultInstallationId = formData.isGlobalAdmin
+        ? formData.defaultInstallationId ?? null
+        : (formData.defaultInstallationId ?? formData.installationIds[0] ?? null);
+
       const submitData = {
         email: formData.email,
         name: formData.name,
         role: formData.role,
         isGlobalAdmin: formData.isGlobalAdmin,
         installationIds: formData.installationIds,
+        defaultInstallationId: resolvedDefaultInstallationId,
         ...(formData.password && { password: formData.password }),
       };
 
@@ -171,6 +205,7 @@ export function Administrators() {
         role: 'user',
         isGlobalAdmin: false,
         installationIds: [],
+        defaultInstallationId: null,
       });
       setEditingUser(null);
       await loadUsers();
@@ -182,13 +217,66 @@ export function Administrators() {
   };
 
   const toggleInstallation = (installationId: number) => {
-    setFormData(prev => ({
-      ...prev,
-      installationIds: prev.installationIds.includes(installationId)
+    setFormData(prev => {
+      const isCurrentlySelected = prev.installationIds.includes(installationId);
+      const nextInstallationIds = isCurrentlySelected
         ? prev.installationIds.filter(id => id !== installationId)
-        : [...prev.installationIds, installationId],
-    }));
+        : [...prev.installationIds, installationId];
+
+      let nextDefaultInstallationId = prev.defaultInstallationId;
+      if (!nextInstallationIds.includes(Number(nextDefaultInstallationId))) {
+        nextDefaultInstallationId = nextInstallationIds[0] ?? null;
+      }
+
+      return {
+        ...prev,
+        installationIds: nextInstallationIds,
+        defaultInstallationId: nextDefaultInstallationId,
+      };
+    });
   };
+
+  const setDefaultInstallation = (installationId: number) => {
+    setFormData((prev) => {
+      if (!prev.installationIds.includes(installationId)) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        defaultInstallationId: installationId,
+      };
+    });
+  };
+
+  const filteredInstallations = installations.filter((installation) => {
+    if (!installationSearchQuery.trim()) return true;
+
+    const query = installationSearchQuery.toLowerCase();
+    return (
+      installation.name?.toLowerCase().includes(query)
+      || installation.country?.toLowerCase().includes(query)
+      || installation.type?.toLowerCase().includes(query)
+    );
+  });
+
+  const totalInstallationPages = Math.max(1, Math.ceil(filteredInstallations.length / INSTALLATIONS_PER_PAGE));
+  const paginatedInstallations = filteredInstallations.slice(
+    (installationPage - 1) * INSTALLATIONS_PER_PAGE,
+    installationPage * INSTALLATIONS_PER_PAGE,
+  );
+
+  useEffect(() => {
+    setInstallationPage(1);
+  }, [installationSearchQuery, isAssignmentDialogOpen]);
+
+  const selectedInstallations = installations.filter((installation) =>
+    formData.installationIds.includes(installation.id)
+  );
+
+  const defaultInstallationName = selectedInstallations.find(
+    (installation) => installation.id === formData.defaultInstallationId
+  )?.name;
 
   return (
     <div className="space-y-6">
@@ -227,6 +315,7 @@ export function Administrators() {
                     <TableHead>Naam</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Rol</TableHead>
+                    <TableHead>Installaties</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Acties</TableHead>
                   </TableRow>
@@ -234,7 +323,7 @@ export function Administrators() {
                 <TableBody>
                   {users.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center py-8">
+                      <TableCell colSpan={6} className="text-center py-8">
                         {error ? (
                           <div className="space-y-2">
                             <p className="text-red-600 font-medium">Error loading users</p>
@@ -270,6 +359,27 @@ export function Administrators() {
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline">{user.role}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          {user.installations.length === 0 ? (
+                            <span className="text-sm text-slate-500">Geen installatie</span>
+                          ) : (
+                            <div className="flex flex-wrap gap-1.5">
+                              {user.installations.slice(0, 3).map((installation) => (
+                                <Badge
+                                  key={installation.id}
+                                  variant="outline"
+                                  className={user.defaultInstallationId === installation.id ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : ''}
+                                >
+                                  {installation.name}
+                                  {user.defaultInstallationId === installation.id ? ' (standaard)' : ''}
+                                </Badge>
+                              ))}
+                              {user.installations.length > 3 && (
+                                <Badge variant="outline">+{user.installations.length - 3}</Badge>
+                              )}
+                            </div>
+                          )}
                         </TableCell>
                         <TableCell>
                           {user.isGlobalAdmin ? (
@@ -395,29 +505,37 @@ export function Administrators() {
 
             {!formData.isGlobalAdmin && (
               <div className="space-y-2">
-                <Label>Toegewezen Installaties</Label>
-                <div className="border border-slate-200 rounded-lg p-4 max-h-48 overflow-y-auto">
-                  {installations.length === 0 ? (
-                    <p className="text-sm text-slate-500">Geen installaties beschikbaar</p>
+                <div className="flex items-center justify-between gap-3">
+                  <Label>Toegewezen Installaties *</Label>
+                  <Button type="button" variant="outline" onClick={() => setIsAssignmentDialogOpen(true)}>
+                    Installaties Toewijzen
+                  </Button>
+                </div>
+
+                <div className="rounded-lg border border-slate-200 p-3 space-y-2">
+                  <div className="text-sm text-slate-600">
+                    {formData.installationIds.length} installatie(s) geselecteerd
+                  </div>
+                  {defaultInstallationName ? (
+                    <div className="text-sm text-emerald-700">Standaard: {defaultInstallationName}</div>
                   ) : (
-                    <div className="space-y-2">
-                      {installations.map((inst) => (
-                        <div key={inst.id} className="flex items-center space-x-2">
-                          <Checkbox
-                            id={`inst-${inst.id}`}
-                            checked={formData.installationIds.includes(inst.id)}
-                            onCheckedChange={() => toggleInstallation(inst.id)}
-                          />
-                          <Label
-                            htmlFor={`inst-${inst.id}`}
-                            className="cursor-pointer flex-1"
-                          >
-                            {inst.name} ({inst.type})
-                          </Label>
-                        </div>
-                      ))}
-                    </div>
+                    <div className="text-sm text-slate-500">Nog geen standaard installatie gekozen</div>
                   )}
+
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedInstallations.slice(0, 8).map((installation) => (
+                      <Badge
+                        key={installation.id}
+                        variant="outline"
+                        className={installation.id === formData.defaultInstallationId ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : ''}
+                      >
+                        {installation.name}
+                      </Badge>
+                    ))}
+                    {selectedInstallations.length > 8 && (
+                      <Badge variant="outline">+{selectedInstallations.length - 8}</Badge>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -435,6 +553,132 @@ export function Administrators() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isAssignmentDialogOpen} onOpenChange={setIsAssignmentDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Installaties Toewijzen</DialogTitle>
+            <DialogDescription>
+              Selecteer installaties en kies exact 1 standaard installatie voor deze gebruiker.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <Input
+                value={installationSearchQuery}
+                onChange={(event) => setInstallationSearchQuery(event.target.value)}
+                placeholder="Zoek op naam, type of land..."
+                className="pl-10"
+              />
+            </div>
+
+            <div className="rounded-xl border border-slate-200 overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-slate-50/70">
+                    <TableHead className="w-12">Aan</TableHead>
+                    <TableHead>Installatie</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Land</TableHead>
+                    <TableHead className="text-right">Standaard</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paginatedInstallations.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center text-slate-500 py-8">
+                        Geen installaties gevonden
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    paginatedInstallations.map((installation) => {
+                      const selected = formData.installationIds.includes(installation.id);
+                      const isDefault = formData.defaultInstallationId === installation.id;
+
+                      return (
+                        <TableRow key={installation.id}>
+                          <TableCell>
+                            <Checkbox
+                              checked={selected}
+                              onCheckedChange={() => toggleInstallation(installation.id)}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Building2 className="h-4 w-4 text-slate-400" />
+                              <span className="font-medium text-slate-800">{installation.name}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{installation.type || 'Onbekend'}</Badge>
+                          </TableCell>
+                          <TableCell>{installation.country || '-'}</TableCell>
+                          <TableCell className="text-right">
+                            {selected ? (
+                              isDefault ? (
+                                <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200" variant="outline">
+                                  Standaard
+                                </Badge>
+                              ) : (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setDefaultInstallation(installation.id)}
+                                >
+                                  Maak Standaard
+                                </Button>
+                              )
+                            ) : (
+                              <span className="text-xs text-slate-400">Selecteer eerst</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-slate-500">
+                Pagina {installationPage} van {totalInstallationPages}
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={installationPage <= 1}
+                  onClick={() => setInstallationPage((previous) => Math.max(1, previous - 1))}
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  Vorige
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={installationPage >= totalInstallationPages}
+                  onClick={() => setInstallationPage((previous) => Math.min(totalInstallationPages, previous + 1))}
+                >
+                  Volgende
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setIsAssignmentDialogOpen(false)}>
+              Klaar
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
