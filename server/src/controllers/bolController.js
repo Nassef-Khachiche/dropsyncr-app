@@ -228,6 +228,123 @@ async function getBolIntegrationCandidates(installationId, integrationId = null)
   }));
 }
 
+const resolveBolTransporterCode = (carrierType, shippingMethod) => {
+  const normalizedCarrier = String(carrierType || '').trim().toLowerCase();
+  const normalizedMethod = String(shippingMethod || '').trim().toLowerCase();
+  const source = normalizedMethod || normalizedCarrier;
+
+  if (source.includes('postat')) return 'POSTAT';
+  if (source.includes('postnl')) return 'POSTNL';
+  if (source.includes('dhl')) return 'DHL';
+  if (source.includes('dpd')) return 'DPD';
+  if (source.includes('bpost')) return 'BPOST';
+  if (source.includes('gls')) return 'GLS';
+  if (source.includes('ups')) return 'UPS';
+  return 'OTHER';
+};
+
+export async function sendBolTracking(installationId, orderNumber, trackingCode, carrierType = null, shippingMethod = null, integrationId = null) {
+  const normalizedOrderNumber = String(orderNumber || '').trim();
+  const normalizedTrackingCode = String(trackingCode || '').trim();
+  const installationIdNumber = parseInt(installationId, 10);
+
+  if (!normalizedOrderNumber || !normalizedTrackingCode || !Number.isFinite(installationIdNumber)) {
+    return;
+  }
+
+  const { credentials } = await resolveBolIntegrationForOrder(installationIdNumber, normalizedOrderNumber, integrationId);
+
+  let shipmentOrderItems = null;
+  try {
+    const orderItemsPayload = await bolApiRequest(
+      credentials,
+      `/orders/${encodeURIComponent(normalizedOrderNumber)}/order-items`,
+    );
+    shipmentOrderItems = extractBolOrderItemsForLabel(orderItemsPayload);
+  } catch (orderItemsError) {
+    console.warn('[BOL TRACKING] Failed to fetch order-items from Bol, using DB fallback', {
+      orderNumber: normalizedOrderNumber,
+      message: orderItemsError?.message,
+    });
+  }
+
+  if (!shipmentOrderItems || shipmentOrderItems.length === 0) {
+    const dbOrder = await prisma.order.findFirst({
+      where: { orderNumber: normalizedOrderNumber, installationId: installationIdNumber },
+      include: { orderItems: { select: { externalId: true, quantity: true } } },
+    });
+
+    const dbItems = (dbOrder?.orderItems || [])
+      .filter((item) => item.externalId)
+      .map((item) => ({ orderItemId: item.externalId, quantity: item.quantity || 1 }));
+
+    if (dbItems.length > 0) {
+      shipmentOrderItems = dbItems;
+    }
+  }
+
+  if (!shipmentOrderItems || shipmentOrderItems.length === 0) {
+    throw new Error(`Geen order items gevonden voor Bol order ${normalizedOrderNumber}`);
+  }
+
+  const transporterCode = resolveBolTransporterCode(carrierType, shippingMethod);
+  const shipmentBody = {
+    orderItems: shipmentOrderItems,
+    transport: {
+      transporterCode,
+      trackAndTrace: normalizedTrackingCode,
+    },
+  };
+
+  const retryDelays = [0, 1500, 3500];
+  let lastError = null;
+
+  for (let attempt = 0; attempt < retryDelays.length; attempt += 1) {
+    try {
+      if (retryDelays[attempt] > 0) {
+        await new Promise((resolve) => setTimeout(resolve, retryDelays[attempt]));
+      }
+
+      await bolApiRequest(credentials, '/shipments', 'POST', shipmentBody);
+      await prisma.order.updateMany({
+        where: { orderNumber: normalizedOrderNumber, installationId: installationIdNumber },
+        data: {
+          status: 'verzonden',
+          orderStatus: 'verzonden',
+          orderStatusCode: 'SHIPPED',
+          shippingStatus: 'SHIPPED',
+          supplierTracking: normalizedTrackingCode,
+        },
+      });
+
+      await persistBolTrackingForOrders({
+        orderNumber: normalizedOrderNumber,
+        installationId: installationIdNumber,
+        trackingCode: normalizedTrackingCode,
+        transporterCode,
+        source: 'bol_tracking_push',
+      });
+
+      return;
+    } catch (error) {
+      lastError = error;
+      const message = String(error?.message || '').toLowerCase();
+      const isRetryable = message.includes('429')
+        || message.includes('timeout')
+        || message.includes('503')
+        || message.includes('502')
+        || message.includes('500')
+        || message.includes('temporar');
+
+      if (!isRetryable || attempt === retryDelays.length - 1) {
+        break;
+      }
+    }
+  }
+
+  throw lastError || new Error(`Kon tracking niet synchroniseren naar Bol voor order ${normalizedOrderNumber}`);
+}
+
 // Helper function to make authenticated Bol API requests
 
 // Token cache: keyed by "clientId:clientSecret" → { token, expiresAt }
@@ -2921,7 +3038,39 @@ export const getBolShippingLabel = async (req, res) => {
             if (labelData.trackingCode) shipmentBody.transport.trackAndTrace = labelData.trackingCode;
           }
 
-          await bolApiRequest(successfulCredentials, '/shipments', 'POST', shipmentBody);
+          const shipmentConfirmRetryDelays = [0, 2000, 5000];
+          let shipmentConfirmed = false;
+          let shipmentConfirmError = null;
+
+          for (let attempt = 0; attempt < shipmentConfirmRetryDelays.length; attempt += 1) {
+            try {
+              if (shipmentConfirmRetryDelays[attempt] > 0) {
+                await new Promise((resolve) => setTimeout(resolve, shipmentConfirmRetryDelays[attempt]));
+              }
+
+              await bolApiRequest(successfulCredentials, '/shipments', 'POST', shipmentBody);
+              shipmentConfirmed = true;
+              break;
+            } catch (confirmErr) {
+              shipmentConfirmError = confirmErr;
+              const msg = String(confirmErr?.message || '').toLowerCase();
+              const retryable = msg.includes('429')
+                || msg.includes('timeout')
+                || msg.includes('503')
+                || msg.includes('502')
+                || msg.includes('500')
+                || msg.includes('temporar');
+
+              if (!retryable || attempt === shipmentConfirmRetryDelays.length - 1) {
+                throw confirmErr;
+              }
+            }
+          }
+
+          if (!shipmentConfirmed && shipmentConfirmError) {
+            throw shipmentConfirmError;
+          }
+
           console.log('[BOL LABEL] Shipment confirmed with Bol.com', { orderId: normalizedOrderId, shippingLabelId: resolvedShippingLabelId || null });
 
           // Lokale status ook op verzonden nu Bol bevestigd heeft

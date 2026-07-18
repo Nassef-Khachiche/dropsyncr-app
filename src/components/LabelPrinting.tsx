@@ -96,6 +96,7 @@ const wegrowCarrierOptions = [
   { id: 'dhl-nl', name: 'DHL', logo: dhlLogo },
   { id: 'dpd-standaard', name: 'DPD', logo: dpdLogo },
   { id: 'postnl-belgie-standaard-0-23kg', name: 'PostNL België Standaard 0-23kg', logo: postnlLogo },
+  { id: 'postat-standaard', name: 'PostAT', logo: postnlLogo },
   { id: 'poste-italiane-standaard', name: 'Poste Italiane', logo: postnlLogo },
 ];
 

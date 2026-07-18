@@ -1,6 +1,7 @@
 import prisma from '../config/database.js';
 import fetch from 'node-fetch';
 import { sendKauflandTracking } from './kauflandController.js';
+import { sendBolTracking } from './bolController.js';
 import { sendBricoBravoTracking } from './bricobravocontroller.js';
 import { sendShopifyTracking } from './shopifyController.js';
 import fs from 'fs/promises';
@@ -143,6 +144,7 @@ const WEGROW_SERVICE_OPTIONS = {
   'postnl-nederland-brievenbuspakketje-0-2kg': { label: 'PostNL Brievenbuspakketje 0-2kg', defaultServiceCode: null, fallbackServiceKeys: ['postnl'] },
   'postnl-belgie-standaard-0-23kg': { label: 'PostNL België Standaard 0-23kg', defaultServiceCode: null, fallbackServiceKeys: ['postnl'] },
   'dpd-standaard': { label: 'DPD', defaultServiceCode: 'wegrow_postal_tracked_parcel', fallbackServiceKeys: ['dpd'] },
+  'postat-standaard': { label: 'PostAT', defaultServiceCode: null, fallbackServiceKeys: ['postat'] },
   'poste-italiane-standaard': { label: 'Poste Italiane', defaultServiceCode: null, fallbackServiceKeys: ['postnl'] },
 };
 
@@ -296,7 +298,9 @@ const WEGROW_SELECTED_CARRIER_COUNTRY_SERVICE_CODE_OVERRIDES = {
   },
   'dpd-standaard': {
     NL: 'wegrow_home_economy',
-    BE: 'wegrow_home_economy',
+  },
+  'postat-standaard': {
+    AT: 'wegrow_home_premium',
   },
   'poste-italiane-standaard': {
     IT: 'wegrow_home_premium',
@@ -863,6 +867,15 @@ export const generateCarrierLabels = async (req, res) => {
               selectedShippingMethod,
             ).catch(err => console.error('[KAUFLAND TRACKING] Async error:', err.message));
           }
+          if (orderRecord?.platform === 'bol.com' && generatedLabel?.trackingCode) {
+            await sendBolTracking(
+              String(orderRecord.installationId),
+              orderRecord.orderNumber,
+              generatedLabel.trackingCode,
+              carrier.carrierType,
+              selectedShippingMethod,
+            ).catch(err => console.error('[BOL TRACKING] Async error:', err.message));
+          }
           if (orderRecord?.platform === 'bricobravo' && generatedLabel?.trackingCode) {
             await sendBricoBravoTracking(
               String(orderRecord.installationId),
@@ -903,6 +916,12 @@ export const generateCarrierLabels = async (req, res) => {
       const countryCode = String(country || 'NL').trim().toUpperCase();
       if (countryCode === 'NL') return raw.replace(/\s+/g, '').toUpperCase();
       return raw.replace(/\s+/g, ' ').trim().toUpperCase();
+    };
+
+    const hasMalformedStreetHouseNumberFormat = (street = '') => {
+      const normalizedStreet = String(street || '').trim();
+      if (!normalizedStreet) return false;
+      return /,\s*\d+[A-Za-z0-9-]*\b/.test(normalizedStreet);
     };
 
     const buildDpdRecipientAddress = (pkg) => {
@@ -1309,6 +1328,7 @@ export const generateCarrierLabels = async (req, res) => {
         dhl: credentials.dhlServiceCode,
         postnl: credentials.postnlServiceCode,
         bpost: credentials.bpostServiceCode,
+        postat: credentials.postatServiceCode,
         dpd: credentials.dpdServiceCode,
         'dhl-nl': credentials.dhlNlServiceCode,
         'dhl-for-you-envelop': credentials.dhlForYouEnvelopServiceCode,
@@ -1316,6 +1336,7 @@ export const generateCarrierLabels = async (req, res) => {
         'dhl-for-you': credentials.dhlForYouServiceCode,
         'postnl-nederland-brievenbuspakketje-0-2kg': credentials.postnlNederlandBrievenbuspakketje02kgServiceCode,
         'postnl-belgie-standaard-0-23kg': credentials.postnlBelgieStandaard023kgServiceCode,
+        'postat-standaard': credentials.postatServiceCode,
         'dpd-standaard': credentials.dpdServiceCode,
       };
       const selectedServiceOption = selectedWeGrowCarrier ? WEGROW_SERVICE_OPTIONS[selectedWeGrowCarrier] : null;
@@ -1354,6 +1375,7 @@ export const generateCarrierLabels = async (req, res) => {
       const hasAnyCarrierSpecificCode = Boolean(
         (credentials.dhlServiceCode && String(credentials.dhlServiceCode).trim()) ||
         (credentials.postnlServiceCode && String(credentials.postnlServiceCode).trim()) ||
+        (credentials.postatServiceCode && String(credentials.postatServiceCode).trim()) ||
         (credentials.dpdServiceCode && String(credentials.dpdServiceCode).trim()) ||
         Object.keys(serviceCodeMapFromCredentials).length > 0
       );
@@ -1479,6 +1501,15 @@ export const generateCarrierLabels = async (req, res) => {
             details: `Order ${String(pkg.orderNumber || pkg.id || index)} mist een geldige straat, postcode of plaats voor labelgeneratie.`,
             packageId: pkg.id || index,
             address: { street: destinationStreet || null, postalCode: destinationPostalCode || null, city: destinationCity || null, country: destinationCountry, rawAddress: String(pkg.address || '').trim() || null },
+          });
+        }
+
+        if (!isReturnPkg && hasMalformedStreetHouseNumberFormat(destinationStreet)) {
+          return res.status(400).json({
+            error: 'WeGrow ontvangeradres formaat is ongeldig',
+            details: `Order ${String(pkg.orderNumber || pkg.id || index)} heeft een onjuist straatformaat. Gebruik straatnaam en huisnummer zonder komma, bijvoorbeeld \"Hoofdstraat 10\".`,
+            packageId: pkg.id || index,
+            address: { street: destinationStreet, postalCode: destinationPostalCode || null, city: destinationCity || null, country: destinationCountry },
           });
         }
 

@@ -272,6 +272,9 @@ export async function syncKauflandOrdersForInstallation({ installationId, integr
       select: { id: true, fulfillmentType: true },
     });
 
+    const defaultImportedStatus = 'verzonden';
+    const effectiveStatus = existingOrder ? 'openstaand' : defaultImportedStatus;
+
     const orderData = {
       orderNumber,
       installationId: parseInt(installationId),
@@ -290,11 +293,11 @@ export async function syncKauflandOrdersForInstallation({ installationId, integr
       platform: 'kaufland',
       orderDate: new Date(order?.ts_created_iso || order?.ts_created || Date.now()),
       deliveryDate: order?.delivery_time_expires_iso ? new Date(order.delivery_time_expires_iso) : null,
-      orderStatus: 'openstaand',
-      orderStatusCode: 'OPEN',
+      orderStatus: effectiveStatus,
+      orderStatusCode: toKauflandOrderStatusCode(effectiveStatus),
       orderValue: parseFloat(orderValue.toFixed(2)),
       itemCount: orderUnits.length,
-      status: 'openstaand',
+      status: effectiveStatus,
       // Nieuwe orders krijgen null zodat de reserveringsjob ze oppikt
       // Bestaande orders behouden hun huidige fulfillmentType
       fulfillmentType: existingOrder ? existingOrder.fulfillmentType : null,
