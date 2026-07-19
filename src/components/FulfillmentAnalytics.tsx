@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
+import { api } from '../services/api';
+import * as XLSX from 'xlsx';
 import {
   Select,
   SelectContent,
@@ -41,7 +43,8 @@ import {
   FileSpreadsheet,
   Calendar,
   ChevronRight,
-  Building2
+  Building2,
+  Loader2
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 
@@ -139,15 +142,68 @@ const clientDistribution = [
 export function FulfillmentAnalytics({ activeProfile }: FulfillmentAnalyticsProps) {
   const [period, setPeriod] = useState('current-month');
   const [selectedClient, setSelectedClient] = useState<number | null>(null);
+  const [clientStats, setClientStats] = useState<ClientStats[]>([]);
+  const [analyticsMonthlyData, setAnalyticsMonthlyData] = useState<any[]>([]);
+  const [analyticsClientDistribution, setAnalyticsClientDistribution] = useState<any[]>([]);
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const totalOrders = mockClientStats.reduce((sum, client) => sum + client.ordersProcessed, 0);
-  const totalRevenue = mockClientStats.reduce((sum, client) => sum + client.totalRevenue, 0);
-  const activeClients = mockClientStats.filter(c => c.status === 'active').length;
+  const totalOrders = clientStats.reduce((sum, client) => sum + client.ordersProcessed, 0);
+  const totalRevenue = clientStats.reduce((sum, client) => sum + client.totalRevenue, 0);
+  const activeClients = clientStats.filter(c => c.status === 'active').length;
+
+  const normalizePeriod = (value: string) => {
+    if (value === 'current-month') return 'current_month';
+    if (value === 'last-month') return 'last_month';
+    if (value === 'year') return 'this_year';
+    if (value === 'quarter') return 'last_7';
+    return value;
+  };
+
+  useEffect(() => {
+    if (!activeProfile) return;
+
+    const loadAnalytics = async () => {
+      try {
+        setLoading(true);
+        const data = await api.getFulfillmentAnalytics({
+          installationId: activeProfile,
+          period: normalizePeriod(period),
+          startDate: period === 'custom' ? customStartDate : undefined,
+          endDate: period === 'custom' ? customEndDate : undefined,
+        });
+
+        setClientStats(Array.isArray(data.clients) ? data.clients : []);
+        setAnalyticsMonthlyData(Array.isArray(data.monthlyData) ? data.monthlyData : []);
+        setAnalyticsClientDistribution(Array.isArray(data.clientDistribution) ? data.clientDistribution : []);
+      } catch (error) {
+        console.error('Failed to load fulfillment analytics:', error);
+        setClientStats([]);
+        setAnalyticsMonthlyData([]);
+        setAnalyticsClientDistribution([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void loadAnalytics();
+  }, [activeProfile, period, customStartDate, customEndDate]);
 
   const handleExport = () => {
-    toast.success('Rapport wordt gegenereerd...', {
-      description: 'Je fulfilment rapport wordt voorbereid voor download'
-    });
+    const exportRows = clientStats.map((client) => ({
+      Klant: client.name,
+      Stores: client.stores.join(' | '),
+      Orders: client.ordersProcessed,
+      Omzet: client.totalRevenue,
+      GemiddeldPerOrder: client.avgOrderValue,
+      Trend: client.trend,
+      Status: client.status,
+    }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(exportRows), 'Fulfillment');
+    XLSX.writeFile(wb, `fulfillment_analytics_${new Date().toISOString().split('T')[0]}.xlsx`);
+    toast.success('Rapport gedownload');
   };
 
   const handleViewClient = (clientId: number) => {
@@ -179,6 +235,22 @@ export function FulfillmentAnalytics({ activeProfile }: FulfillmentAnalyticsProp
               <SelectItem value="custom">Aangepaste periode</SelectItem>
             </SelectContent>
           </Select>
+          {period === 'custom' && (
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={customStartDate}
+                onChange={(event) => setCustomStartDate(event.target.value)}
+                className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700"
+              />
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={(event) => setCustomEndDate(event.target.value)}
+                className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700"
+              />
+            </div>
+          )}
           <Button 
             variant="outline" 
             className="gap-2 border-slate-200"
@@ -189,6 +261,13 @@ export function FulfillmentAnalytics({ activeProfile }: FulfillmentAnalyticsProp
           </Button>
         </div>
       </div>
+
+      {loading && (
+        <div className="flex items-center gap-2 text-sm text-slate-500">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Fulfilment analytics laden...
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -255,7 +334,7 @@ export function FulfillmentAnalytics({ activeProfile }: FulfillmentAnalyticsProp
             </div>
             <p className="text-sm text-slate-600 mb-1">Gem. Order Waarde</p>
             <p className="text-3xl bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">
-              &euro; {(totalRevenue / totalOrders).toFixed(2)}
+              &euro; {totalOrders > 0 ? (totalRevenue / totalOrders).toFixed(2) : '0.00'}
             </p>
             <p className="text-xs text-slate-600 mt-2">
               Per verwerkte order
@@ -274,7 +353,7 @@ export function FulfillmentAnalytics({ activeProfile }: FulfillmentAnalyticsProp
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={monthlyData}>
+              <LineChart data={analyticsMonthlyData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                 <XAxis dataKey="month" stroke="#64748b" />
                 <YAxis stroke="#64748b" />
@@ -315,7 +394,7 @@ export function FulfillmentAnalytics({ activeProfile }: FulfillmentAnalyticsProp
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
-                  data={clientDistribution}
+                  data={analyticsClientDistribution}
                   cx="50%"
                   cy="50%"
                   labelLine={false}
@@ -324,7 +403,7 @@ export function FulfillmentAnalytics({ activeProfile }: FulfillmentAnalyticsProp
                   fill="#8884d8"
                   dataKey="value"
                 >
-                  {clientDistribution.map((entry, index) => (
+                  {analyticsClientDistribution.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
@@ -357,16 +436,22 @@ export function FulfillmentAnalytics({ activeProfile }: FulfillmentAnalyticsProp
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {mockClientStats.map((client) => (
+                {clientStats.map((client) => (
                   <TableRow key={client.id} className="hover:bg-slate-50/50">
                     <TableCell>
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 bg-slate-100 rounded-lg overflow-hidden flex-shrink-0">
-                          <img 
-                            src={client.logo} 
-                            alt={client.name}
-                            className="w-full h-full object-cover"
-                          />
+                          {client.logo ? (
+                            <img 
+                              src={client.logo} 
+                              alt={client.name}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-sm text-slate-500 bg-slate-100">
+                              {client.name.slice(0, 1).toUpperCase()}
+                            </div>
+                          )}
                         </div>
                         <div>
                           <p className="text-sm text-slate-900">{client.name}</p>

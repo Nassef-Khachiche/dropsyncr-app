@@ -289,9 +289,34 @@ class ApiService {
   }
 
   // Dashboard
-  async getDashboardStats(installationId?: string) {
-    const queryParams = installationId ? `?installationId=${installationId}` : '';
-    return this.request<any>(`/dashboard/stats${queryParams}`);
+  async getDashboardStats(params?: { installationId?: string; period?: string; startDate?: string; endDate?: string }) {
+    const queryParams = new URLSearchParams();
+    if (params?.installationId) queryParams.append('installationId', params.installationId);
+    if (params?.period) queryParams.append('period', params.period);
+    if (params?.startDate) queryParams.append('startDate', params.startDate);
+    if (params?.endDate) queryParams.append('endDate', params.endDate);
+    const queryString = queryParams.toString();
+    return this.request<any>(`/dashboard/stats${queryString ? `?${queryString}` : ''}`);
+  }
+
+  async getKlkAnalytics(params?: { installationId?: string; period?: string; startDate?: string; endDate?: string }) {
+    const queryParams = new URLSearchParams();
+    if (params?.installationId) queryParams.append('installationId', params.installationId);
+    if (params?.period) queryParams.append('period', params.period);
+    if (params?.startDate) queryParams.append('startDate', params.startDate);
+    if (params?.endDate) queryParams.append('endDate', params.endDate);
+    const queryString = queryParams.toString();
+    return this.request<any>(`/dashboard/klk${queryString ? `?${queryString}` : ''}`);
+  }
+
+  async getFulfillmentAnalytics(params?: { installationId?: string; period?: string; startDate?: string; endDate?: string }) {
+    const queryParams = new URLSearchParams();
+    if (params?.installationId) queryParams.append('installationId', params.installationId);
+    if (params?.period) queryParams.append('period', params.period);
+    if (params?.startDate) queryParams.append('startDate', params.startDate);
+    if (params?.endDate) queryParams.append('endDate', params.endDate);
+    const queryString = queryParams.toString();
+    return this.request<any>(`/dashboard/fulfillment${queryString ? `?${queryString}` : ''}`);
   }
 
   // Tracking

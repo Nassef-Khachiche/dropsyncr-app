@@ -1,5 +1,7 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { api } from '../services/api';
+import * as XLSX from 'xlsx';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -37,6 +39,8 @@ import {
   Package,
   ArrowUpRight,
   ArrowDownRight,
+  FileSpreadsheet,
+  Loader2,
 } from 'lucide-react';
 
 interface KLKAnalyticsProps {
@@ -63,7 +67,26 @@ interface MockData {
   fulfilment: ChannelData;
 }
 
-const generateMockData = (): MockData => {
+const createEmptyKlkData = (): MockData => ({
+  bol: { daily: [] },
+  kaufland: { daily: [] },
+  fleximedix: { daily: [] },
+  inandoutdoormatch: { daily: [] },
+  fulfilment: { daily: [] },
+});
+
+const normalizeKlkData = (payload: any): MockData => {
+  const channels = payload?.channels || {};
+  return {
+    bol: { daily: Array.isArray(channels.bol?.daily) ? channels.bol.daily : [] },
+    kaufland: { daily: Array.isArray(channels.kaufland?.daily) ? channels.kaufland.daily : [] },
+    fleximedix: { daily: Array.isArray(channels.fleximedix?.daily) ? channels.fleximedix.daily : [] },
+    inandoutdoormatch: { daily: Array.isArray(channels.inandoutdoormatch?.daily) ? channels.inandoutdoormatch.daily : [] },
+    fulfilment: { daily: Array.isArray(channels.fulfilment?.daily) ? channels.fulfilment.daily : [] },
+  };
+};
+
+/* const generateMockData = (): MockData => {
   const days = 19;
   const data: MockData = {
     bol: { daily: [] },
@@ -116,7 +139,7 @@ const generateMockData = (): MockData => {
   return data;
 };
 
-const MOCK_KLK_DATA = generateMockData();
+const MOCK_KLK_DATA = generateMockData(); */
 
 interface PeriodPreset {
   id: string;
@@ -127,6 +150,8 @@ export function KLKAnalytics({ activeProfile }: KLKAnalyticsProps) {
   const { t } = useLanguage();
   const [selectedPeriod, setSelectedPeriod] = useState('current_month');
   const [customDateRange, setCustomDateRange] = useState<{ from?: Date; to?: Date }>({});
+  const [analyticsData, setAnalyticsData] = useState<MockData>(() => createEmptyKlkData());
+  const [loading, setLoading] = useState(false);
 
   const PERIOD_PRESETS: PeriodPreset[] = [
     { id: 'today', label: t('today') },
@@ -139,7 +164,7 @@ export function KLKAnalytics({ activeProfile }: KLKAnalyticsProps) {
   ];
 
   const getDateRange = (): { start: Date; end: Date } => {
-    const today = new Date('2026-03-19');
+    const today = new Date();
     
     switch (selectedPeriod) {
       case 'today':
@@ -155,25 +180,51 @@ export function KLKAnalytics({ activeProfile }: KLKAnalyticsProps) {
         return { start, end: today };
       }
       case 'last_month': {
-        const start = new Date('2026-02-01');
-        const end = new Date('2026-02-28');
+        const start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        const end = new Date(today.getFullYear(), today.getMonth(), 0);
         return { start, end };
       }
       case 'current_month':
-        return { start: new Date('2026-03-01'), end: today };
+        return { start: new Date(today.getFullYear(), today.getMonth(), 1), end: today };
       case 'this_year':
-        return { start: new Date('2026-01-01'), end: today };
+        return { start: new Date(today.getFullYear(), 0, 1), end: today };
       case 'custom':
         return {
-          start: customDateRange.from || new Date('2026-03-01'),
+          start: customDateRange.from || new Date(today.getFullYear(), today.getMonth(), 1),
           end: customDateRange.to || today,
         };
       default:
-        return { start: new Date('2026-03-01'), end: today };
+        return { start: new Date(today.getFullYear(), today.getMonth(), 1), end: today };
     }
   };
 
   const dateRange = getDateRange();
+
+  const formatApiDate = (date: Date) => date.toISOString().split('T')[0];
+
+  useEffect(() => {
+    if (!activeProfile) return;
+
+    const loadAnalytics = async () => {
+      try {
+        setLoading(true);
+        const data = await api.getKlkAnalytics({
+          installationId: activeProfile,
+          period: selectedPeriod,
+          startDate: selectedPeriod === 'custom' ? formatApiDate(dateRange.start) : undefined,
+          endDate: selectedPeriod === 'custom' ? formatApiDate(dateRange.end) : undefined,
+        });
+        setAnalyticsData(normalizeKlkData(data));
+      } catch (error) {
+        console.error('Failed to load KLK analytics:', error);
+        setAnalyticsData(createEmptyKlkData());
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void loadAnalytics();
+  }, [activeProfile, selectedPeriod, customDateRange.from, customDateRange.to]);
 
   const filteredData = useMemo(() => {
     const filterByDate = (daily: DailyData[]) => {
@@ -184,13 +235,13 @@ export function KLKAnalytics({ activeProfile }: KLKAnalyticsProps) {
     };
 
     return {
-      bol: { daily: filterByDate(MOCK_KLK_DATA.bol.daily) },
-      kaufland: { daily: filterByDate(MOCK_KLK_DATA.kaufland.daily) },
-      fleximedix: { daily: filterByDate(MOCK_KLK_DATA.fleximedix.daily) },
-      inandoutdoormatch: { daily: filterByDate(MOCK_KLK_DATA.inandoutdoormatch.daily) },
-      fulfilment: { daily: filterByDate(MOCK_KLK_DATA.fulfilment.daily) },
+      bol: { daily: filterByDate(analyticsData.bol.daily) },
+      kaufland: { daily: filterByDate(analyticsData.kaufland.daily) },
+      fleximedix: { daily: filterByDate(analyticsData.fleximedix.daily) },
+      inandoutdoormatch: { daily: filterByDate(analyticsData.inandoutdoormatch.daily) },
+      fulfilment: { daily: filterByDate(analyticsData.fulfilment.daily) },
     };
-  }, [dateRange]);
+  }, [analyticsData, dateRange.start, dateRange.end]);
 
   const totals = useMemo(() => {
     const sumOmzet = (channel: ChannelData) =>
@@ -258,6 +309,22 @@ export function KLKAnalytics({ activeProfile }: KLKAnalyticsProps) {
     return date.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
   };
 
+  const exportAnalytics = () => {
+    const rows = Object.entries(filteredData).flatMap(([channel, value]) =>
+      value.daily.map((row) => ({
+        Kanaal: channel,
+        Datum: row.date,
+        Omzet: row.omzet || 0,
+        Inkoopkosten: row.inkoopkosten || 0,
+        COGS: row.cogs || 0,
+        Advertentiekosten: row.advertentiekosten || 0,
+      }))
+    );
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'KLK Analytics');
+    XLSX.writeFile(wb, `klk_analytics_${formatApiDate(dateRange.start)}_${formatApiDate(dateRange.end)}.xlsx`);
+  };
+
   const formatDateLabel = (dateStr: string) => {
     const date = new Date(dateStr);
     return date.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
@@ -311,40 +378,53 @@ export function KLKAnalytics({ activeProfile }: KLKAnalyticsProps) {
           <p className="text-slate-600">{t('klkSubtitle')}</p>
         </div>
         
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button variant="outline" className="gap-2 border-slate-200 min-w-[280px] justify-start">
-              <CalendarIcon className="w-4 h-4" />
-              <span className="flex-1 text-left">{getPeriodLabel()}</span>
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0" align="end">
-            <div className="p-3 space-y-2">
-              {PERIOD_PRESETS.map((preset) => (
-                <Button
-                  key={preset.id}
-                  variant={selectedPeriod === preset.id ? 'default' : 'ghost'}
-                  className="w-full justify-start"
-                  onClick={() => setSelectedPeriod(preset.id)}
-                >
-                  {preset.label}
-                </Button>
-              ))}
-            </div>
-            {selectedPeriod === 'custom' && (
-              <div className="border-t border-slate-200 p-3">
-                <p className="text-sm text-slate-600 mb-2">{t('selectPeriod')}:</p>
-                <Calendar
-                  mode="range"
-                  selected={{ from: customDateRange.from, to: customDateRange.to }}
-                  onSelect={(range) => setCustomDateRange({ from: range?.from, to: range?.to })}
-                  numberOfMonths={2}
-                />
+        <div className="flex items-center gap-3">
+          <Button variant="outline" className="gap-2 border-slate-200" onClick={exportAnalytics}>
+            <FileSpreadsheet className="w-4 h-4" />
+            Export
+          </Button>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="gap-2 border-slate-200 min-w-[280px] justify-start">
+                <CalendarIcon className="w-4 h-4" />
+                <span className="flex-1 text-left">{getPeriodLabel()}</span>
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="end">
+              <div className="p-3 space-y-2">
+                {PERIOD_PRESETS.map((preset) => (
+                  <Button
+                    key={preset.id}
+                    variant={selectedPeriod === preset.id ? 'default' : 'ghost'}
+                    className="w-full justify-start"
+                    onClick={() => setSelectedPeriod(preset.id)}
+                  >
+                    {preset.label}
+                  </Button>
+                ))}
               </div>
-            )}
-          </PopoverContent>
-        </Popover>
+              {selectedPeriod === 'custom' && (
+                <div className="border-t border-slate-200 p-3">
+                  <p className="text-sm text-slate-600 mb-2">{t('selectPeriod')}:</p>
+                  <Calendar
+                    mode="range"
+                    selected={{ from: customDateRange.from, to: customDateRange.to }}
+                    onSelect={(range) => setCustomDateRange({ from: range?.from, to: range?.to })}
+                    numberOfMonths={2}
+                  />
+                </div>
+              )}
+            </PopoverContent>
+          </Popover>
+        </div>
       </div>
+
+      {loading && (
+        <div className="flex items-center gap-2 text-sm text-slate-500">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Analytics laden...
+        </div>
+      )}
 
       {/* Summary Stat Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">

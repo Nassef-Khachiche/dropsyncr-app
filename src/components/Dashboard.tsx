@@ -10,8 +10,10 @@ import {
   ArrowUpRight,
   Loader2,
   Calendar,
-  ChevronDown
+  ChevronDown,
+  Download
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { 
   XAxis, 
   YAxis, 
@@ -56,17 +58,30 @@ export function Dashboard({ activeProfile }: DashboardProps) {
   ];
 
   useEffect(() => {
-    if (activeProfile && !isNaN(parseInt(activeProfile))) {
+    if (activeProfile) {
       loadDashboardData();
     } else {
       setLoading(false);
     }
-  }, [activeProfile]);
+  }, [activeProfile, dateFilter, customStartDate, customEndDate]);
+
+  const getDashboardQuery = () => {
+    if (dateFilter === t('today')) return { period: 'today' };
+    if (dateFilter === t('yesterday')) return { period: 'yesterday' };
+    if (dateFilter === t('last7days')) return { period: 'last_7' };
+    if (dateFilter === t('lastMonth')) return { period: 'last_month' };
+    if (dateFilter === t('thisYear')) return { period: 'this_year' };
+    if (customStartDate || customEndDate) return { period: 'custom', startDate: customStartDate, endDate: customEndDate };
+    return { period: 'current_month' };
+  };
 
   const loadDashboardData = async () => {
     try {
       setLoading(true);
-      const data = await api.getDashboardStats(activeProfile);
+      const data = await api.getDashboardStats({
+        installationId: activeProfile || undefined,
+        ...getDashboardQuery(),
+      });
       setStats(data.stats || {
         totalRevenue: 0,
         totalOrders: 0,
@@ -81,6 +96,17 @@ export function Dashboard({ activeProfile }: DashboardProps) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const exportDashboard = () => {
+    const rows = revenueData.map((row) => ({
+      Datum: row.label || row.date,
+      Omzet: row.revenue || 0,
+      Orders: row.orders || 0,
+    }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Dashboard');
+    XLSX.writeFile(wb, `dashboard_export_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   if (loading) {
@@ -99,46 +125,54 @@ export function Dashboard({ activeProfile }: DashboardProps) {
           <h1 className="text-2xl font-bold text-indigo-600">{t('dashboard')}</h1>
           <p className="text-sm text-slate-500 mt-1">{t('dashboardSubtitle')}</p>
         </div>
-        <div className="relative">
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => { setShowDateDropdown(!showDateDropdown); setShowCustomPicker(false); }}
+            onClick={exportDashboard}
             className="flex items-center gap-2 px-4 py-2 border border-slate-200 rounded-lg bg-white shadow-sm hover:bg-slate-50 transition-colors text-sm text-slate-700"
           >
-            <Calendar className="w-4 h-4 text-slate-500" />
-            <span>{dateFilter}</span>
-            <ChevronDown className="w-4 h-4 text-slate-500" />
+            <Download className="w-4 h-4 text-slate-500" />
+            <span>Export</span>
           </button>
+          <div className="relative">
+            <button
+              onClick={() => { setShowDateDropdown(!showDateDropdown); setShowCustomPicker(false); }}
+              className="flex items-center gap-2 px-4 py-2 border border-slate-200 rounded-lg bg-white shadow-sm hover:bg-slate-50 transition-colors text-sm text-slate-700"
+            >
+              <Calendar className="w-4 h-4 text-slate-500" />
+              <span>{dateFilter}</span>
+              <ChevronDown className="w-4 h-4 text-slate-500" />
+            </button>
 
-          {/* Datum dropdown */}
-          {showDateDropdown && (
-            <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-200 rounded-xl shadow-lg z-50">
-              {dateOptions.map((option) => (
-                <button
-                  key={option}
-                  onClick={() => {
-                    if (option === t('custom')) {
-                      setShowCustomPicker(true);
-                      setShowDateDropdown(false);
-                    } else {
-                      setDateFilter(option);
-                      setShowCustomPicker(false);
-                      setShowDateDropdown(false);
-                    }
-                  }}
-                  className={`w-full text-left px-4 py-3 text-sm transition-colors first:rounded-t-xl last:rounded-b-xl ${
-                    dateFilter === option ? 'font-medium' : 'text-slate-700 hover:bg-slate-50'
-                  }`}
-                  style={dateFilter === option ? { backgroundColor: '#4f46e5', color: 'white' } : {}}
-                >
-                  {option}
-                </button>
-              ))}
-            </div>
-          )}
+            {/* Datum dropdown */}
+            {showDateDropdown && (
+              <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-200 rounded-xl shadow-lg z-50">
+                {dateOptions.map((option) => (
+                  <button
+                    key={option}
+                    onClick={() => {
+                      if (option === t('custom')) {
+                        setShowCustomPicker(true);
+                        setShowDateDropdown(false);
+                      } else {
+                        setDateFilter(option);
+                        setShowCustomPicker(false);
+                        setShowDateDropdown(false);
+                      }
+                    }}
+                    className={`w-full text-left px-4 py-3 text-sm transition-colors first:rounded-t-xl last:rounded-b-xl ${
+                      dateFilter === option ? 'font-medium' : 'text-slate-700 hover:bg-slate-50'
+                    }`}
+                    style={dateFilter === option ? { backgroundColor: '#4f46e5', color: 'white' } : {}}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            )}
 
-          {/* Aangepaste datumpicker */}
-          {showCustomPicker && (
-            <div className="absolute mt-2 w-72 bg-white border border-slate-200 rounded-xl shadow-lg z-50 p-4" style={{ right: '0' }}>
+            {/* Aangepaste datumpicker */}
+            {showCustomPicker && (
+              <div className="absolute mt-2 w-72 bg-white border border-slate-200 rounded-xl shadow-lg z-50 p-4" style={{ right: '0' }}>
               <p className="text-sm font-medium text-slate-700 mb-3">{t('choosePeriod')}</p>
               <div className="space-y-3">
                 <div>
@@ -178,8 +212,9 @@ export function Dashboard({ activeProfile }: DashboardProps) {
                   </button>
                 </div>
               </div>
-            </div>
-          )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -274,7 +309,7 @@ export function Dashboard({ activeProfile }: DashboardProps) {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="date" stroke="#94a3b8" />
+                <XAxis dataKey="label" stroke="#94a3b8" />
                 <YAxis yAxisId="left" stroke="#94a3b8" />
                 <YAxis yAxisId="right" orientation="right" stroke="#94a3b8" />
                 <Tooltip contentStyle={{ backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: '0.75rem' }} />
