@@ -58,6 +58,7 @@ import { api } from '../services/api';
 const dhlLogo = new URL('../assets/dhl-logo.png', import.meta.url).href;
 const dpdLogo = new URL('../assets/dpd-logo.png', import.meta.url).href;
 const postnlLogo = new URL('../assets/postnl-logo.png', import.meta.url).href;
+const postatLogo = new URL('../assets/postat.png', import.meta.url).href;
 
 interface LabelPrintingProps {
   activeProfile: string;
@@ -96,7 +97,7 @@ const wegrowCarrierOptions = [
   { id: 'dhl-nl', name: 'DHL', logo: dhlLogo },
   { id: 'dpd-standaard', name: 'DPD', logo: dpdLogo },
   { id: 'postnl-belgie-standaard-0-23kg', name: 'PostNL België Standaard 0-23kg', logo: postnlLogo },
-  { id: 'postat-standaard', name: 'PostAT', logo: postnlLogo },
+  { id: 'postat-standaard', name: 'PostAT', logo: postatLogo },
   { id: 'poste-italiane-standaard', name: 'Poste Italiane', logo: postnlLogo },
 ];
 

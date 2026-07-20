@@ -1,7 +1,7 @@
 import prisma from '../config/database.js';
 import { syncShopifyOrdersForInstallation } from '../controllers/shopifyController.js';
 
-// Shopify sync job: runs every N minutes (SHOPIFY_SYNC_INTERVAL_MINUTES, default 10)
+// Shopify sync job: runs every N minutes (SHOPIFY_SYNC_INTERVAL_MINUTES, default 5)
 // for all active Shopify integrations. Skips cycle if previous one is still running.
 
 let shopifySyncIntervalRef = null;
@@ -58,9 +58,9 @@ async function runShopifySyncCycle() {
 }
 
 export function startShopifySyncCronJob() {
-  const syncIntervalMinutes = parseInt(process.env.SHOPIFY_SYNC_INTERVAL_MINUTES || '10', 10);
+  const syncIntervalMinutes = parseInt(process.env.SHOPIFY_SYNC_INTERVAL_MINUTES || '5', 10);
   const safeIntervalMinutes =
-    Number.isFinite(syncIntervalMinutes) && syncIntervalMinutes > 0 ? syncIntervalMinutes : 10;
+    Number.isFinite(syncIntervalMinutes) && syncIntervalMinutes > 0 ? syncIntervalMinutes : 5;
 
   const intervalMs = safeIntervalMinutes * 60 * 1000;
 

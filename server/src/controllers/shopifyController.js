@@ -10,6 +10,13 @@ import { getJwtSecret } from '../utils/security.js';
 
 const SHOPIFY_API_VERSION = '2024-04';
 const SHOPIFY_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+const DEFAULT_SHOPIFY_API_SCOPES = [
+  'read_orders',
+  'read_fulfillments',
+  'write_fulfillments',
+  'read_merchant_managed_fulfillment_orders',
+  'write_merchant_managed_fulfillment_orders',
+].join(',');
 
 function createHttpError(statusCode, message) {
   const error = new Error(message);
@@ -284,7 +291,7 @@ async function getShopifyIntegration(installationId, integrationId = null) {
 // ---------------------------------------------------------------------------
 // Low-level API request
 // ---------------------------------------------------------------------------
-async function shopifyApiRequest(credentials, path, method = 'GET', body = null) {
+async function shopifyApiRequestRaw(credentials, path, method = 'GET', body = null) {
   const { shopDomain, accessToken } = credentials;
 
   if (!shopDomain || !accessToken) {
@@ -306,7 +313,11 @@ async function shopifyApiRequest(credentials, path, method = 'GET', body = null)
     ...(body ? { body: JSON.stringify(body) } : {}),
   };
 
-  const response = await fetch(url, options);
+  return fetch(url, options);
+}
+
+async function shopifyApiRequest(credentials, path, method = 'GET', body = null) {
+  const response = await shopifyApiRequestRaw(credentials, path, method, body);
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -319,10 +330,54 @@ async function shopifyApiRequest(credentials, path, method = 'GET', body = null)
       console.error('[SHOPIFY API ERROR] Raw:', errorText);
       errorMessage += ` - ${errorText}`;
     }
-    throw new Error(errorMessage);
+    const error = new Error(errorMessage);
+    error.statusCode = response.status;
+    throw error;
   }
 
   return response.json();
+}
+
+async function shopifyApiRequestWithHeaders(credentials, path, method = 'GET', body = null) {
+  const response = await shopifyApiRequestRaw(credentials, path, method, body);
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    let errorMessage = `Shopify API error ${response.status}`;
+    try {
+      const errorJson = JSON.parse(errorText);
+      console.error('[SHOPIFY API ERROR]', JSON.stringify(errorJson, null, 2));
+      errorMessage += ` - ${JSON.stringify(errorJson)}`;
+    } catch {
+      console.error('[SHOPIFY API ERROR] Raw:', errorText);
+      errorMessage += ` - ${errorText}`;
+    }
+    const error = new Error(errorMessage);
+    error.statusCode = response.status;
+    throw error;
+  }
+
+  return {
+    data: await response.json(),
+    headers: response.headers,
+  };
+}
+
+function extractNextShopifyPathFromLinkHeader(linkHeader) {
+  const links = String(linkHeader || '').split(',');
+  for (const link of links) {
+    if (!/rel="next"/i.test(link)) continue;
+    const urlMatch = link.match(/<([^>]+)>/);
+    if (!urlMatch?.[1]) continue;
+
+    try {
+      const parsedUrl = new URL(urlMatch[1]);
+      return parsedUrl.pathname.replace(`/admin/api/${SHOPIFY_API_VERSION}`, '') + parsedUrl.search;
+    } catch {
+      return null;
+    }
+  }
+  return null;
 }
 
 async function shopifyGraphqlRequest(credentials, query, variables = {}) {
@@ -464,21 +519,20 @@ async function createShopifyFulfillmentWithTracking({
   const normalizedTrackingCompany = String(trackingCompany || '').trim() || null;
   const normalizedTrackingUrl = String(trackingUrl || '').trim() || null;
 
+  const trackingInfo = normalizedTrackingNumber
+    ? {
+        number: normalizedTrackingNumber,
+        ...(normalizedTrackingCompany ? { company: normalizedTrackingCompany } : {}),
+        ...(normalizedTrackingUrl ? { url: normalizedTrackingUrl } : {}),
+      }
+    : null;
+
   const fulfillmentPayload = {
     fulfillment: {
       line_items_by_fulfillment_order: [
         { fulfillment_order_id: openFulfillmentOrder.id },
       ],
-      ...(normalizedTrackingNumber
-        ? {
-            tracking_info: {
-              number: normalizedTrackingNumber,
-              company: normalizedTrackingCompany,
-              url: normalizedTrackingUrl,
-            },
-            notify_customer: true,
-          }
-        : {}),
+      ...(trackingInfo ? { tracking_info: trackingInfo, notify_customer: true } : {}),
     },
   };
 
@@ -489,10 +543,11 @@ async function createShopifyFulfillmentWithTracking({
 // ---------------------------------------------------------------------------
 // Fetch orders with cursor-based pagination
 // ---------------------------------------------------------------------------
-async function fetchShopifyOrders(credentials, { status = 'open', limit = 250, sinceId = null } = {}) {
+async function fetchShopifyOrders(credentials, { status = 'open', limit = 250, sinceId = null, updatedAtMin = null } = {}) {
   const allOrders = [];
   const params = new URLSearchParams({ status, limit: String(limit) });
   if (sinceId) params.set('since_id', String(sinceId));
+  if (updatedAtMin) params.set('updated_at_min', updatedAtMin instanceof Date ? updatedAtMin.toISOString() : String(updatedAtMin));
 
   let nextUrl = `/orders.json?${params.toString()}`;
 
@@ -503,30 +558,21 @@ async function fetchShopifyOrders(credentials, { status = 'open', limit = 250, s
       if (nextUrl.startsWith('http')) {
         const parsedUrl = new URL(nextUrl);
         const path = parsedUrl.pathname.replace(`/admin/api/${SHOPIFY_API_VERSION}`, '') + parsedUrl.search;
-        response = await shopifyApiRequest(credentials, path);
+        response = await shopifyApiRequestWithHeaders(credentials, path);
       } else {
-        response = await shopifyApiRequest(credentials, nextUrl);
+        response = await shopifyApiRequestWithHeaders(credentials, nextUrl);
       }
     } catch (err) {
       console.error('[SHOPIFY FETCH] Failed to fetch orders page:', err.message);
       break;
     }
 
-    const orders = response?.orders || [];
+    const orders = response?.data?.orders || [];
     allOrders.push(...orders);
 
     console.log('[SHOPIFY FETCH] page', { count: orders.length, total: allOrders.length });
 
-    // Shopify uses Link header pagination; the API response doesn't return
-    // a next cursor in the JSON body for the REST API — we rely on page_info
-    // but since we can't access response headers here, we stop when the page
-    // is smaller than the requested limit.
-    if (orders.length < limit) break;
-
-    // Move to the next page using the last order id as since_id
-    const lastOrder = orders[orders.length - 1];
-    const newParams = new URLSearchParams({ status, limit: String(limit), since_id: String(lastOrder.id) });
-    nextUrl = `/orders.json?${newParams.toString()}`;
+    nextUrl = extractNextShopifyPathFromLinkHeader(response?.headers?.get('link'));
   }
 
   return allOrders;
@@ -538,13 +584,16 @@ async function fetchShopifyOrders(credentials, { status = 'open', limit = 250, s
 export async function syncShopifyOrdersForInstallation({ installationId, integrationId, userId = null }) {
   const { integration, credentials } = await getShopifyIntegration(installationId, integrationId);
   const shopName = credentials.shopName || `Shopify #${integration.id}`;
+  const reconcileSinceDays = parseInt(process.env.SHOPIFY_RECONCILE_UPDATED_SINCE_DAYS || '45', 10);
+  const safeReconcileSinceDays = Number.isFinite(reconcileSinceDays) && reconcileSinceDays > 0 ? reconcileSinceDays : 45;
+  const updatedAtMin = new Date(Date.now() - safeReconcileSinceDays * 24 * 60 * 60 * 1000);
 
   await ensureOrderStatusCodes();
 
-  // Fetch open + any order that may need status reconciliation (any status)
+  // Fetch all open orders, but only recently updated closed orders so cron cycles stay fast.
   const [openOrders, closedOrders] = await Promise.all([
     fetchShopifyOrders(credentials, { status: 'open' }),
-    fetchShopifyOrders(credentials, { status: 'closed' }),
+    fetchShopifyOrders(credentials, { status: 'closed', updatedAtMin }),
   ]);
 
   const allOrders = [...openOrders, ...closedOrders];
@@ -777,7 +826,7 @@ export async function startShopifyOAuth(req, res) {
     });
 
     const redirectUri = buildOAuthRedirectUri(req);
-    const scopes = process.env.SHOPIFY_API_SCOPES || 'read_orders';
+    const scopes = process.env.SHOPIFY_API_SCOPES || DEFAULT_SHOPIFY_API_SCOPES;
 
     const authUrl = `https://${shopDomain}/admin/oauth/authorize?${new URLSearchParams({
       client_id: clientId,

@@ -75,6 +75,7 @@ const dhlLogo = new URL('../assets/dhl-logo.png', import.meta.url).href;
 const dpdLogo = new URL('../assets/dpd-logo.png', import.meta.url).href;
 const wegrowLogo = new URL('../assets/wegrow-logo.jpg', import.meta.url).href;
 const postnlLogo = new URL('../assets/postnl-logo.png', import.meta.url).href;
+const postatLogo = new URL('../assets/postat.png', import.meta.url).href;
 const bpostLogo = new URL('../assets/bpost-logo.png', import.meta.url).href;
 const bolLogo = new URL('../assets/bol-vvb.png', import.meta.url).href;
 
@@ -111,7 +112,7 @@ const wegrowCarrierOptions = [
   { id: 'postnl-nederland-brievenbuspakketje-0-2kg', name: 'PostNL Brievenbuspakketje 0-2kg', logo: postnlLogo },
   { id: 'postnl-belgie-standaard-0-23kg', name: 'PostNL België Standaard 0-23kg', logo: postnlLogo },
   { id: 'dpd-standaard', name: 'DPD', logo: dpdLogo },
-  { id: 'postat-standaard', name: 'PostAT', logo: postnlLogo },
+  { id: 'postat-standaard', name: 'PostAT', logo: postatLogo },
   { id: 'poste-italiane-standaard', name: 'Poste Italiane', logo: postnlLogo },
 ];
 

@@ -76,6 +76,7 @@ interface RuleFormData {
 }
 
 const postnlLogo = new URL('../assets/postnl-logo.png', import.meta.url).href;
+const postatLogo = new URL('../assets/postat.png', import.meta.url).href;
 const dhlLogo = new URL('../assets/dhl-logo.png', import.meta.url).href;
 const dpdLogo = new URL('../assets/dpd-logo.png', import.meta.url).href;
 const bpostLogo = new URL('../assets/bpost-logo.png', import.meta.url).href;
@@ -96,7 +97,7 @@ const wegrowServiceOptions = [
   { id: 'dhl-for-you', label: 'WeGrow DHL For You', logoUrl: dhlLogo },
   { id: 'postnl-nederland-brievenbuspakketje-0-2kg', label: 'WeGrow PostNL Brievenbuspakketje 0-2kg', logoUrl: postnlLogo },
   { id: 'postnl-belgie-standaard-0-23kg', label: 'WeGrow PostNL België Standaard 0-23kg', logoUrl: postnlLogo },
-  { id: 'postat-standaard', label: 'WeGrow PostAT', logoUrl: postnlLogo },
+  { id: 'postat-standaard', label: 'WeGrow PostAT', logoUrl: postatLogo },
 ];
 
 const defaultCountryOptions = [
