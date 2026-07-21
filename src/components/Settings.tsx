@@ -14,6 +14,7 @@ import {
   Users,
   Tag,
   Warehouse,
+  Truck,
   Settings as SettingsIcon,
   Loader2,
   Save,
@@ -21,12 +22,13 @@ import {
 import { toast } from 'sonner';
 import { api } from '../services/api';
 import { useLanguage } from '../contexts/LanguageContext';
+import { SupplierSettings } from './SupplierSettings';
 
 interface SettingsProps {
   activeProfile: string;
 }
 
-type SettingsTab = 'warehouse';
+type SettingsTab = 'warehouse' | 'suppliers';
 
 const EU_COUNTRIES = [
   { code: 'NL', name: 'Nederland' },
@@ -112,6 +114,7 @@ export function Settings({ activeProfile }: SettingsProps) {
 
   const tabs = [
     { id: 'warehouse' as SettingsTab, label: t('warehouseTab'), icon: Warehouse },
+    { id: 'suppliers' as SettingsTab, label: t('suppliersTab'), icon: Truck },
   ];
 
   if (!activeProfile) {
@@ -285,6 +288,9 @@ export function Settings({ activeProfile }: SettingsProps) {
           </CardContent>
         </Card>
       )}
+
+      {/* Suppliers tab */}
+      {activeTab === 'suppliers' && <SupplierSettings activeProfile={activeProfile} />}
     </div>
   );
 }

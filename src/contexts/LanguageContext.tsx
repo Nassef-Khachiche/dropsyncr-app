@@ -197,6 +197,35 @@ type TranslationKey =
   | 'warehouseCountry'
   | 'warehouseSaved'
   | 'warehouseSaveError'
+  | 'suppliersTab'
+  | 'suppliersTitle'
+  | 'suppliersSubtitle'
+  | 'newSupplier'
+  | 'editSupplier'
+  | 'supplierName'
+  | 'supplierNamePlaceholder'
+  | 'supplierWebsite'
+  | 'supplierWebsitePlaceholder'
+  | 'supplierLoginSection'
+  | 'supplierLoginSectionHint'
+  | 'supplierLoginUrl'
+  | 'supplierLoginUsername'
+  | 'supplierLoginPassword'
+  | 'supplierLoginNote'
+  | 'supplierLoginNotePlaceholder'
+  | 'supplierActive'
+  | 'noSuppliers'
+  | 'noSuppliersYet'
+  | 'supplierCreated'
+  | 'supplierUpdated'
+  | 'supplierDeleted'
+  | 'supplierNameRequired'
+  | 'supplierInUse'
+  | 'errorLoadingSuppliers'
+  | 'errorSavingSupplier'
+  | 'errorDeletingSupplier'
+  | 'showPassword'
+  | 'hidePassword'
   | 'save'
   | 'delete'
   | 'locationManagement'
@@ -502,6 +531,35 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     warehouseCountry: 'Country',
     warehouseSaved: 'Warehouse address saved',
     warehouseSaveError: 'Could not save warehouse address',
+    suppliersTab: 'Suppliers',
+    suppliersTitle: 'Suppliers',
+    suppliersSubtitle: 'Manage the suppliers used when processing dropship orders',
+    newSupplier: 'New supplier',
+    editSupplier: 'Edit supplier',
+    supplierName: 'Supplier name',
+    supplierNamePlaceholder: 'e.g. Amazon',
+    supplierWebsite: 'Website',
+    supplierWebsitePlaceholder: 'https://www.example.com',
+    supplierLoginSection: 'Login details (optional)',
+    supplierLoginSectionHint: 'Stored so buyers can find them back',
+    supplierLoginUrl: 'Login URL',
+    supplierLoginUsername: 'Username',
+    supplierLoginPassword: 'Password',
+    supplierLoginNote: 'Note',
+    supplierLoginNotePlaceholder: 'Account details, contact person, payment terms...',
+    supplierActive: 'Active',
+    noSuppliers: 'No suppliers found',
+    noSuppliersYet: 'No suppliers added yet',
+    supplierCreated: 'Supplier created',
+    supplierUpdated: 'Supplier updated',
+    supplierDeleted: 'Supplier deleted',
+    supplierNameRequired: 'Supplier name is required',
+    supplierInUse: 'This supplier is linked to existing purchase orders. Set it to inactive instead.',
+    errorLoadingSuppliers: 'Could not load suppliers',
+    errorSavingSupplier: 'Could not save supplier',
+    errorDeletingSupplier: 'Could not delete supplier',
+    showPassword: 'Show password',
+    hidePassword: 'Hide password',
     save: 'Save',
     delete: 'Delete',
     locationManagement: 'Location Management',
@@ -804,6 +862,35 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     warehouseCountry: 'Land',
     warehouseSaved: 'Magazijnadres opgeslagen',
     warehouseSaveError: 'Kon magazijnadres niet opslaan',
+    suppliersTab: 'Leveranciers',
+    suppliersTitle: 'Leveranciers',
+    suppliersSubtitle: 'Beheer de leveranciers die je gebruikt bij het verwerken van dropship orders',
+    newSupplier: 'Nieuwe leverancier',
+    editSupplier: 'Leverancier bewerken',
+    supplierName: 'Naam leverancier',
+    supplierNamePlaceholder: 'bijv. Amazon',
+    supplierWebsite: 'Website',
+    supplierWebsitePlaceholder: 'https://www.example.com',
+    supplierLoginSection: 'Inloggegevens (optioneel)',
+    supplierLoginSectionHint: 'Opgeslagen zodat inkopers ze kunnen terugvinden',
+    supplierLoginUrl: 'Login URL',
+    supplierLoginUsername: 'Gebruikersnaam',
+    supplierLoginPassword: 'Wachtwoord',
+    supplierLoginNote: 'Notitie',
+    supplierLoginNotePlaceholder: 'Accountgegevens, contactpersoon, betaalvoorwaarden...',
+    supplierActive: 'Actief',
+    noSuppliers: 'Geen leveranciers gevonden',
+    noSuppliersYet: 'Nog geen leveranciers toegevoegd',
+    supplierCreated: 'Leverancier aangemaakt',
+    supplierUpdated: 'Leverancier bijgewerkt',
+    supplierDeleted: 'Leverancier verwijderd',
+    supplierNameRequired: 'Naam leverancier is verplicht',
+    supplierInUse: 'Deze leverancier is gekoppeld aan bestaande inkooporders. Zet hem op inactief in plaats van verwijderen.',
+    errorLoadingSuppliers: 'Kon leveranciers niet laden',
+    errorSavingSupplier: 'Kon leverancier niet opslaan',
+    errorDeletingSupplier: 'Kon leverancier niet verwijderen',
+    showPassword: 'Wachtwoord tonen',
+    hidePassword: 'Wachtwoord verbergen',
     save: 'Opslaan',
     delete: 'Verwijderen',
     locationManagement: 'Locatiebeheer',
@@ -1106,6 +1193,35 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     warehouseCountry: 'Land',
     warehouseSaved: 'Lageradresse gespeichert',
     warehouseSaveError: 'Lageradresse konnte nicht gespeichert werden',
+    suppliersTab: 'Lieferanten',
+    suppliersTitle: 'Lieferanten',
+    suppliersSubtitle: 'Verwalten Sie die Lieferanten fur die Bearbeitung von Dropship-Bestellungen',
+    newSupplier: 'Neuer Lieferant',
+    editSupplier: 'Lieferant bearbeiten',
+    supplierName: 'Name des Lieferanten',
+    supplierNamePlaceholder: 'z.B. Amazon',
+    supplierWebsite: 'Webseite',
+    supplierWebsitePlaceholder: 'https://www.example.com',
+    supplierLoginSection: 'Zugangsdaten (optional)',
+    supplierLoginSectionHint: 'Gespeichert, damit Einkaufer sie wiederfinden',
+    supplierLoginUrl: 'Login-URL',
+    supplierLoginUsername: 'Benutzername',
+    supplierLoginPassword: 'Passwort',
+    supplierLoginNote: 'Notiz',
+    supplierLoginNotePlaceholder: 'Kontodaten, Ansprechpartner, Zahlungsbedingungen...',
+    supplierActive: 'Aktiv',
+    noSuppliers: 'Keine Lieferanten gefunden',
+    noSuppliersYet: 'Noch keine Lieferanten hinzugefugt',
+    supplierCreated: 'Lieferant erstellt',
+    supplierUpdated: 'Lieferant aktualisiert',
+    supplierDeleted: 'Lieferant geloscht',
+    supplierNameRequired: 'Name des Lieferanten ist erforderlich',
+    supplierInUse: 'Dieser Lieferant ist mit bestehenden Bestellungen verknupft. Setzen Sie ihn stattdessen auf inaktiv.',
+    errorLoadingSuppliers: 'Lieferanten konnten nicht geladen werden',
+    errorSavingSupplier: 'Lieferant konnte nicht gespeichert werden',
+    errorDeletingSupplier: 'Lieferant konnte nicht geloscht werden',
+    showPassword: 'Passwort anzeigen',
+    hidePassword: 'Passwort ausblenden',
     save: 'Speichern',
     delete: 'Loschen',
     locationManagement: 'Standortverwaltung',

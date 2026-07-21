@@ -840,6 +840,31 @@ class ApiService {
     });
   }
 
+  // Suppliers
+  async getSuppliers(installationId: string) {
+    return this.request<any[]>(`/suppliers?installationId=${installationId}`);
+  }
+
+  async createSupplier(data: any) {
+    return this.request<any>('/suppliers', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateSupplier(id: number, data: any) {
+    return this.request<any>(`/suppliers/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteSupplier(id: number) {
+    return this.request<{ message: string }>(`/suppliers/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
   // Warehouse Locations
   async getLocations(installationId: string) {
     return this.request<{ locations: any[] }>(`/locations?installationId=${installationId}`);
