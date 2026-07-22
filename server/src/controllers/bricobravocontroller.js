@@ -541,21 +541,9 @@ export async function sendBricoBravoTracking(installationId, orderNumber, tracki
   try {
     const { credentials } = await getBricoBravoIntegration(installationId);
 
-    // Alleen DPD (via WeGrow) is relevant voor Italië. Overige mappings zijn
-    // aanwezig voor de volledigheid; onbekende carriers vallen terug op 'other'.
-    const courierCodeMap = {
-      dpd: 'dpd',
-      dhl: 'dhl',
-      'wegrow-dpd-standaard': 'dpd',
-      'dpd-standaard': 'dpd',
-      wegrow: 'dpd',
-    };
-
-    const normalizedShippingMethod = String(shippingMethod || '').toLowerCase();
-    const normalizedCarrierType = String(carrierType || '').toLowerCase();
-    const courier = courierCodeMap[normalizedShippingMethod]
-      || courierCodeMap[normalizedCarrierType]
-      || 'other';
+    // BricoBravo verzendt uitsluitend binnen Italië via Poste Italiane.
+    // Courier staat daarom vast, ongeacht carrierType of shippingMethod.
+    const courier = 'Italian Post Office';
 
     const trackingNumber = String(trackingCode || '').trim();
     if (!trackingNumber) {
@@ -563,15 +551,11 @@ export async function sendBricoBravoTracking(installationId, orderNumber, tracki
       return;
     }
 
-    // tracking_url is verplicht bij BricoBravo. Als er geen expliciete URL is,
-    // bouwen we een DPD-trackingslink op basis van de trackingcode.
+    // De carrier-specifieke trackingURL heeft altijd voorrang; alleen als die
+    // ontbreekt vallen we terug op de Poste Italiane zoekpagina.
     let resolvedTrackingUrl = String(trackingUrl || '').trim();
     if (!resolvedTrackingUrl) {
-      if (courier === 'dpd') {
-        resolvedTrackingUrl = `https://tracking.dpd.de/status/nl_NL/parcel/${encodeURIComponent(trackingNumber)}`;
-      } else {
-        resolvedTrackingUrl = trackingNumber;
-      }
+      resolvedTrackingUrl = `https://www.poste.it/cerca/index.html#/risultati-spedizioni/${encodeURIComponent(trackingNumber)}`;
     }
 
     // We hebben het BricoBravo-order-id (id_order) nodig voor de /shipped call.

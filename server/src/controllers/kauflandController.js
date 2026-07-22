@@ -675,30 +675,29 @@ export const reconcileKauflandOrderStatuses = async (req, res) => {
   }
 };
 
+// WeGrow kiest de carrier op basis van het bestemmingsland. Kaufland kent per
+// land aparte codes (kaal `DPD` = DPD Duitsland), dus we mappen op land.
+// Toegestane waarden: https://sellerapi.kaufland.com/?page=order-files#carrier-codes
+const KAUFLAND_CARRIER_CODE_BY_COUNTRY = {
+  DE: 'DHL',
+  AT: 'Austrian Post',
+  IT: 'Post Italiane',
+  NL: 'DPD Netherlands',
+  PL: 'DPD Poland',
+  FR: 'DPD France',
+  CZ: 'DPD Czech Republic',
+  SK: 'DPD Slovakia',
+  ES: 'Seur',
+};
+
+const resolveKauflandCarrierCode = (country) => {
+  const normalized = String(country || '').trim().toUpperCase();
+  return KAUFLAND_CARRIER_CODE_BY_COUNTRY[normalized] || 'Other';
+};
+
 export async function sendKauflandTracking(installationId, orderNumber, trackingCode, carrierType, shippingMethod) {
   try {
     const { credentials } = await getKauflandIntegration(installationId);
-
-    const carrierCodeMap = {
-      dpd: 'DPD',
-      dhl: 'DHL',
-      postnl: 'PostNL',
-      'wegrow-dhl-nl': 'DHL',
-      'wegrow-dhl-for-you-envelop': 'DHL',
-      'wegrow-dhl-for-you-brievenbuspakje': 'DHL',
-      'wegrow-dhl-for-you': 'DHL',
-      'wegrow-postnl-nederland-brievenbuspakketje-0-2kg': 'PostNL',
-      'wegrow-postnl-belgie-standaard-0-23kg': 'PostNL',
-      'wegrow-dpd-standaard': 'DPD',
-      'dpd-standaard': 'DPD',
-      wegrow: 'DPD',
-    };
-
-    const normalizedShippingMethod = String(shippingMethod || '').toLowerCase();
-    const normalizedCarrierType = String(carrierType || '').toLowerCase();
-    const carrierCode = carrierCodeMap[normalizedShippingMethod]
-      || carrierCodeMap[normalizedCarrierType]
-      || 'Other';
 
     const order = await prisma.order.findFirst({
       where: { orderNumber, installationId: parseInt(installationId) },
@@ -709,6 +708,9 @@ export async function sendKauflandTracking(installationId, orderNumber, tracking
       console.warn('[KAUFLAND TRACKING] Order not found:', orderNumber);
       return;
     }
+
+    const carrierCode = resolveKauflandCarrierCode(order.country);
+    console.log('[KAUFLAND TRACKING] Carrier code:', { orderNumber, country: order.country, carrierCode });
 
     const orderUnits = order.orderItems
       .map(item => item.externalId)
