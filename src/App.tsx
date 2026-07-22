@@ -23,6 +23,7 @@ import { Settings } from './components/Settings';
 import { Retouren } from './components/Retouren';
 import { LocationManager } from './components/LocationManager';
 import { ProductManagement } from './components/ProductManagement';
+import { OrderManagement } from './components/OrderManagement';
 import { Loader2 } from 'lucide-react';
 import { Toaster } from 'sonner';
 
@@ -60,6 +61,8 @@ export default function App() {
     switch (activeView) {
       case 'orders':
         return <OrdersOverview activeProfile={activeProfile} isGlobalAdmin={isGlobalAdmin} />;
+      case 'purchasing':
+        return <OrderManagement activeProfile={activeProfile || ''} />;
       case 'tracking':
         return <TrackingManager activeProfile={activeProfile} />;
       case 'labels':

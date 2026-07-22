@@ -226,6 +226,76 @@ type TranslationKey =
   | 'errorDeletingSupplier'
   | 'showPassword'
   | 'hidePassword'
+  | 'purchasing'
+  | 'purchasingTitle'
+  | 'purchasingSubtitle'
+  | 'tabOpenOrders'
+  | 'tabNotOrdered'
+  | 'tabOrdered'
+  | 'openOrdersBanner'
+  | 'refresh'
+  | 'searchPurchasing'
+  | 'withoutTracking'
+  | 'colStore'
+  | 'colCountry'
+  | 'colItemsPrice'
+  | 'colDeliveryDeadline'
+  | 'colReason'
+  | 'colSupplierOrderId'
+  | 'colSupplierTracking'
+  | 'colAction'
+  | 'process'
+  | 'noPurchaseOrders'
+  | 'processOrder'
+  | 'sellPriceLabel'
+  | 'vatLabel'
+  | 'commissionLabel'
+  | 'buyPriceNetLabel'
+  | 'shippingCostLabel'
+  | 'netProfitLabel'
+  | 'buyPriceLabel'
+  | 'supplierOrderIdLabel'
+  | 'excludeVatLabel'
+  | 'netLabel'
+  | 'chooseSupplier'
+  | 'noteLabel'
+  | 'notePlaceholder'
+  | 'markAsOrdered'
+  | 'markAsNotOrdered'
+  | 'reasonLabel'
+  | 'chooseReason'
+  | 'reasonPricingError'
+  | 'reasonOutOfStock'
+  | 'reasonDeliveryTooLate'
+  | 'reasonElse'
+  | 'detailsLabel'
+  | 'reasonPlaceholder'
+  | 'confirmNotOrdered'
+  | 'enterTracking'
+  | 'confirm'
+  | 'trackingSaved'
+  | 'orderProcessed'
+  | 'orderMarkedNotOrdered'
+  | 'goToSupplier'
+  | 'noSupplierLinked'
+  | 'profitCalculation'
+  | 'supplierAndNote'
+  | 'errorLoadingPurchaseOrders'
+  | 'errorProcessingOrder'
+  | 'previousPage'
+  | 'nextPage'
+  | 'pageLabel'
+  | 'ofLabel'
+  | 'resetToOpen'
+  | 'customerDetails'
+  | 'addressLabel'
+  | 'orderHistoryTitle'
+  | 'historyPlaceholderNote'
+  | 'lastOrderedLabel'
+  | 'avgBuyPriceLabel'
+  | 'timesOrderedLabel'
+  | 'buyPriceOverTime'
+  | 'recentOrdersLabel'
   | 'save'
   | 'delete'
   | 'locationManagement'
@@ -560,6 +630,76 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     errorDeletingSupplier: 'Could not delete supplier',
     showPassword: 'Show password',
     hidePassword: 'Hide password',
+    purchasing: 'Purchasing',
+    purchasingTitle: 'Order Management',
+    purchasingSubtitle: 'Dropship orders that still need to be ordered from a supplier',
+    tabOpenOrders: 'Open orders',
+    tabNotOrdered: 'Not ordered',
+    tabOrdered: 'Ordered',
+    openOrdersBanner: 'open orders to be ordered',
+    refresh: 'Refresh',
+    searchPurchasing: 'Search by order number, customer or EAN...',
+    withoutTracking: 'Without tracking',
+    colStore: 'Store',
+    colCountry: 'Country',
+    colItemsPrice: 'Items / EUR',
+    colDeliveryDeadline: 'Delivery deadline',
+    colReason: 'Reason',
+    colSupplierOrderId: 'Supplier order ID',
+    colSupplierTracking: 'Supplier tracking',
+    colAction: 'Action',
+    process: 'Process',
+    noPurchaseOrders: 'No orders found',
+    processOrder: 'Process order',
+    sellPriceLabel: 'Sell price',
+    vatLabel: 'VAT (21%)',
+    commissionLabel: 'Commission (15%)',
+    buyPriceNetLabel: 'Buy price (net)',
+    shippingCostLabel: 'Shipping cost',
+    netProfitLabel: 'Net profit',
+    buyPriceLabel: 'Buy price (EUR)',
+    supplierOrderIdLabel: 'Supplier order ID',
+    excludeVatLabel: 'Exclude VAT (21%)',
+    netLabel: 'Net',
+    chooseSupplier: 'Choose supplier',
+    noteLabel: 'Note',
+    notePlaceholder: 'Add a note for this order...',
+    markAsOrdered: 'Mark as ordered',
+    markAsNotOrdered: 'Mark as not ordered',
+    reasonLabel: 'Reason',
+    chooseReason: 'Choose a reason',
+    reasonPricingError: 'Pricing error',
+    reasonOutOfStock: 'Out of stock',
+    reasonDeliveryTooLate: 'Delivery too late',
+    reasonElse: 'Other',
+    detailsLabel: 'Details',
+    reasonPlaceholder: 'Type the reason...',
+    confirmNotOrdered: 'Confirm - not ordered',
+    enterTracking: 'Enter tracking',
+    confirm: 'Confirm',
+    trackingSaved: 'Tracking saved',
+    orderProcessed: 'Order marked as ordered',
+    orderMarkedNotOrdered: 'Order marked as not ordered',
+    goToSupplier: 'Go to supplier',
+    noSupplierLinked: 'No supplier URL on product',
+    profitCalculation: 'Profit calculation',
+    supplierAndNote: 'Supplier & note',
+    errorLoadingPurchaseOrders: 'Could not load orders',
+    errorProcessingOrder: 'Could not process order',
+    previousPage: 'Previous',
+    nextPage: 'Next',
+    pageLabel: 'Page',
+    ofLabel: 'of',
+    resetToOpen: 'Move back to open',
+    customerDetails: 'Customer details',
+    addressLabel: 'Address',
+    orderHistoryTitle: 'Product order history',
+    historyPlaceholderNote: 'example data',
+    lastOrderedLabel: 'Last ordered',
+    avgBuyPriceLabel: 'Average buy price',
+    timesOrderedLabel: 'Times ordered',
+    buyPriceOverTime: 'Buy price over time',
+    recentOrdersLabel: 'Recent orders',
     save: 'Save',
     delete: 'Delete',
     locationManagement: 'Location Management',
@@ -891,6 +1031,76 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     errorDeletingSupplier: 'Kon leverancier niet verwijderen',
     showPassword: 'Wachtwoord tonen',
     hidePassword: 'Wachtwoord verbergen',
+    purchasing: 'Inkoop',
+    purchasingTitle: 'Order Management',
+    purchasingSubtitle: 'Dropship orders die nog besteld moeten worden bij een leverancier',
+    tabOpenOrders: 'Openstaand',
+    tabNotOrdered: 'Niet besteld',
+    tabOrdered: 'Besteld',
+    openOrdersBanner: 'openstaande orders te bestellen',
+    refresh: 'Verversen',
+    searchPurchasing: 'Zoek op ordernummer, klant of EAN...',
+    withoutTracking: 'Zonder tracking',
+    colStore: 'Store',
+    colCountry: 'Land',
+    colItemsPrice: 'Aantal / EUR',
+    colDeliveryDeadline: 'Uiterste leverdatum',
+    colReason: 'Reden',
+    colSupplierOrderId: 'Leverancier ordernr.',
+    colSupplierTracking: 'Leverancier tracking',
+    colAction: 'Actie',
+    process: 'Verwerken',
+    noPurchaseOrders: 'Geen orders gevonden',
+    processOrder: 'Order verwerken',
+    sellPriceLabel: 'Verkoopprijs',
+    vatLabel: 'BTW (21%)',
+    commissionLabel: 'Commissie (15%)',
+    buyPriceNetLabel: 'Inkoopprijs (netto)',
+    shippingCostLabel: 'Verzendkosten',
+    netProfitLabel: 'Nettowinst',
+    buyPriceLabel: 'Inkoopprijs (EUR)',
+    supplierOrderIdLabel: 'Ordernummer leverancier',
+    excludeVatLabel: 'Excl. BTW (21%)',
+    netLabel: 'Netto',
+    chooseSupplier: 'Kies leverancier',
+    noteLabel: 'Notitie',
+    notePlaceholder: 'Voeg een notitie toe voor deze order...',
+    markAsOrdered: 'Markeer als besteld',
+    markAsNotOrdered: 'Markeer als niet besteld',
+    reasonLabel: 'Reden',
+    chooseReason: 'Kies een reden',
+    reasonPricingError: 'Prijsfout',
+    reasonOutOfStock: 'Niet op voorraad',
+    reasonDeliveryTooLate: 'Levering te laat',
+    reasonElse: 'Anders',
+    detailsLabel: 'Toelichting',
+    reasonPlaceholder: 'Typ de reden...',
+    confirmNotOrdered: 'Bevestig - niet besteld',
+    enterTracking: 'Tracking invoeren',
+    confirm: 'Bevestig',
+    trackingSaved: 'Tracking opgeslagen',
+    orderProcessed: 'Order gemarkeerd als besteld',
+    orderMarkedNotOrdered: 'Order gemarkeerd als niet besteld',
+    goToSupplier: 'Naar leverancier',
+    noSupplierLinked: 'Geen leverancier-URL op product',
+    profitCalculation: 'Margeberekening',
+    supplierAndNote: 'Leverancier & notitie',
+    errorLoadingPurchaseOrders: 'Kon orders niet laden',
+    errorProcessingOrder: 'Kon order niet verwerken',
+    previousPage: 'Vorige',
+    nextPage: 'Volgende',
+    pageLabel: 'Pagina',
+    ofLabel: 'van',
+    resetToOpen: 'Terug naar openstaand',
+    customerDetails: 'Klantgegevens',
+    addressLabel: 'Adres',
+    orderHistoryTitle: 'Bestelhistorie product',
+    historyPlaceholderNote: 'voorbeelddata',
+    lastOrderedLabel: 'Laatst besteld',
+    avgBuyPriceLabel: 'Gem. inkoopprijs',
+    timesOrderedLabel: 'Aantal keer besteld',
+    buyPriceOverTime: 'Inkoopprijs over tijd',
+    recentOrdersLabel: 'Recente bestellingen',
     save: 'Opslaan',
     delete: 'Verwijderen',
     locationManagement: 'Locatiebeheer',
@@ -1222,6 +1432,76 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     errorDeletingSupplier: 'Lieferant konnte nicht geloscht werden',
     showPassword: 'Passwort anzeigen',
     hidePassword: 'Passwort ausblenden',
+    purchasing: 'Einkauf',
+    purchasingTitle: 'Order Management',
+    purchasingSubtitle: 'Dropship-Bestellungen, die noch beim Lieferanten bestellt werden mussen',
+    tabOpenOrders: 'Offen',
+    tabNotOrdered: 'Nicht bestellt',
+    tabOrdered: 'Bestellt',
+    openOrdersBanner: 'offene Bestellungen zu bestellen',
+    refresh: 'Aktualisieren',
+    searchPurchasing: 'Nach Bestellnummer, Kunde oder EAN suchen...',
+    withoutTracking: 'Ohne Sendungsverfolgung',
+    colStore: 'Store',
+    colCountry: 'Land',
+    colItemsPrice: 'Anzahl / EUR',
+    colDeliveryDeadline: 'Lieferfrist',
+    colReason: 'Grund',
+    colSupplierOrderId: 'Lieferanten-Bestellnr.',
+    colSupplierTracking: 'Lieferanten-Tracking',
+    colAction: 'Aktion',
+    process: 'Bearbeiten',
+    noPurchaseOrders: 'Keine Bestellungen gefunden',
+    processOrder: 'Bestellung bearbeiten',
+    sellPriceLabel: 'Verkaufspreis',
+    vatLabel: 'MwSt. (21%)',
+    commissionLabel: 'Provision (15%)',
+    buyPriceNetLabel: 'Einkaufspreis (netto)',
+    shippingCostLabel: 'Versandkosten',
+    netProfitLabel: 'Nettogewinn',
+    buyPriceLabel: 'Einkaufspreis (EUR)',
+    supplierOrderIdLabel: 'Bestellnummer Lieferant',
+    excludeVatLabel: 'Ohne MwSt. (21%)',
+    netLabel: 'Netto',
+    chooseSupplier: 'Lieferant wahlen',
+    noteLabel: 'Notiz',
+    notePlaceholder: 'Notiz zu dieser Bestellung hinzufugen...',
+    markAsOrdered: 'Als bestellt markieren',
+    markAsNotOrdered: 'Als nicht bestellt markieren',
+    reasonLabel: 'Grund',
+    chooseReason: 'Grund auswahlen',
+    reasonPricingError: 'Preisfehler',
+    reasonOutOfStock: 'Nicht vorratig',
+    reasonDeliveryTooLate: 'Lieferung zu spat',
+    reasonElse: 'Sonstiges',
+    detailsLabel: 'Details',
+    reasonPlaceholder: 'Grund eingeben...',
+    confirmNotOrdered: 'Bestatigen - nicht bestellt',
+    enterTracking: 'Tracking eingeben',
+    confirm: 'Bestatigen',
+    trackingSaved: 'Tracking gespeichert',
+    orderProcessed: 'Bestellung als bestellt markiert',
+    orderMarkedNotOrdered: 'Bestellung als nicht bestellt markiert',
+    goToSupplier: 'Zum Lieferanten',
+    noSupplierLinked: 'Keine Lieferanten-URL am Produkt',
+    profitCalculation: 'Margenberechnung',
+    supplierAndNote: 'Lieferant & Notiz',
+    errorLoadingPurchaseOrders: 'Bestellungen konnten nicht geladen werden',
+    errorProcessingOrder: 'Bestellung konnte nicht bearbeitet werden',
+    previousPage: 'Zuruck',
+    nextPage: 'Weiter',
+    pageLabel: 'Seite',
+    ofLabel: 'von',
+    resetToOpen: 'Zuruck zu offen',
+    customerDetails: 'Kundendaten',
+    addressLabel: 'Adresse',
+    orderHistoryTitle: 'Bestellhistorie Produkt',
+    historyPlaceholderNote: 'Beispieldaten',
+    lastOrderedLabel: 'Zuletzt bestellt',
+    avgBuyPriceLabel: 'Durchschn. Einkaufspreis',
+    timesOrderedLabel: 'Anzahl Bestellungen',
+    buyPriceOverTime: 'Einkaufspreis im Zeitverlauf',
+    recentOrdersLabel: 'Letzte Bestellungen',
     save: 'Speichern',
     delete: 'Loschen',
     locationManagement: 'Standortverwaltung',

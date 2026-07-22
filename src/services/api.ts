@@ -865,6 +865,63 @@ class ApiService {
     });
   }
 
+  // Purchase Orders (Purchasing)
+  async getPurchaseOrders(params: {
+    installationId: string;
+    tab?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+    withoutTracking?: boolean;
+  }) {
+    const queryParams = new URLSearchParams();
+    queryParams.append('installationId', params.installationId);
+    if (params.tab) queryParams.append('tab', params.tab);
+    if (params.search) queryParams.append('search', params.search);
+    if (params.page) queryParams.append('page', params.page.toString());
+    if (params.limit) queryParams.append('limit', params.limit.toString());
+    if (params.withoutTracking) queryParams.append('withoutTracking', 'true');
+
+    return this.request<{ items: any[]; pagination: any; counts: any }>(
+      `/purchase-orders?${queryParams.toString()}`
+    );
+  }
+
+  async processPurchaseOrder(data: {
+    orderItemId: number;
+    supplierId: number;
+    buyPrice?: number;
+    excludeVat?: boolean;
+    shippingCost?: number;
+    supplierOrderId?: string;
+    note?: string;
+  }) {
+    return this.request<{ success: boolean; purchaseOrder: any }>('/purchase-orders/process', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async markPurchaseOrderNotOrdered(data: { orderItemId: number; reason: string; note?: string }) {
+    return this.request<{ success: boolean; purchaseOrder: any }>('/purchase-orders/not-ordered', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updatePurchaseOrderTracking(id: number, supplierTracking: string) {
+    return this.request<{ success: boolean; purchaseOrder: any }>(`/purchase-orders/${id}/tracking`, {
+      method: 'PUT',
+      body: JSON.stringify({ supplierTracking }),
+    });
+  }
+
+  async resetPurchaseOrder(id: number) {
+    return this.request<{ success: boolean }>(`/purchase-orders/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
   // Warehouse Locations
   async getLocations(installationId: string) {
     return this.request<{ locations: any[] }>(`/locations?installationId=${installationId}`);

@@ -31,7 +31,7 @@ interface AppSidebarProps {
 
 interface MenuItem {
   id: string;
-  labelKey: 'orders' | 'tracking' | 'labels' | 'shipments' | 'integrations' | 'carriers' | 'settings' | 'automationRules' | 'administrative' | 'dashboard' | 'klkAnalytics' | 'fulfillmentAnalytics' | 'warehouseManagement' | 'inventoryManagement' | 'inventoryAnalysis' | 'returns' | 'locationManagement' | 'productManagement';
+  labelKey: 'orders' | 'tracking' | 'labels' | 'shipments' | 'integrations' | 'carriers' | 'settings' | 'automationRules' | 'administrative' | 'dashboard' | 'klkAnalytics' | 'fulfillmentAnalytics' | 'warehouseManagement' | 'inventoryManagement' | 'inventoryAnalysis' | 'returns' | 'locationManagement' | 'productManagement' | 'purchasing';
   icon: any;
   adminOnly?: boolean;
   children?: MenuItem[];
@@ -42,6 +42,7 @@ const menuItems: { sectionKey: 'orderManagement' | 'warehouseManagement' | 'anal
     sectionKey: 'orderManagement',
     items: [
       { id: 'orders', labelKey: 'orders', icon: ShoppingCart },
+      { id: 'purchasing', labelKey: 'purchasing', icon: Package },
       { id: 'tracking', labelKey: 'tracking', icon: QrCode, adminOnly: true },
       { id: 'labels', labelKey: 'labels', icon: FileText, adminOnly: true },
       { id: 'shipments', labelKey: 'shipments', icon: Truck, adminOnly: true },
