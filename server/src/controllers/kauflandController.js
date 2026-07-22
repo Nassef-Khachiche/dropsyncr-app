@@ -695,6 +695,11 @@ const resolveKauflandCarrierCode = (country) => {
   return KAUFLAND_CARRIER_CODE_BY_COUNTRY[normalized] || 'Other';
 };
 
+const resolveKauflandStorefront = (country) => {
+  const normalized = String(country || '').trim().toLowerCase();
+  return normalized || null;
+};
+
 export async function sendKauflandTracking(installationId, orderNumber, trackingCode, carrierType, shippingMethod) {
   try {
     const { credentials } = await getKauflandIntegration(installationId);
@@ -710,7 +715,8 @@ export async function sendKauflandTracking(installationId, orderNumber, tracking
     }
 
     const carrierCode = resolveKauflandCarrierCode(order.country);
-    console.log('[KAUFLAND TRACKING] Carrier code:', { orderNumber, country: order.country, carrierCode });
+    const storefront = resolveKauflandStorefront(order.country);
+    console.log('[KAUFLAND TRACKING] Carrier code:', { orderNumber, country: order.country, carrierCode, storefront });
 
     const orderUnits = order.orderItems
       .map(item => item.externalId)
@@ -721,11 +727,13 @@ export async function sendKauflandTracking(installationId, orderNumber, tracking
       return;
     }
 
+    const storefrontQuery = storefront ? `?storefront=${encodeURIComponent(storefront)}` : '';
+
     for (const orderUnitId of orderUnits) {
       try {
         await kauflandApiRequest(
           credentials,
-          `/order-units/${orderUnitId}/send`,
+          `/order-units/${orderUnitId}/send${storefrontQuery}`,
           'PATCH',
           {
             carrier_code: carrierCode,
