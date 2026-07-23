@@ -266,19 +266,31 @@ export function Integrations({ activeProfile }: IntegrationsProps) {
       return;
     }
 
-    if (!activeProfile) {
+    const effectiveInstallationId = editingStore?.installationId?.toString() || activeProfile;
+
+    if (!effectiveInstallationId) {
       toast.error('Selecteer eerst een installatie');
       return;
     }
 
-    if (isAllStoresSelected) {
+    if (!editingStore && isAllStoresSelected) {
       toast.error('Selecteer een specifieke store om een integratie te koppelen');
+      return;
+    }
+
+    if (!editingStore && effectiveInstallationId === 'all') {
+      toast.error('Selecteer een specifieke store om een integratie te koppelen');
+      return;
+    }
+
+    if (editingStore && !editingStore.installationId) {
+      toast.error('Store van deze integratie kon niet worden bepaald');
       return;
     }
 
     try {
       const integrationData = {
-        installationId: parseInt(activeProfile),
+        installationId: parseInt(effectiveInstallationId, 10),
         platform: selectedPlatform?.id === 'bol' ? 'bol.com' : selectedPlatform?.id || '',
         credentials: isShopify
           ? {
