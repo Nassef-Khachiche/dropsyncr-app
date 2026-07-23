@@ -22,6 +22,8 @@ build/
 # Logs
 logs/
 *.log
+*.err
+.port*.txt
 
 # IDE
 .vscode/
