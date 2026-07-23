@@ -93,11 +93,16 @@ async function getKauflandIntegration(installationId, integrationId = null) {
     throw new Error('Invalid installation ID');
   }
 
+  const integrationIdNumber = integrationId ? parseInt(integrationId, 10) : null;
+  if (integrationId && !Number.isFinite(integrationIdNumber)) {
+    throw new Error('Invalid integration ID');
+  }
+
   const where = {
     installationId: installationIdNumber,
     platform: 'kaufland',
     active: true,
-    ...(integrationId ? { id: parseInt(integrationId, 10) } : {}),
+    ...(integrationIdNumber ? { id: integrationIdNumber } : {}),
   };
 
   const integration = await prisma.integration.findFirst({
@@ -111,6 +116,39 @@ async function getKauflandIntegration(installationId, integrationId = null) {
 
   const credentials = JSON.parse(integration.credentials);
   return { integration, credentials };
+}
+
+async function resolveKauflandIntegrationForOrder(installationId, orderNumber, integrationId = null) {
+  const installationIdNumber = parseInt(installationId, 10);
+  if (!Number.isFinite(installationIdNumber)) {
+    throw new Error('Invalid installation ID');
+  }
+
+  const normalizedOrderNumber = String(orderNumber || '').trim();
+  let resolvedIntegrationId = integrationId ? parseInt(integrationId, 10) : null;
+
+  if (!resolvedIntegrationId && normalizedOrderNumber) {
+    const dbOrder = await prisma.order.findFirst({
+      where: { orderNumber: normalizedOrderNumber, installationId: installationIdNumber },
+      select: { storeName: true },
+    });
+
+    if (dbOrder?.storeName) {
+      const integrations = await prisma.integration.findMany({
+        where: { installationId: installationIdNumber, platform: 'kaufland', active: true },
+      });
+
+      const matchedIntegration = integrations.find((integration) => {
+        const credentials = JSON.parse(integration.credentials || '{}');
+        const shopName = credentials.shopName || `Kaufland #${integration.id}`;
+        return shopName === dbOrder.storeName;
+      });
+
+      if (matchedIntegration) resolvedIntegrationId = matchedIntegration.id;
+    }
+  }
+
+  return getKauflandIntegration(installationIdNumber, resolvedIntegrationId);
 }
 
 async function kauflandApiRequest(credentials, endpoint, method = 'GET', body = null) {
@@ -700,9 +738,9 @@ const resolveKauflandStorefront = (country) => {
   return normalized || null;
 };
 
-export async function sendKauflandTracking(installationId, orderNumber, trackingCode, carrierType, shippingMethod) {
+export async function sendKauflandTracking(installationId, orderNumber, trackingCode, carrierType, shippingMethod, integrationId = null) {
   try {
-    const { credentials } = await getKauflandIntegration(installationId);
+    const { integration, credentials } = await resolveKauflandIntegrationForOrder(installationId, orderNumber, integrationId);
 
     const order = await prisma.order.findFirst({
       where: { orderNumber, installationId: parseInt(installationId) },
@@ -716,7 +754,7 @@ export async function sendKauflandTracking(installationId, orderNumber, tracking
 
     const carrierCode = resolveKauflandCarrierCode(order.country);
     const storefront = resolveKauflandStorefront(order.country);
-    console.log('[KAUFLAND TRACKING] Carrier code:', { orderNumber, country: order.country, carrierCode, storefront });
+    console.log('[KAUFLAND TRACKING] Carrier code:', { orderNumber, integrationId: integration.id, storeName: order.storeName, country: order.country, carrierCode, storefront });
 
     const orderUnits = order.orderItems
       .map(item => item.externalId)
