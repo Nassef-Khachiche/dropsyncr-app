@@ -1,5 +1,29 @@
 import prisma from '../config/database.js';
 import fetch from 'node-fetch';
+import { sendShopifyTracking } from './shopifyController.js';
+
+const syncShopifyTrackingForOrder = async ({ order, trackingCode, supplier, trackingUrl = null }) => {
+  const normalizedTrackingCode = String(trackingCode || '').trim();
+  const normalizedPlatform = String(order?.platform || '').trim().toLowerCase();
+
+  if (normalizedPlatform !== 'shopify' || !normalizedTrackingCode) return null;
+
+  try {
+    return await sendShopifyTracking(
+      String(order.installationId),
+      order.orderNumber,
+      normalizedTrackingCode,
+      supplier,
+      trackingUrl || null,
+    );
+  } catch (error) {
+    console.error('[SHOPIFY TRACKING] Failed to sync tracking from tracking controller:', {
+      orderNumber: order.orderNumber,
+      error: error.message,
+    });
+    return { success: false, error: error.message };
+  }
+};
 
 const isTruthyValue = (value) => {
   if (typeof value === 'boolean') return value;
@@ -112,7 +136,7 @@ export const getTrackings = async (req, res) => {
 
 export const createTracking = async (req, res) => {
   try {
-    const { orderId, trackingCode, supplier, source } = req.body;
+    const { orderId, trackingCode, supplier, source, trackingUrl } = req.body;
 
     // Check if order belongs to user
     const order = await prisma.order.findFirst({
@@ -143,6 +167,8 @@ export const createTracking = async (req, res) => {
       },
     });
 
+    await syncShopifyTrackingForOrder({ order, trackingCode, supplier, trackingUrl });
+
     res.status(201).json(tracking);
   } catch (error) {
     console.error('Create tracking error:', error);
@@ -165,7 +191,7 @@ export const bulkCreateTracking = async (req, res) => {
         });
 
         if (order) {
-          return prisma.tracking.upsert({
+          const createdTracking = await prisma.tracking.upsert({
             where: { orderId: order.id },
             update: {
               trackingCode: tracking.trackingCode,
@@ -181,6 +207,15 @@ export const bulkCreateTracking = async (req, res) => {
               status: 'linked',
             },
           });
+
+          await syncShopifyTrackingForOrder({
+            order,
+            trackingCode: tracking.trackingCode,
+            supplier: tracking.supplier,
+            trackingUrl: tracking.trackingUrl,
+          });
+
+          return createdTracking;
         } else {
           // Create pending tracking (no order linked)
           return prisma.tracking.create({
