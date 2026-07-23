@@ -81,9 +81,12 @@ app.use(cors({
   credentials: true
 }));
 
+const requestRateLimitWindowMinutes = parseInt(process.env.RATE_LIMIT_WINDOW_MINUTES || '15', 10);
+const requestRateLimitMax = parseInt(process.env.RATE_LIMIT_MAX || '3000', 10);
+
 app.use(rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 800,
+  windowMs: (Number.isFinite(requestRateLimitWindowMinutes) && requestRateLimitWindowMinutes > 0 ? requestRateLimitWindowMinutes : 15) * 60 * 1000,
+  max: Number.isFinite(requestRateLimitMax) && requestRateLimitMax > 0 ? requestRateLimitMax : 3000,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests. Please try again later.' },

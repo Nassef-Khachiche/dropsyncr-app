@@ -298,6 +298,7 @@ const WEGROW_SELECTED_CARRIER_COUNTRY_SERVICE_CODE_OVERRIDES = {
   },
   'dpd-standaard': {
     NL: 'wegrow_home_economy',
+    BE: 'wegrow_home_economy',
   },
   'postat-standaard': {
     AT: 'wegrow_home_premium',
@@ -915,7 +916,22 @@ export const generateCarrierLabels = async (req, res) => {
       if (!raw) return '';
       const countryCode = String(country || 'NL').trim().toUpperCase();
       if (countryCode === 'NL') return raw.replace(/\s+/g, '').toUpperCase();
+      if (countryCode === 'PL') return raw.replace(/[\s-]+/g, '').toUpperCase();
       return raw.replace(/\s+/g, ' ').trim().toUpperCase();
+    };
+
+    const normalizeStreetLine = (street = '') => String(street || '')
+      .replace(/,\s*(?=\d+[A-Za-z0-9-]*\b)/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const looksLikePostalSegment = (value = '', country = 'NL') => {
+      const normalized = String(value || '').trim();
+      const countryCode = String(country || 'NL').trim().toUpperCase();
+      if (!normalized) return false;
+      if (/\d{4}\s?[A-Z]{2}/i.test(normalized)) return true;
+      if (countryCode === 'PL' && /\d{2}-?\d{3}/.test(normalized)) return true;
+      return /(?:[A-Z]{1,3}-)?\d{4,6}/i.test(normalized);
     };
 
     const hasMalformedStreetHouseNumberFormat = (street = '') => {
@@ -935,10 +951,11 @@ export const generateCarrierLabels = async (req, res) => {
       const addressParts = addressText.split(',').map((part) => String(part || '').trim()).filter(Boolean);
 
       if (!street) {
-        const postalIndex = addressParts.findIndex((part) => /\d{4}\s?[A-Z]{2}/i.test(part));
+        const postalIndex = addressParts.findIndex((part) => looksLikePostalSegment(part, country));
         if (postalIndex > 0) street = String(addressParts.slice(0, postalIndex).join(', ') || '').trim();
       }
       if (!street) street = String(addressParts[0] || address.street || pkg.address || '').trim();
+      street = normalizeStreetLine(street);
 
       if (!zipCode && country === 'NL') {
         const nlPostalSegment = addressParts.find((part) => /\d{4}\s?[A-Z]{2}/i.test(part));
@@ -1476,11 +1493,11 @@ export const generateCarrierLabels = async (req, res) => {
         }
         const shipmentStreet = [shipmentDetails.streetName, shipmentDetails.houseNumber, shipmentDetails.houseNumberExtension]
           .filter(Boolean).join(' ').trim();
-        const destinationStreet = String(
+        const destinationStreet = normalizeStreetLine(
           pkg.street || pkg.addressLine1 || pkg.shippingStreet || shipmentStreet ||
           shipmentDetails.addressLine1 || shipmentDetails.street || parsedRecipientAddress?.street ||
           address.street || pkg.address || ''
-        ).trim();
+        );
         const destinationPostalCode = normalizePostalCode(
           pkg.zipCode || pkg.postalCode || pkg.shippingZipCode ||
           shipmentDetails.zipCode || shipmentDetails.postalCode ||

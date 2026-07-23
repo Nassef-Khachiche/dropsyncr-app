@@ -62,10 +62,10 @@ async function runBolSyncCycle() {
 }
 
 export function startBolSyncCronJob() {
-  const syncIntervalMinutes = parseInt(process.env.BOL_SYNC_INTERVAL_MINUTES || '15', 10);
+  const syncIntervalMinutes = parseInt(process.env.BOL_SYNC_INTERVAL_MINUTES || '30', 10);
   const safeIntervalMinutes = Number.isFinite(syncIntervalMinutes) && syncIntervalMinutes > 0
     ? syncIntervalMinutes
-    : 5;
+    : 30;
 
   const intervalMs = safeIntervalMinutes * 60 * 1000;
 

@@ -590,14 +590,11 @@ export async function syncShopifyOrdersForInstallation({ installationId, integra
 
   await ensureOrderStatusCodes();
 
-  // Fetch all open orders, but only recently updated closed orders so cron cycles stay fast.
-  const [openOrders, closedOrders] = await Promise.all([
-    fetchShopifyOrders(credentials, { status: 'open' }),
-    fetchShopifyOrders(credentials, { status: 'closed', updatedAtMin }),
-  ]);
-
-  const allOrders = [...openOrders, ...closedOrders];
-  console.log('[SHOPIFY SYNC] Total fetched:', { open: openOrders.length, closed: closedOrders.length });
+  const fetchedOrders = await fetchShopifyOrders(credentials, { status: 'any', updatedAtMin });
+  const allOrders = Array.from(new Map(
+    fetchedOrders.map((order) => [String(order.id || order.order_number), order])
+  ).values());
+  console.log('[SHOPIFY SYNC] Total fetched:', { any: fetchedOrders.length, deduped: allOrders.length });
 
   let importedCount = 0;
   let updatedCount = 0;
