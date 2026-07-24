@@ -924,6 +924,13 @@ class ApiService {
     });
   }
 
+  async saveProductSupplierUrl(data: { orderItemId: number; url: string }) {
+    return this.request<{ success: boolean; supplierUrl: string; isAffiliate: boolean }>(
+      '/purchase-orders/supplier-url',
+      { method: 'POST', body: JSON.stringify(data) }
+    );
+  }
+
   async markPurchaseOrderCanceled(data: { orderItemIds: number[]; reason?: string; note?: string }) {
     return this.request<{ success: boolean; purchaseOrders: any[] }>('/purchase-orders/canceled', {
       method: 'POST',

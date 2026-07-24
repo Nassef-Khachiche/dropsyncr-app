@@ -4,6 +4,7 @@ import {
   processPurchaseOrder,
   markNotOrdered,
   markCanceled,
+  saveProductSupplierUrl,
   updatePurchaseOrderTracking,
   resetPurchaseOrder,
   getProductPurchaseHistory,
@@ -19,6 +20,7 @@ router.get('/history', getProductPurchaseHistory);
 router.post('/process', processPurchaseOrder);
 router.post('/not-ordered', markNotOrdered);
 router.post('/canceled', markCanceled);
+router.post('/supplier-url', saveProductSupplierUrl);
 router.put('/:id/tracking', updatePurchaseOrderTracking);
 router.delete('/:id', resetPurchaseOrder);
 

@@ -417,7 +417,16 @@ type TranslationKey =
   | 'expiringTomorrow'
   | 'processed'
   | 'searchProductEanClient'
-  | 'receivedAtDate';
+  | 'receivedAtDate'
+  | 'pasteAmazonUrl'
+  | 'saveSupplierLink'
+  | 'changeSupplierLink'
+  | 'supplierLinkSaved'
+  | 'affiliateLinkCreated'
+  | 'errorSavingSupplierLink'
+  | 'affiliateHint'
+  | 'colOrderedAt'
+  | 'colOrderedBy';
 
 type Dictionary = Record<TranslationKey, string>;
 
@@ -838,6 +847,15 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     expiringTomorrow: 'Expiring tomorrow',
     processed: 'Processed',
     receivedAtDate: 'Arrival date (optional)',
+    pasteAmazonUrl: 'Paste Amazon URL here...',
+    saveSupplierLink: 'Save link',
+    changeSupplierLink: 'Change link',
+    supplierLinkSaved: 'Supplier link saved',
+    affiliateLinkCreated: 'Affiliate link created and saved',
+    errorSavingSupplierLink: 'Could not save the link',
+    affiliateHint: 'Amazon links are automatically converted to an affiliate link.',
+    colOrderedAt: 'Ordered at',
+    colOrderedBy: 'Ordered by',
   },
   nl: {
     loading: 'Laden...',
@@ -1255,6 +1273,15 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     expiringTomorrow: 'Verloopt morgen',
     processed: 'Verwerkt',
     receivedAtDate: 'Binnenkomst datum (optioneel)',
+    pasteAmazonUrl: 'Plak hier de Amazon-URL...',
+    saveSupplierLink: 'Link opslaan',
+    changeSupplierLink: 'Link wijzigen',
+    supplierLinkSaved: 'Leverancierslink opgeslagen',
+    affiliateLinkCreated: 'Affiliate-link aangemaakt en opgeslagen',
+    errorSavingSupplierLink: 'Kon de link niet opslaan',
+    affiliateHint: 'Amazon-links worden automatisch omgezet naar een affiliate-link.',
+    colOrderedAt: 'Besteld op',
+    colOrderedBy: 'Besteld door',
   },
   de: {
     loading: 'Ladt...',
@@ -1672,6 +1699,15 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     expiringTomorrow: 'Lauft morgen ab',
     processed: 'Verarbeitet',
     receivedAtDate: 'Eingangsdatum (optional)',
+    pasteAmazonUrl: 'Amazon-URL hier einfugen...',
+    saveSupplierLink: 'Link speichern',
+    changeSupplierLink: 'Link andern',
+    supplierLinkSaved: 'Lieferantenlink gespeichert',
+    affiliateLinkCreated: 'Affiliate-Link erstellt und gespeichert',
+    errorSavingSupplierLink: 'Link konnte nicht gespeichert werden',
+    affiliateHint: 'Amazon-Links werden automatisch in einen Affiliate-Link umgewandelt.',
+    colOrderedAt: 'Bestellt am',
+    colOrderedBy: 'Bestellt von',
   },
 };
 

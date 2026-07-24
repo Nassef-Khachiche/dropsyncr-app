@@ -78,6 +78,7 @@ interface PurchaseItem {
     supplierTracking: string | null;
     notOrderedReason: string | null;
     processedAt: string | null;
+    processedByName: string | null;
   } | null;
 }
 
@@ -106,6 +107,14 @@ const formatDate = (value: string | null) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '-';
   return `${date.getDate()}-${date.getMonth() + 1}-${date.getFullYear()}`;
+};
+
+const formatDateTime = (value: string | null) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  const time = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+  return `${date.getDate()}-${date.getMonth() + 1}-${date.getFullYear()} ${time}`;
 };
 
 const formatShortDate = (value: string) => {
@@ -390,8 +399,14 @@ export function OrderManagement({ activeProfile }: OrderManagementProps) {
                 <th className="py-2.5 px-3">{t('colCountry')}</th>
                 <th className="py-2.5 px-3">{t('colStore')}</th>
                 <th className="py-2.5 px-3">{t('eanCode')}</th>
-                <th className="py-2.5 px-3 text-center">{t('colItemsPrice')}</th>
-                <th className="py-2.5 px-3">{t('colDeliveryDeadline')}</th>
+                {activeTab !== 'ordered' && (
+                  <th className="py-2.5 px-3 text-center">{t('colItemsPrice')}</th>
+                )}
+                {activeTab !== 'ordered' && (
+                  <th className="py-2.5 px-3">{t('colDeliveryDeadline')}</th>
+                )}
+                {activeTab === 'ordered' && <th className="py-2.5 px-3">{t('colOrderedAt')}</th>}
+                {activeTab === 'ordered' && <th className="py-2.5 px-3">{t('colOrderedBy')}</th>}
                 {(activeTab === 'not_ordered' || activeTab === 'canceled') && (
                   <th className="py-2.5 px-3">{t('colReason')}</th>
                 )}
@@ -458,23 +473,37 @@ export function OrderManagement({ activeProfile }: OrderManagementProps) {
                         )}
                       </td>
                       <td className="py-2.5 px-3 font-mono text-xs text-slate-500">{item.ean || '-'}</td>
-                      <td className="py-2.5 px-3 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <span className="text-slate-900">{item.quantity}</span>
-                          {item.mergedItemCount > 1 && (
-                            <span
-                              className="text-[10px] px-1 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-100"
-                              title={t('mergedItemsTitle')}
-                            >
-                              {item.mergedItemCount}×
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-xs text-slate-500">EUR {fmt(item.sellPrice)}</div>
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-600">
-                        {isFirstOfOrder ? formatDate(item.deliveryDate) : ''}
-                      </td>
+                      {activeTab !== 'ordered' && (
+                        <td className="py-2.5 px-3 text-center">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <span className="text-slate-900">{item.quantity}</span>
+                            {item.mergedItemCount > 1 && (
+                              <span
+                                className="text-[10px] px-1 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-100"
+                                title={t('mergedItemsTitle')}
+                              >
+                                {item.mergedItemCount}×
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-slate-500">EUR {fmt(item.sellPrice)}</div>
+                        </td>
+                      )}
+                      {activeTab !== 'ordered' && (
+                        <td className="py-2.5 px-3 text-slate-600">
+                          {isFirstOfOrder ? formatDate(item.deliveryDate) : ''}
+                        </td>
+                      )}
+                      {activeTab === 'ordered' && (
+                        <td className="py-2.5 px-3 text-xs text-slate-600 whitespace-nowrap">
+                          {formatDateTime(item.purchaseOrder?.processedAt || null)}
+                        </td>
+                      )}
+                      {activeTab === 'ordered' && (
+                        <td className="py-2.5 px-3 text-slate-700">
+                          {item.purchaseOrder?.processedByName || '-'}
+                        </td>
+                      )}
                       {(activeTab === 'not_ordered' || activeTab === 'canceled') && (
                         <td className="py-2.5 px-3 text-slate-600">
                           {item.purchaseOrder?.notOrderedReason || '-'}
@@ -719,6 +748,11 @@ function ProcessDialog({
   const [history, setHistory] = useState<HistoryData | null>(null);
   const [historyLoading, setHistoryLoading] = useState(true);
 
+  const [supplierLink, setSupplierLink] = useState(item.supplierUrl || '');
+  const [urlInput, setUrlInput] = useState('');
+  const [savingUrl, setSavingUrl] = useState(false);
+  const [editingUrl, setEditingUrl] = useState(false);
+
   useEffect(() => {
     let active = true;
     setHistoryLoading(true);
@@ -813,7 +847,24 @@ function ProcessDialog({
     }
   };
 
-  const supplierLink = item.supplierUrl;
+  const handleSaveUrl = async () => {
+    const url = urlInput.trim();
+    if (!url) return;
+    try {
+      setSavingUrl(true);
+      const result = await api.saveProductSupplierUrl({ orderItemId: item.orderItemId, url });
+      setSupplierLink(result.supplierUrl);
+      setUrlInput('');
+      setEditingUrl(false);
+      toast.success(t('supplierLinkSaved'));
+    } catch (error: any) {
+      console.error('Failed to save supplier url:', error);
+      toast.error(error?.message || t('errorSavingSupplierLink'));
+    } finally {
+      setSavingUrl(false);
+    }
+  };
+
   const chartData = (history?.points || []).map((point) => ({
     date: formatShortDate(point.date),
     price: point.price,
@@ -833,7 +884,9 @@ function ProcessDialog({
           <h3 className="text-white font-semibold text-lg">
             {t('processOrder')} — {item.orderNumber}
           </h3>
-          <span className="text-white/70 text-sm">{item.customerName}</span>
+          <span style={{ color: 'rgba(255,255,255,0.85)' }} className="text-sm">
+            {item.customerName}
+          </span>
           <button
             onClick={handleCopy}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium bg-white/15 border border-white/30 text-white hover:bg-white/25 transition-colors"
@@ -885,12 +938,62 @@ function ProcessDialog({
             <div className="p-8 space-y-4 md:border-r border-slate-200">
               <p className="text-xs uppercase tracking-wide text-slate-400 font-semibold">{t('supplierName')}</p>
 
-              {supplierLink ? (
-                <SupplierLink url={supplierLink} label={t('goToSupplier')} />
+              {supplierLink && !editingUrl ? (
+                <div className="space-y-2">
+                  <SupplierLink url={supplierLink} label={t('goToSupplier')} />
+                  <button
+                    onClick={() => {
+                      setUrlInput(supplierLink);
+                      setEditingUrl(true);
+                    }}
+                    className="text-xs text-slate-400 hover:text-indigo-600 transition-colors"
+                  >
+                    {t('changeSupplierLink')}
+                  </button>
+                </div>
               ) : (
-                <div className="flex items-center justify-center gap-2 text-sm text-slate-400 border border-slate-200 rounded-lg px-3 py-3 bg-slate-50">
-                  <ExternalLink className="w-4 h-4" />
-                  {t('noSupplierLinked')}
+                <div className="space-y-2">
+                  {!supplierLink && (
+                    <div className="flex items-center justify-center gap-2 text-sm text-slate-400 border border-slate-200 rounded-lg px-3 py-2.5 bg-slate-50">
+                      <ExternalLink className="w-4 h-4" />
+                      {t('noSupplierLinked')}
+                    </div>
+                  )}
+                  <Input
+                    value={urlInput}
+                    onChange={(e) => setUrlInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSaveUrl();
+                    }}
+                    placeholder={t('pasteAmazonUrl')}
+                    className="h-10 text-sm border-slate-200"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleSaveUrl}
+                      disabled={urlInput.trim().length === 0 || savingUrl}
+                      style={{
+                        backgroundColor: urlInput.trim().length > 0 && !savingUrl ? '#f59e0b' : '#e2e8f0',
+                        color: urlInput.trim().length > 0 && !savingUrl ? '#ffffff' : '#94a3b8',
+                        cursor: urlInput.trim().length > 0 && !savingUrl ? 'pointer' : 'not-allowed',
+                      }}
+                      className="flex-1 h-10 rounded-md text-sm font-medium shadow-sm transition-colors"
+                    >
+                      {savingUrl ? t('saving') : t('saveSupplierLink')}
+                    </button>
+                    {editingUrl && (
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setUrlInput('');
+                          setEditingUrl(false);
+                        }}
+                        className="h-10 px-4"
+                      >
+                        {t('cancel')}
+                      </Button>
+                    )}
+                  </div>
                 </div>
               )}
 

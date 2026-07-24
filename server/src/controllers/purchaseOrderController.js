@@ -1,4 +1,5 @@
 import prisma from '../config/database.js';
+import { toAffiliateUrl, isAmazonUrl } from '../utils/affiliateLinks.js';
 
 /**
  * Order Management — inkoop van dropship orders.
@@ -116,7 +117,7 @@ const groupOrderItems = (orderItems = []) => {
 };
 
 // Eén samengevoegde regel voor de frontend.
-const toListRow = (order, itemsInGroup) => {
+const toListRow = (order, itemsInGroup, userMap = new Map()) => {
   const primary = itemsInGroup[0];
   const purchaseOrder = primary.purchaseOrder || null;
 
@@ -166,6 +167,7 @@ const toListRow = (order, itemsInGroup) => {
           notOrderedReason: purchaseOrder.notOrderedReason,
           note: purchaseOrder.note,
           processedAt: purchaseOrder.processedAt,
+          processedByName: userMap.get(purchaseOrder.processedById) || null,
         }
       : null,
   };
@@ -254,10 +256,30 @@ export const getPurchaseOrders = async (req, res) => {
       }),
     ]);
 
+    // Naam van de inkoper erbij zoeken. PurchaseOrder heeft bewust geen relatie
+    // naar User, dus we halen ze in één losse query op.
+    const processedByIds = Array.from(
+      new Set(
+        orders
+          .flatMap((order) => order.orderItems)
+          .map((orderItem) => orderItem.purchaseOrder?.processedById)
+          .filter(Boolean)
+      )
+    );
+
+    const userMap = new Map();
+    if (processedByIds.length > 0) {
+      const users = await prisma.user.findMany({
+        where: { id: { in: processedByIds } },
+        select: { id: true, name: true, email: true },
+      });
+      users.forEach((user) => userMap.set(user.id, user.name || user.email));
+    }
+
     const items = [];
     for (const order of orders) {
       for (const group of groupOrderItems(order.orderItems)) {
-        items.push(toListRow(order, group));
+        items.push(toListRow(order, group, userMap));
       }
     }
 
@@ -612,6 +634,66 @@ export const getProductPurchaseHistory = async (req, res) => {
     });
   } catch (error) {
     console.error('[PURCHASE ORDER] History error:', error);
+    res.status(500).json({ error: 'Internal server error', details: error.message });
+  }
+};
+
+/**
+ * Leverancierslink opslaan op het product. De inkoper plakt een Amazon-URL,
+ * wij bewaren de affiliate-variant zodat de volgende bestelling van hetzelfde
+ * product direct via die link loopt.
+ */
+export const saveProductSupplierUrl = async (req, res) => {
+  try {
+    const { orderItemId, url } = req.body;
+
+    if (!orderItemId) {
+      return res.status(400).json({ error: 'Order item ID is required' });
+    }
+    if (!String(url || '').trim()) {
+      return res.status(400).json({ error: 'URL is verplicht' });
+    }
+
+    const orderItem = await prisma.orderItem.findUnique({
+      where: { id: parseInt(orderItemId, 10) },
+      include: { order: true, product: true },
+    });
+
+    if (!orderItem) {
+      return res.status(404).json({ error: 'Order item not found' });
+    }
+    if (!(await assertInstallationAccess(req.user, orderItem.order.installationId))) {
+      return res.status(403).json({ error: 'Access denied to this installation' });
+    }
+
+    const supplierUrl = toAffiliateUrl(url);
+    const wasConverted = isAmazonUrl(url) && supplierUrl !== String(url).trim();
+
+    // Op het gekoppelde product opslaan, en op elk ander product met dezelfde
+    // EAN binnen deze installatie — zodat de link ook geldt bij een volgende order.
+    const ean = String(orderItem.ean || '').trim();
+    if (ean) {
+      await prisma.product.updateMany({
+        where: { installationId: orderItem.order.installationId, ean },
+        data: { supplierUrl },
+      });
+    }
+    if (orderItem.productId) {
+      await prisma.product.update({
+        where: { id: orderItem.productId },
+        data: { supplierUrl },
+      });
+    }
+
+    console.log('[PURCHASE ORDER] Supplier URL opgeslagen', {
+      orderItemId: orderItem.id,
+      ean,
+      affiliate: wasConverted,
+    });
+
+    res.json({ success: true, supplierUrl, isAffiliate: wasConverted });
+  } catch (error) {
+    console.error('[PURCHASE ORDER] Supplier URL error:', error);
     res.status(500).json({ error: 'Internal server error', details: error.message });
   }
 };
