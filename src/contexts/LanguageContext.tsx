@@ -287,6 +287,22 @@ type TranslationKey =
   | 'pageLabel'
   | 'ofLabel'
   | 'resetToOpen'
+  | 'tabCanceled'
+  | 'markAsCanceled'
+  | 'markAsCanceledTitle'
+  | 'orderMarkedCanceled'
+  | 'showArchive'
+  | 'hideArchive'
+  | 'archiveHint'
+  | 'archiveHintDays'
+  | 'mergedItemsLabel'
+  | 'mergedItemsTitle'
+  | 'ordersLabel'
+  | 'buyPriceUnitLabel'
+  | 'noHistoryYet'
+  | 'notEnoughDataForChart'
+  | 'dateLabel'
+  | 'saving'
   | 'customerDetails'
   | 'addressLabel'
   | 'orderHistoryTitle'
@@ -691,6 +707,22 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     pageLabel: 'Page',
     ofLabel: 'of',
     resetToOpen: 'Move back to open',
+    tabCanceled: 'Canceled',
+    markAsCanceled: 'Cancel',
+    markAsCanceledTitle: 'Definitively cancel this line',
+    orderMarkedCanceled: 'Order canceled',
+    showArchive: 'Show archive',
+    hideArchive: 'Recent only',
+    archiveHint: 'Showing the last',
+    archiveHintDays: 'days',
+    mergedItemsLabel: 'lines merged',
+    mergedItemsTitle: 'Same product appears multiple times in this order',
+    ordersLabel: 'orders',
+    buyPriceUnitLabel: 'Buy price per unit (EUR)',
+    noHistoryYet: 'This product has not been ordered before',
+    notEnoughDataForChart: 'Not enough data for a chart yet',
+    dateLabel: 'Date',
+    saving: 'Saving...',
     customerDetails: 'Customer details',
     addressLabel: 'Address',
     orderHistoryTitle: 'Product order history',
@@ -1092,6 +1124,22 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     pageLabel: 'Pagina',
     ofLabel: 'van',
     resetToOpen: 'Terug naar openstaand',
+    tabCanceled: 'Geannuleerd',
+    markAsCanceled: 'Annuleren',
+    markAsCanceledTitle: 'Deze regel definitief annuleren',
+    orderMarkedCanceled: 'Order geannuleerd',
+    showArchive: 'Toon archief',
+    hideArchive: 'Alleen recent',
+    archiveHint: 'Toont de laatste',
+    archiveHintDays: 'dagen',
+    mergedItemsLabel: 'regels samengevoegd',
+    mergedItemsTitle: 'Zelfde product komt meerdere keren voor in deze order',
+    ordersLabel: 'orders',
+    buyPriceUnitLabel: 'Inkoopprijs per stuk (EUR)',
+    noHistoryYet: 'Dit product is niet eerder besteld',
+    notEnoughDataForChart: 'Nog te weinig data voor een grafiek',
+    dateLabel: 'Datum',
+    saving: 'Opslaan...',
     customerDetails: 'Klantgegevens',
     addressLabel: 'Adres',
     orderHistoryTitle: 'Bestelhistorie product',
@@ -1493,6 +1541,22 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     pageLabel: 'Seite',
     ofLabel: 'von',
     resetToOpen: 'Zuruck zu offen',
+    tabCanceled: 'Storniert',
+    markAsCanceled: 'Stornieren',
+    markAsCanceledTitle: 'Diese Zeile endgultig stornieren',
+    orderMarkedCanceled: 'Bestellung storniert',
+    showArchive: 'Archiv anzeigen',
+    hideArchive: 'Nur aktuelle',
+    archiveHint: 'Zeigt die letzten',
+    archiveHintDays: 'Tage',
+    mergedItemsLabel: 'Zeilen zusammengefasst',
+    mergedItemsTitle: 'Gleiches Produkt kommt mehrfach in dieser Bestellung vor',
+    ordersLabel: 'Bestellungen',
+    buyPriceUnitLabel: 'Einkaufspreis pro Stuck (EUR)',
+    noHistoryYet: 'Dieses Produkt wurde noch nicht bestellt',
+    notEnoughDataForChart: 'Noch zu wenig Daten fur ein Diagramm',
+    dateLabel: 'Datum',
+    saving: 'Speichern...',
     customerDetails: 'Kundendaten',
     addressLabel: 'Adresse',
     orderHistoryTitle: 'Bestellhistorie Produkt',

@@ -873,6 +873,7 @@ class ApiService {
     page?: number;
     limit?: number;
     withoutTracking?: boolean;
+    includeArchive?: boolean;
   }) {
     const queryParams = new URLSearchParams();
     queryParams.append('installationId', params.installationId);
@@ -881,14 +882,28 @@ class ApiService {
     if (params.page) queryParams.append('page', params.page.toString());
     if (params.limit) queryParams.append('limit', params.limit.toString());
     if (params.withoutTracking) queryParams.append('withoutTracking', 'true');
+    if (params.includeArchive) queryParams.append('includeArchive', 'true');
 
-    return this.request<{ items: any[]; pagination: any; counts: any }>(
+    return this.request<{ items: any[]; pagination: any; counts: any; archive: any }>(
       `/purchase-orders?${queryParams.toString()}`
     );
   }
 
+  async getProductPurchaseHistory(params: {
+    installationId: string;
+    ean: string;
+    excludeOrderId?: number;
+  }) {
+    const queryParams = new URLSearchParams();
+    queryParams.append('installationId', params.installationId);
+    queryParams.append('ean', params.ean);
+    if (params.excludeOrderId) queryParams.append('excludeOrderId', params.excludeOrderId.toString());
+
+    return this.request<any>(`/purchase-orders/history?${queryParams.toString()}`);
+  }
+
   async processPurchaseOrder(data: {
-    orderItemId: number;
+    orderItemIds: number[];
     supplierId: number;
     buyPrice?: number;
     excludeVat?: boolean;
@@ -896,14 +911,21 @@ class ApiService {
     supplierOrderId?: string;
     note?: string;
   }) {
-    return this.request<{ success: boolean; purchaseOrder: any }>('/purchase-orders/process', {
+    return this.request<{ success: boolean; purchaseOrders: any[] }>('/purchase-orders/process', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
-  async markPurchaseOrderNotOrdered(data: { orderItemId: number; reason: string; note?: string }) {
-    return this.request<{ success: boolean; purchaseOrder: any }>('/purchase-orders/not-ordered', {
+  async markPurchaseOrderNotOrdered(data: { orderItemIds: number[]; reason: string; note?: string }) {
+    return this.request<{ success: boolean; purchaseOrders: any[] }>('/purchase-orders/not-ordered', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async markPurchaseOrderCanceled(data: { orderItemIds: number[]; reason?: string; note?: string }) {
+    return this.request<{ success: boolean; purchaseOrders: any[] }>('/purchase-orders/canceled', {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -918,38 +940,6 @@ class ApiService {
 
   async resetPurchaseOrder(id: number) {
     return this.request<{ success: boolean }>(`/purchase-orders/${id}`, {
-      method: 'DELETE',
-    });
-  }
-
-  // Warehouse Locations
-  async getLocations(installationId: string) {
-    return this.request<{ locations: any[] }>(`/locations?installationId=${installationId}`);
-  }
-
-  async createLocation(data: any) {
-    return this.request<any>('/locations', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async bulkCreateLocations(data: any) {
-    return this.request<{ locations: any[]; count: number }>('/locations/bulk', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async updateLocation(id: number, data: any) {
-    return this.request<any>(`/locations/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async deleteLocation(id: number) {
-    return this.request<{ message: string }>(`/locations/${id}`, {
       method: 'DELETE',
     });
   }
