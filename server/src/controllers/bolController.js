@@ -1592,22 +1592,23 @@ const toOrderStatusCode = (value) => {
     return 'SHIPPED';
   }
 
+  if (normalized === 'cancelled' || normalized === 'canceled' || normalized === 'geannuleerd') {
+    return 'CANCELLED';
+  }
+
   return 'OPEN';
 };
 
 const ensureOrderStatusCodes = async () => {
-  await Promise.all([
-    prisma.orderStatus.upsert({
-      where: { code: 'OPEN' },
-      update: {},
-      create: { code: 'OPEN' },
-    }),
-    prisma.orderStatus.upsert({
-      where: { code: 'SHIPPED' },
-      update: {},
-      create: { code: 'SHIPPED' },
-    }),
-  ]);
+  await Promise.all(
+    ['OPEN', 'SHIPPED', 'CANCELLED'].map((code) =>
+      prisma.orderStatus.upsert({
+        where: { code },
+        update: {},
+        create: { code },
+      })
+    )
+  );
 };
 
 const SHIPPED_STATUS_TOKENS = new Set([
@@ -3668,16 +3669,21 @@ function mapBolStatusToInternal(bolStatus) {
 }
 
 function resolveBolStatusToInternal({ statuses = [], hasTrackAndTrace = false } = {}) {
-  if (hasTrackAndTrace) {
-    return 'verzonden';
-  }
-
   let fallbackOpenStatus = 'openstaand';
 
   for (const status of statuses) {
     const mappedStatus = mapBolStatusToInternal(status);
 
     if (mappedStatus === 'geannuleerd') return 'geannuleerd';
+  }
+
+  if (hasTrackAndTrace) {
+    return 'verzonden';
+  }
+
+  for (const status of statuses) {
+    const mappedStatus = mapBolStatusToInternal(status);
+
     if (mappedStatus === 'afgeleverd') return 'afgeleverd';
     if (mappedStatus === 'verzonden' || mappedStatus === 'verstuurd') return 'verzonden';
 

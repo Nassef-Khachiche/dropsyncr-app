@@ -925,6 +925,26 @@ export const generateCarrierLabels = async (req, res) => {
       .replace(/\s+/g, ' ')
       .trim();
 
+    const normalizeHouseNumber = (value) => {
+      const normalized = String(value ?? '').replace(/\s+/g, ' ').trim();
+      if (!normalized || normalized === '0') return '';
+      return normalized;
+    };
+
+    const splitStreetAndHouseNumber = (street = '') => {
+      const normalizedStreet = normalizeStreetLine(street);
+      if (!normalizedStreet) return { street: '', houseNumber: '', houseNumberExtension: '' };
+
+      const suffixMatch = normalizedStreet.match(/^(.*?)[\s,]+(\d+[A-Za-z0-9\-/]*)(?:\s+([A-Za-z0-9\-/]+))?$/);
+      if (!suffixMatch) return { street: normalizedStreet, houseNumber: '', houseNumberExtension: '' };
+
+      return {
+        street: normalizeStreetLine(suffixMatch[1]),
+        houseNumber: normalizeHouseNumber(suffixMatch[2]),
+        houseNumberExtension: String(suffixMatch[3] || '').trim(),
+      };
+    };
+
     const looksLikePostalSegment = (value = '', country = 'NL') => {
       const normalized = String(value || '').trim();
       const countryCode = String(country || 'NL').trim().toUpperCase();
@@ -1498,6 +1518,14 @@ export const generateCarrierLabels = async (req, res) => {
           shipmentDetails.addressLine1 || shipmentDetails.street || parsedRecipientAddress?.street ||
           address.street || pkg.address || ''
         );
+        const splitDestinationStreet = splitStreetAndHouseNumber(destinationStreet);
+        const destinationHouseNumber = normalizeHouseNumber(
+          pkg.houseNumber || pkg.shippingHouseNumber || shipmentDetails.houseNumber || splitDestinationStreet.houseNumber
+        );
+        const destinationHouseNumberExtension = String(
+          pkg.houseNumberExtension || pkg.shippingHouseNumberExtension || shipmentDetails.houseNumberExtension || splitDestinationStreet.houseNumberExtension || ''
+        ).trim();
+        const destinationStreetName = splitDestinationStreet.houseNumber ? splitDestinationStreet.street : destinationStreet;
         const destinationPostalCode = normalizePostalCode(
           pkg.zipCode || pkg.postalCode || pkg.shippingZipCode ||
           shipmentDetails.zipCode || shipmentDetails.postalCode ||
@@ -1525,6 +1553,19 @@ export const generateCarrierLabels = async (req, res) => {
           return res.status(400).json({
             error: 'WeGrow ontvangeradres formaat is ongeldig',
             details: `Order ${String(pkg.orderNumber || pkg.id || index)} heeft een onjuist straatformaat. Gebruik straatnaam en huisnummer zonder komma, bijvoorbeeld \"Hoofdstraat 10\".`,
+            packageId: pkg.id || index,
+            address: { street: destinationStreet, postalCode: destinationPostalCode || null, city: destinationCity || null, country: destinationCountry },
+          });
+        }
+
+        const isPostnlBelgiumShipment = selectedWeGrowCarrier === 'postnl-belgie-standaard-0-23kg'
+          || String(packageServiceCode || '').toUpperCase().includes('POSTNL_BE')
+          || String(selectedShippingMethod || '').toLowerCase().includes('postnl-belgie');
+
+        if (!isReturnPkg && isPostnlBelgiumShipment && !destinationHouseNumber) {
+          return res.status(400).json({
+            error: 'WeGrow ontvangeradres mist huisnummer',
+            details: `Order ${String(pkg.orderNumber || pkg.id || index)} mist een geldig huisnummer voor PostNL Belgie labelgeneratie. Huisnummer 0 wordt niet geaccepteerd.`,
             packageId: pkg.id || index,
             address: { street: destinationStreet, postalCode: destinationPostalCode || null, city: destinationCity || null, country: destinationCountry },
           });
@@ -1586,7 +1627,15 @@ export const generateCarrierLabels = async (req, res) => {
             mobile: pkg.phone || senderPhone || null,
           },
         } : {
-          address: { name: recipientName, street: destinationStreet, postal_code: destinationPostalCode, city: destinationCity, iso_country: destinationCountry },
+          address: {
+            name: recipientName,
+            street: destinationStreetName || destinationStreet,
+            ...(destinationHouseNumber ? { house_number: destinationHouseNumber } : {}),
+            ...(destinationHouseNumberExtension ? { house_number_extension: destinationHouseNumberExtension } : {}),
+            postal_code: destinationPostalCode,
+            city: destinationCity,
+            iso_country: destinationCountry,
+          },
           contact: { name: recipientName, email: pkg.email || shipmentDetails.email || null, mobile: pkg.phone || shipmentDetails.phoneNumber || null },
         };
 

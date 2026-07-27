@@ -908,7 +908,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
     }
   };
 
-  const normalizeOrderStatus = (order: any): 'openstaand' | 'verzonden' => {
+  const normalizeOrderStatus = (order: any): 'openstaand' | 'verzonden' | 'geannuleerd' => {
     const rawStatus = String(order?.status || order?.orderStatus || '').toLowerCase();
 
     const openStatuses = [
@@ -936,6 +936,15 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
       'afgeleverd',
     ];
 
+    const cancelledStatuses = [
+      'geannuleerd',
+      'cancelled',
+      'canceled',
+      'cancelled_by_customer',
+      'cancelled_by_retailer',
+    ];
+
+    if (cancelledStatuses.includes(rawStatus)) return 'geannuleerd';
     if (shippedStatuses.includes(rawStatus)) return 'verzonden';
     if (openStatuses.includes(rawStatus)) return 'openstaand';
 
@@ -1674,6 +1683,9 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
   };
 
   const getStatusBadge = (status: string) => {
+    if (status === 'geannuleerd') {
+      return <Badge variant="outline" className="text-rose-600 border-rose-300 bg-rose-50">Geannuleerd</Badge>;
+    }
     if (status === 'verzonden') {
       return <Badge className="bg-gradient-to-r from-emerald-500 to-teal-500 border-0">Verzonden</Badge>;
     }
@@ -1726,6 +1738,10 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
         return <Badge variant="outline" className="text-purple-600 border-purple-300 bg-purple-50">Binnengekomen bij FFM</Badge>;
       case 'label-aangemaakt':
         return <Badge variant="outline" className="text-indigo-600 border-indigo-300 bg-indigo-50">Label aangemaakt</Badge>;
+      case 'geannuleerd':
+      case 'cancelled':
+      case 'canceled':
+        return <Badge variant="outline" className="text-rose-600 border-rose-300 bg-rose-50">Geannuleerd</Badge>;
       case 'verstuurd':
       case 'verzonden':
       case 'shipped':
@@ -2060,6 +2076,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
                   <SelectItem value="openstaand">Openstaand</SelectItem>
                   <SelectItem value="gepickt">Gepickt</SelectItem>
                   <SelectItem value="verzonden">Verzonden</SelectItem>
+                  <SelectItem value="geannuleerd">Geannuleerd</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -2160,7 +2177,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
                   <div>
                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Status</p>
                     <div className="space-y-1.5">
-                      {[{ value: 'openstaand', label: 'Openstaand' }, { value: 'gepickt', label: 'Gepickt' }, { value: 'verzonden', label: 'Verzonden' }].map(opt => (
+                      {[{ value: 'openstaand', label: 'Openstaand' }, { value: 'gepickt', label: 'Gepickt' }, { value: 'verzonden', label: 'Verzonden' }, { value: 'geannuleerd', label: 'Geannuleerd' }].map(opt => (
                         <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
                           <input type="checkbox" checked={filterStatus === opt.value} onChange={() => setFilterStatus(filterStatus === opt.value ? 'all' : opt.value)} className="accent-indigo-600" />
                           <span className="text-sm text-slate-700">{opt.label}</span>
@@ -2816,6 +2833,9 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
               </span>
               <span className="text-slate-600">
                 <span className="text-emerald-600">●</span> Verzonden: {filteredOrders.filter((o) => normalizeOrderStatus(o) === 'verzonden').length}
+              </span>
+              <span className="text-slate-600">
+                <span className="text-rose-600">●</span> Geannuleerd: {filteredOrders.filter((o) => normalizeOrderStatus(o) === 'geannuleerd').length}
               </span>
             </div>
           </div>
