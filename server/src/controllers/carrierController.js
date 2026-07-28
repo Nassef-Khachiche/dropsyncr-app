@@ -954,12 +954,6 @@ export const generateCarrierLabels = async (req, res) => {
       return /(?:[A-Z]{1,3}-)?\d{4,6}/i.test(normalized);
     };
 
-    const hasMalformedStreetHouseNumberFormat = (street = '') => {
-      const normalizedStreet = String(street || '').trim();
-      if (!normalizedStreet) return false;
-      return /,\s*\d+[A-Za-z0-9-]*\b/.test(normalizedStreet);
-    };
-
     const buildDpdRecipientAddress = (pkg) => {
       const address = parseAddress(pkg.address || '');
       const addressText = String(pkg.address || '').trim();
@@ -1519,13 +1513,25 @@ export const generateCarrierLabels = async (req, res) => {
           address.street || pkg.address || ''
         );
         const splitDestinationStreet = splitStreetAndHouseNumber(destinationStreet);
+        const splitParsedRecipientStreet = splitStreetAndHouseNumber(parsedRecipientAddress?.street || '');
         const destinationHouseNumber = normalizeHouseNumber(
-          pkg.houseNumber || pkg.shippingHouseNumber || shipmentDetails.houseNumber || splitDestinationStreet.houseNumber
+          pkg.houseNumber ||
+          pkg.shippingHouseNumber ||
+          shipmentDetails.houseNumber ||
+          splitDestinationStreet.houseNumber ||
+          splitParsedRecipientStreet.houseNumber
         );
         const destinationHouseNumberExtension = String(
-          pkg.houseNumberExtension || pkg.shippingHouseNumberExtension || shipmentDetails.houseNumberExtension || splitDestinationStreet.houseNumberExtension || ''
+          pkg.houseNumberExtension ||
+          pkg.shippingHouseNumberExtension ||
+          shipmentDetails.houseNumberExtension ||
+          splitDestinationStreet.houseNumberExtension ||
+          splitParsedRecipientStreet.houseNumberExtension ||
+          ''
         ).trim();
-        const destinationStreetName = splitDestinationStreet.houseNumber ? splitDestinationStreet.street : destinationStreet;
+        const destinationStreetName = splitDestinationStreet.houseNumber
+          ? splitDestinationStreet.street
+          : (splitParsedRecipientStreet.houseNumber ? splitParsedRecipientStreet.street : destinationStreet);
         const destinationStreetWithHouseNumber = destinationHouseNumber
           ? normalizeStreetLine(`${destinationStreetName} ${destinationHouseNumber}${destinationHouseNumberExtension ? ` ${destinationHouseNumberExtension}` : ''}`)
           : destinationStreet;
@@ -1549,15 +1555,6 @@ export const generateCarrierLabels = async (req, res) => {
             details: `Order ${String(pkg.orderNumber || pkg.id || index)} mist een geldige straat, postcode of plaats voor labelgeneratie.`,
             packageId: pkg.id || index,
             address: { street: destinationStreet || null, postalCode: destinationPostalCode || null, city: destinationCity || null, country: destinationCountry, rawAddress: String(pkg.address || '').trim() || null },
-          });
-        }
-
-        if (!isReturnPkg && hasMalformedStreetHouseNumberFormat(destinationStreet)) {
-          return res.status(400).json({
-            error: 'WeGrow ontvangeradres formaat is ongeldig',
-            details: `Order ${String(pkg.orderNumber || pkg.id || index)} heeft een onjuist straatformaat. Gebruik straatnaam en huisnummer zonder komma, bijvoorbeeld \"Hoofdstraat 10\".`,
-            packageId: pkg.id || index,
-            address: { street: destinationStreet, postalCode: destinationPostalCode || null, city: destinationCity || null, country: destinationCountry },
           });
         }
 
