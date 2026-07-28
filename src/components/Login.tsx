@@ -25,56 +25,60 @@ export function Login() {
   };
 
   return (
-    <div className="min-h-screen w-screen flex" style={{ background: '#1a1a2e' }}>
-
-      {/* Linker kant */}
-      <div className="flex-1 relative flex flex-col p-12" style={{ background: 'linear-gradient(135deg, #2d1b69 0%, #4f46e5 50%, #7c3aed 100%)' }}>
+    <div className="min-h-screen w-screen flex items-center justify-center" style={{ background: '#453f63' }}>
+      <div className="grid grid-cols-1 overflow-hidden rounded-2xl p-3 shadow-2xl md:grid-cols-2" style={{ background: '#211c2d', width: '95vw', height: '95vh' }}>
+        {/* Linker kant */}
+        <div className="relative flex min-h-[320px] flex-col overflow-hidden rounded-xl p-8 md:p-12" style={{ background: 'linear-gradient(135deg, #2d1b69 0%, #4f46e5 50%, #7c3aed 100%)' }}>
         
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute -top-20 -left-20 w-72 h-72 rounded-full opacity-30" style={{ background: 'radial-gradient(circle, #818cf8, transparent)' }} />
-          <div className="absolute -bottom-20 -right-20 w-80 h-80 rounded-full opacity-20" style={{ background: 'radial-gradient(circle, #a78bfa, transparent)' }} />
-        </div>
-
-        {/* Logo */}
-        <div className="relative z-10 flex items-center gap-3">
-          <div className="w-8 h-8">
-            <img src={logo} alt="Dropsyncr" className="w-full h-full object-contain" />
+          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            <div className="absolute -top-20 -left-20 w-72 h-72 rounded-full opacity-30" style={{ background: 'radial-gradient(circle, #818cf8, transparent)' }} />
+            <div className="absolute -bottom-20 -right-20 w-80 h-80 rounded-full opacity-20" style={{ background: 'radial-gradient(circle, #a78bfa, transparent)' }} />
           </div>
-          <span className="text-white font-bold text-lg tracking-widest">DROPSYNCR</span>
-        </div>
 
-        {/* Tekst midden */}
-        <div className="relative z-10" style={{ marginTop: '212px' }}>
-          <h2 className="text-3xl font-bold text-white leading-snug mb-3">
-            Jouw fulfilment,<br />volledig in controle.
-          </h2>
-          <p className="text-white text-sm">Slim platform voor orders, voorraad en verzending.</p>
-          <div className="flex items-center gap-2 mt-8">
-            <div className="w-6 h-1 rounded-full bg-white opacity-40" />
-            <div className="w-6 h-1 rounded-full bg-white opacity-40" />
-            <div className="w-8 h-1 rounded-full bg-white" />
+          {/* Logo */}
+          <div className="relative z-10 flex items-center gap-3">
+            <div className="w-10 h-10">
+              <img src={logo} alt="Dropsyncr" className="w-full h-full object-contain" />
+            </div>
+            <span className="text-white text-lg tracking-widest" style={{ fontWeight: 900 }}>DROPSYNCR</span>
+          </div>
+
+          {/* Tekst midden */}
+          <div className="relative z-10 flex flex-1 items-center py-12">
+            <div className="max-w-md space-y-10">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white" style={{ opacity: 0.72 }}>
+                Orderbeheer zonder ruis
+              </p>
+              <div className="space-y-8">
+                <h2 className="mt-4 text-4xl font-bold text-white leading-tight">
+                  Jouw fulfilment,<br />volledig in controle.
+                </h2>
+                <p className="mt-4 max-w-sm text-base leading-7 text-white" style={{ opacity: 0.82 }}>
+                  Beheer orders, voorraad en verzending vanuit een rustige werkplek die met je verkoopkanalen meebeweegt.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-1 rounded-full bg-white opacity-40" />
+                <div className="w-6 h-1 rounded-full bg-white opacity-40" />
+                <div className="w-10 h-1 rounded-full bg-white" />
+              </div>
+            </div>
+          </div>
+
+          {/* Footer links */}
+          <div className="relative z-10">
+            <p className="text-white text-xs" style={{ opacity: 0.72 }}>© 2026 Dropsyncr — Alle rechten voorbehouden</p>
           </div>
         </div>
 
-        {/* Footer links */}
-        <div className="relative z-10 " style={{ marginTop: '430px' }}>
-          <p className="text-white text-xs">© 2026 Dropsyncr — Alle rechten voorbehouden</p>
-        </div>
-      </div>
+        {/* Rechter kant: login */}
+        <div className="flex items-center justify-center px-6 py-10 md:px-12 lg:px-20">
+          <div className="w-full max-w-md">
 
-      {/* Rechter kant */}
-      <div className="flex-1 flex flex-col justify-between p-12" style={{ background: '#1e1e2e' }}>
-
-        {/* Lege ruimte bovenin zodat formulier gecentreerd is */}
-        <div />
-
-        {/* Formulier gecentreerd */}
-        <div className="flex items-center justify-center">
-          <div style={{ width: '800px' }}>
-
-            <div className="mb-8">
-              <h1 className="text-2xl font-bold mb-2" style={{ color: '#f1f5f9' }}>Inloggen</h1>
-              <p className="text-sm" style={{ color: '#94a3b8' }}>Voer je gegevens in om verder te gaan</p>
+            <div className="mb-10">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em]" style={{ color: '#818cf8' }}>Welkom terug</p>
+              <h1 className="text-4xl font-bold mb-3" style={{ color: '#f1f5f9' }}>Inloggen</h1>
+              <p className="text-sm leading-6" style={{ color: '#94a3b8' }}>Voer je gegevens in om verder te gaan met je Dropsyncr dashboard.</p>
             </div>
 
             {error && (
@@ -158,13 +162,6 @@ export function Login() {
               </button>
             </form>
           </div>
-        </div>
-
-        {/* Footer rechts — zelfde hoogte als links */}
-        <div>
-          <p className="text-xs" style={{ color: '#ffffff' }}>
-            
-          </p>
         </div>
       </div>
     </div>
