@@ -37,8 +37,8 @@ export function Login() {
 
         {/* Logo */}
         <div className="relative z-10 flex items-center gap-3">
-          <div className="w-12 h-12 rounded-xl overflow-hidden">
-            <img src={logo} alt="Dropsyncr" className="w-full h-full object-cover" />
+          <div className="w-8 h-8">
+            <img src={logo} alt="Dropsyncr" className="w-full h-full object-contain" />
           </div>
           <span className="text-white font-bold text-lg tracking-widest">DROPSYNCR</span>
         </div>

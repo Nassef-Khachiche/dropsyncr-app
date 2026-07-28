@@ -8,6 +8,7 @@ import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 import { useLanguage } from '../contexts/LanguageContext';
+import { formatCountryDisplay as getCountryDisplay } from '../utils/countries';
 import * as XLSX from 'xlsx';
 import { 
   Table, 
@@ -76,6 +77,7 @@ const dpdLogo = new URL('../assets/dpd-logo.png', import.meta.url).href;
 const wegrowLogo = new URL('../assets/wegrow-logo.jpg', import.meta.url).href;
 const postnlLogo = new URL('../assets/postnl-logo.png', import.meta.url).href;
 const postatLogo = new URL('../assets/postat.png', import.meta.url).href;
+const postitalianeLogo = new URL('../assets/postitaliane.png', import.meta.url).href;
 const bpostLogo = new URL('../assets/bpost-logo.png', import.meta.url).href;
 const bolLogo = new URL('../assets/bol-vvb.png', import.meta.url).href;
 
@@ -113,7 +115,7 @@ const wegrowCarrierOptions = [
   { id: 'postnl-belgie-standaard-0-23kg', name: 'PostNL België Standaard 0-23kg', logo: postnlLogo },
   { id: 'dpd-standaard', name: 'DPD', logo: dpdLogo },
   { id: 'postat-standaard', name: 'PostAT', logo: postatLogo },
-  { id: 'poste-italiane-standaard', name: 'Poste Italiane', logo: postnlLogo },
+  { id: 'poste-italiane-standaard', name: 'Poste Italiane', logo: postitalianeLogo },
 ];
 
 const getWegrowCarrierOptionById = (carrierId: string) => {
@@ -1693,22 +1695,6 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
       return <Badge className="bg-gradient-to-r from-emerald-500 to-teal-500 border-0">Verzonden</Badge>;
     }
     return <Badge variant="outline" className="text-orange-600 border-orange-300 bg-orange-50">Openstaand</Badge>;
-  };
-
-  const normalizeCountryCode = (country: string) => String(country || '').trim().toUpperCase();
-
-  const getCountryFlagUrl = (country: string) => {
-    const normalizedCode = normalizeCountryCode(country);
-    if (!/^[A-Z]{2}$/.test(normalizedCode)) return null;
-    return `https://flagcdn.com/24x18/${normalizedCode.toLowerCase()}.png`;
-  };
-
-  const getCountryDisplay = (country: string) => {
-    const normalizedCode = normalizeCountryCode(country);
-    return {
-      code: normalizedCode || '-',
-      flagUrl: getCountryFlagUrl(country),
-    };
   };
 
  const getFulfillmentTypeBadge = (fulfillmentType: string | null) => {

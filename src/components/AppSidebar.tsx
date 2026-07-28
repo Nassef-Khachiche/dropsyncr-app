@@ -21,7 +21,7 @@ import { useState } from 'react';
 import { cn } from './ui/utils';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
-import logo from '../assets/dropsyncr-wit.png';
+import logo from '../assets/dropsyncr-wit-transparant.png';
 
 
 interface AppSidebarProps {
@@ -126,8 +126,8 @@ export function AppSidebar({ activeView, onViewChange }: AppSidebarProps) {
       {/* Logo */}
       <div className="p-6 border-b border-slate-200">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-full overflow-hidden shadow-lg flex-shrink-0">
-            <img src={logo} alt="Dropsyncr" className="w-full h-full object-cover" />
+          <div className="w-8 h-8 bg-gradient-to-r from-indigo-600 to-purple-600 shadow-lg flex-shrink-0 p-1">
+            <img src={logo} alt="Dropsyncr" className="w-full h-full object-contain" />
           </div>
           <h2 className="text-lg bg-gradient-to-r fw-bolder from-indigo-600 to-purple-600 bg-clip-text text-transparent">
             <b>DROPSYNCR</b>

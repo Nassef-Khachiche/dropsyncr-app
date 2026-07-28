@@ -31,6 +31,7 @@ import {
 import { Plus, Workflow, Edit, Trash2, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../services/api';
+import { defaultCountryOptions, formatCountryDisplay, normalizeCountryCodeForDisplay } from '../utils/countries';
 
 interface AutomatiseringsRegelsProps {
   activeProfile: string | null;
@@ -99,62 +100,6 @@ const wegrowServiceOptions = [
   { id: 'postnl-belgie-standaard-0-23kg', label: 'WeGrow PostNL België Standaard 0-23kg', logoUrl: postnlLogo },
   { id: 'postat-standaard', label: 'WeGrow PostAT', logoUrl: postatLogo },
 ];
-
-const defaultCountryOptions = [
-  'NL', 'BE', 'DE', 'FR', 'LU', 'AT', 'ES', 'IT', 'PT', 'IE',
-  'PL', 'CZ', 'SK', 'HU', 'RO', 'BG', 'HR', 'SI', 'DK', 'SE',
-  'NO', 'FI', 'EE', 'LV', 'LT', 'CH', 'GB', 'US', 'CA', 'AU',
-];
-
-const countryAliases: Record<string, string> = {
-  NETHERLANDS: 'NL',
-  NEDERLAND: 'NL',
-  BELGIUM: 'BE',
-  BELGIE: 'BE',
-  BELGIË: 'BE',
-  GERMANY: 'DE',
-  DEUTSCHLAND: 'DE',
-  FRANCE: 'FR',
-  LUXEMBOURG: 'LU',
-  AUSTRIA: 'AT',
-  OOSTENRIJK: 'AT',
-  SPAIN: 'ES',
-  SPANJE: 'ES',
-  ITALY: 'IT',
-  ITALIE: 'IT',
-  PORTUGAL: 'PT',
-  IRELAND: 'IE',
-  IERLAND: 'IE',
-  POLAND: 'PL',
-  POLEN: 'PL',
-  CZECHIA: 'CZ',
-  CZECH_REPUBLIC: 'CZ',
-  SLOVAKIA: 'SK',
-  HUNGARY: 'HU',
-  ROMANIA: 'RO',
-  BULGARIA: 'BG',
-  CROATIA: 'HR',
-  SLOVENIA: 'SI',
-  DENMARK: 'DK',
-  DENEMARKEN: 'DK',
-  SWEDEN: 'SE',
-  ZWEDEN: 'SE',
-  NORWAY: 'NO',
-  NOORWEGEN: 'NO',
-  FINLAND: 'FI',
-  ESTONIA: 'EE',
-  LATVIA: 'LV',
-  LITHUANIA: 'LT',
-  SWITZERLAND: 'CH',
-  ZWITSERLAND: 'CH',
-  UNITED_KINGDOM: 'GB',
-  UK: 'GB',
-  GREAT_BRITAIN: 'GB',
-  UNITED_STATES: 'US',
-  USA: 'US',
-  CANADA: 'CA',
-  AUSTRALIA: 'AU',
-};
 
 export function AutomatiseringsRegels({ activeProfile }: AutomatiseringsRegelsProps) {
   const [rules, setRules] = useState<AutomationRule[]>([]);
@@ -361,21 +306,6 @@ export function AutomatiseringsRegels({ activeProfile }: AutomatiseringsRegelsPr
     };
   };
 
-  const normalizeCountryCodeForDisplay = (countryCode: string) => {
-    const normalized = String(countryCode || '').trim().toUpperCase();
-    if (!normalized) return '';
-    if (/^[A-Z]{2}$/.test(normalized)) return normalized;
-
-    const key = normalized.replace(/\s+/g, '_');
-    return countryAliases[key] || normalized;
-  };
-
-  const getCountryFlagUrl = (countryCode: string) => {
-    const normalizedCode = normalizeCountryCodeForDisplay(countryCode);
-    if (!/^[A-Z]{2}$/.test(normalizedCode)) return null;
-    return `https://flagcdn.com/24x18/${normalizedCode.toLowerCase()}.png`;
-  };
-
   const countryOptions = useMemo(() => {
     const dynamicCodesFromRules = rules
       .map((rule) => normalizeCountryCodeForDisplay(rule.countryCode))
@@ -391,21 +321,6 @@ export function AutomatiseringsRegels({ activeProfile }: AutomatiseringsRegelsPr
       ])
     );
   }, [rules, formData.countryCode]);
-
-  const formatCountryDisplay = (countryCode: string) => {
-    const normalizedCode = normalizeCountryCodeForDisplay(countryCode);
-    if (!normalizedCode) {
-      return {
-        code: '-',
-        flagUrl: null,
-      };
-    }
-
-    return {
-      code: normalizedCode,
-      flagUrl: getCountryFlagUrl(normalizedCode),
-    };
-  };
 
   const selectedInstallationIdForForm = isAllStoresMode
     ? parseInt(formData.installationId, 10)

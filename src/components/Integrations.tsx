@@ -39,7 +39,7 @@ import { api } from '../services/api';
 import bolLogo from '../assets/bol-logo.png';
 import kauflandLogo from '../assets/kaufland-logo.png';
 import shopifyLogo from '../assets/shopify-logo.png';
-import bricobravoLogo from '../assets/bricobravo-logo.png';
+import bricobravoLogo from '../assets/bricobravo-logo-small.png';
 
 interface IntegrationsProps {
   activeProfile: string;
