@@ -1526,6 +1526,9 @@ export const generateCarrierLabels = async (req, res) => {
           pkg.houseNumberExtension || pkg.shippingHouseNumberExtension || shipmentDetails.houseNumberExtension || splitDestinationStreet.houseNumberExtension || ''
         ).trim();
         const destinationStreetName = splitDestinationStreet.houseNumber ? splitDestinationStreet.street : destinationStreet;
+        const destinationStreetWithHouseNumber = destinationHouseNumber
+          ? normalizeStreetLine(`${destinationStreetName} ${destinationHouseNumber}${destinationHouseNumberExtension ? ` ${destinationHouseNumberExtension}` : ''}`)
+          : destinationStreet;
         const destinationPostalCode = normalizePostalCode(
           pkg.zipCode || pkg.postalCode || pkg.shippingZipCode ||
           shipmentDetails.zipCode || shipmentDetails.postalCode ||
@@ -1630,7 +1633,7 @@ export const generateCarrierLabels = async (req, res) => {
         } : {
           address: {
             name: recipientName,
-            street: destinationStreetName || destinationStreet,
+            street: destinationStreetWithHouseNumber || destinationStreet,
             ...(destinationHouseNumber ? { house_number: destinationHouseNumber } : {}),
             ...(destinationHouseNumberExtension ? { house_number_extension: destinationHouseNumberExtension } : {}),
             postal_code: destinationPostalCode,
