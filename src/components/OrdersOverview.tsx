@@ -909,7 +909,10 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
   };
 
   const normalizeOrderStatus = (order: any): 'openstaand' | 'verzonden' | 'geannuleerd' => {
-    const rawStatus = String(order?.status || order?.orderStatus || '').toLowerCase();
+    const rawStatus = String(order?.status || order?.orderStatus || order?.orderStatusCode || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[\s-]+/g, '_');
 
     const openStatuses = [
       'openstaand',
@@ -1684,7 +1687,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
 
   const getStatusBadge = (status: string) => {
     if (status === 'geannuleerd') {
-      return <Badge className="rounded-full border-0 bg-red-600 px-3 text-white hover:bg-red-600">Geannuleerd</Badge>;
+      return <Badge variant="destructive" className="rounded-full px-3 py-1 text-white">Geannuleerd</Badge>;
     }
     if (status === 'verzonden') {
       return <Badge className="bg-gradient-to-r from-emerald-500 to-teal-500 border-0">Verzonden</Badge>;
@@ -1741,7 +1744,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
       case 'geannuleerd':
       case 'cancelled':
       case 'canceled':
-        return <Badge className="rounded-full border-0 bg-red-600 px-3 text-white hover:bg-red-600">Geannuleerd</Badge>;
+        return <Badge variant="destructive" className="rounded-full px-3 py-1 text-white">Geannuleerd</Badge>;
       case 'verstuurd':
       case 'verzonden':
       case 'shipped':
