@@ -1687,7 +1687,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
 
   const getStatusBadge = (status: string) => {
     if (status === 'geannuleerd') {
-      return <Badge variant="destructive" className="rounded-full px-3 py-1 text-white">Geannuleerd</Badge>;
+      return <Badge className="border-0 bg-red-600 text-white hover:bg-red-600">Geannuleerd</Badge>;
     }
     if (status === 'verzonden') {
       return <Badge className="bg-gradient-to-r from-emerald-500 to-teal-500 border-0">Verzonden</Badge>;
@@ -1715,13 +1715,13 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
   if (!fulfillmentType) return null;
   if (fulfillmentType === 'fulfillment') {
     return (
-      <Badge variant="outline" className="text-xs border-indigo-200 text-indigo-600 bg-indigo-50 px-1.5 py-0">
+      <Badge variant="outline" className="text-xs font-bold border-indigo-200 text-indigo-600 bg-indigo-50 p-1">
         FFM
       </Badge>
     );
   }
   return (
-    <Badge variant="outline" className="text-xs border-purple-200 text-purple-600 bg-purple-50 px-1.5 py-0">
+    <Badge variant="outline" className="text-xs font-bold border-purple-200 text-purple-600 bg-purple-50 p-1">
       DS
     </Badge>
   );
@@ -1744,7 +1744,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
       case 'geannuleerd':
       case 'cancelled':
       case 'canceled':
-        return <Badge variant="destructive" className="rounded-full px-3 py-1 text-white">Geannuleerd</Badge>;
+        return <Badge className="border-0 bg-red-600 text-white hover:bg-red-600">Geannuleerd</Badge>;
       case 'verstuurd':
       case 'verzonden':
       case 'shipped':
