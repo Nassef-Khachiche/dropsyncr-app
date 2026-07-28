@@ -1558,6 +1558,8 @@ export const generateCarrierLabels = async (req, res) => {
           });
         }
 
+        const packageServiceCode = getPackageServiceCode(pkg);
+
         const isPostnlBelgiumShipment = selectedWeGrowCarrier === 'postnl-belgie-standaard-0-23kg'
           || String(packageServiceCode || '').toUpperCase().includes('POSTNL_BE')
           || String(selectedShippingMethod || '').toLowerCase().includes('postnl-belgie');
@@ -1581,7 +1583,6 @@ export const generateCarrierLabels = async (req, res) => {
         }
 
         const weightValue = Number(pkg.weightKg ?? pkg.weight ?? 1);
-        const packageServiceCode = getPackageServiceCode(pkg);
 
         if (!packageServiceCode) {
           return res.status(400).json({
