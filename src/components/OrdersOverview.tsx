@@ -1687,7 +1687,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
 
   const getStatusBadge = (status: string) => {
     if (status === 'geannuleerd') {
-      return <Badge className="border-0 bg-red-600 text-white hover:bg-red-600">Geannuleerd</Badge>;
+      return <Badge variant="destructive" className="border-0 text-white">Geannuleerd</Badge>;
     }
     if (status === 'verzonden') {
       return <Badge className="bg-gradient-to-r from-emerald-500 to-teal-500 border-0">Verzonden</Badge>;
@@ -1744,7 +1744,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
       case 'geannuleerd':
       case 'cancelled':
       case 'canceled':
-        return <Badge className="border-0 bg-red-600 text-white hover:bg-red-600">Geannuleerd</Badge>;
+        return <Badge variant="destructive" className="border-0 text-white">Geannuleerd</Badge>;
       case 'verstuurd':
       case 'verzonden':
       case 'shipped':
