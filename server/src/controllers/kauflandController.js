@@ -739,51 +739,55 @@ const resolveKauflandStorefront = (country) => {
 };
 
 export async function sendKauflandTracking(installationId, orderNumber, trackingCode, carrierType, shippingMethod, integrationId = null) {
-  try {
-    const { integration, credentials } = await resolveKauflandIntegrationForOrder(installationId, orderNumber, integrationId);
+  const { integration, credentials } = await resolveKauflandIntegrationForOrder(installationId, orderNumber, integrationId);
 
-    const order = await prisma.order.findFirst({
-      where: { orderNumber, installationId: parseInt(installationId) },
-      include: { orderItems: true },
-    });
+  const order = await prisma.order.findFirst({
+    where: { orderNumber, installationId: parseInt(installationId, 10) },
+    include: { orderItems: true },
+  });
 
-    if (!order) {
-      console.warn('[KAUFLAND TRACKING] Order not found:', orderNumber);
-      return;
+  if (!order) {
+    throw new Error(`[KAUFLAND TRACKING] Order not found: ${orderNumber}`);
+  }
+
+  const carrierCode = resolveKauflandCarrierCode(order.country);
+  const storefront = resolveKauflandStorefront(order.country);
+  console.log('[KAUFLAND TRACKING] Carrier code:', { orderNumber, integrationId: integration.id, storeName: order.storeName, country: order.country, carrierCode, storefront });
+
+  const orderUnits = order.orderItems
+    .map((item) => item.externalId)
+    .filter(Boolean);
+
+  if (orderUnits.length === 0) {
+    throw new Error(`[KAUFLAND TRACKING] No order unit IDs found for order: ${orderNumber}`);
+  }
+
+  const storefrontQuery = storefront ? `?storefront=${encodeURIComponent(storefront)}` : '';
+  const failures = [];
+
+  for (const orderUnitId of orderUnits) {
+    try {
+      await kauflandApiRequest(
+        credentials,
+        `/order-units/${orderUnitId}/send${storefrontQuery}`,
+        'PATCH',
+        {
+          carrier_code: carrierCode,
+          tracking_numbers: trackingCode,
+        }
+      );
+      console.log('[KAUFLAND TRACKING] Sent tracking for order unit:', orderUnitId);
+    } catch (error) {
+      failures.push({ orderUnitId, message: error?.message || 'Unknown error' });
+      console.error('[KAUFLAND TRACKING] Failed for order unit:', orderUnitId, error?.message);
     }
+  }
 
-    const carrierCode = resolveKauflandCarrierCode(order.country);
-    const storefront = resolveKauflandStorefront(order.country);
-    console.log('[KAUFLAND TRACKING] Carrier code:', { orderNumber, integrationId: integration.id, storeName: order.storeName, country: order.country, carrierCode, storefront });
-
-    const orderUnits = order.orderItems
-      .map(item => item.externalId)
-      .filter(Boolean);
-
-    if (orderUnits.length === 0) {
-      console.warn('[KAUFLAND TRACKING] No order unit IDs found for order:', orderNumber);
-      return;
-    }
-
-    const storefrontQuery = storefront ? `?storefront=${encodeURIComponent(storefront)}` : '';
-
-    for (const orderUnitId of orderUnits) {
-      try {
-        await kauflandApiRequest(
-          credentials,
-          `/order-units/${orderUnitId}/send${storefrontQuery}`,
-          'PATCH',
-          {
-            carrier_code: carrierCode,
-            tracking_numbers: trackingCode,
-          }
-        );
-        console.log('[KAUFLAND TRACKING] Sent tracking for order unit:', orderUnitId);
-      } catch (error) {
-        console.error('[KAUFLAND TRACKING] Failed for order unit:', orderUnitId, error.message);
-      }
-    }
-  } catch (error) {
-    console.error('[KAUFLAND TRACKING] Error:', error.message);
+  if (failures.length > 0) {
+    throw new Error(
+      `[KAUFLAND TRACKING] Failed for ${failures.length}/${orderUnits.length} order unit(s) on ${orderNumber}: ${failures
+        .map((entry) => `${entry.orderUnitId}: ${entry.message}`)
+        .join(' | ')}`
+    );
   }
 }

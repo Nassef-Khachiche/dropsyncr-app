@@ -1392,17 +1392,28 @@ async function getBolLabelWithFallbackInternal(
 }
 
 async function fetchAllBolOrders(credentials) {
-  const maxPages = 200;
+  const openStatusMaxPagesRaw = parseInt(process.env.BOL_SYNC_OPEN_STATUS_MAX_PAGES || '500', 10);
+  const allStatusMaxPagesRaw = parseInt(process.env.BOL_SYNC_ALL_STATUS_MAX_PAGES || '120', 10);
+  const openStatusMaxPages = Number.isFinite(openStatusMaxPagesRaw) && openStatusMaxPagesRaw > 0
+    ? openStatusMaxPagesRaw
+    : 500;
+  const allStatusMaxPages = Number.isFinite(allStatusMaxPagesRaw) && allStatusMaxPagesRaw > 0
+    ? allStatusMaxPagesRaw
+    : 120;
   // Delay between page requests to stay under Bol's rate limit.
   const interPageDelayMs = 400;
-  // Only fetch with status=ALL — querying individual statuses separately is redundant
-  // and multiplies API calls by 7x, causing rate limit (429) errors.
-  // Only fetch FBR (Fulfilled by Retailer) orders — FBB orders are handled by Bol's warehouse.
-  const statusesToFetch = ['ALL'];
+  // Backfill strategy:
+  // 1) Fetch OPEN first so existing open orders are imported even for older accounts.
+  // 2) Fetch ALL with a lower page cap to keep status updates for recent history.
+  // We include both FBR and FBB in OPEN because users expect all open Bol orders to appear.
+  const fetchPlans = [
+    { status: 'OPEN', fulfilmentMethod: null, maxPages: openStatusMaxPages },
+    { status: 'ALL', fulfilmentMethod: 'FBR', maxPages: allStatusMaxPages },
+  ];
   const dedupedOrders = new Map();
 
-  for (const status of statusesToFetch) {
-    for (let page = 1; page <= maxPages; page += 1) {
+  for (const plan of fetchPlans) {
+    for (let page = 1; page <= plan.maxPages; page += 1) {
       // Throttle between pages to avoid 429 bursts
       if (page > 1) {
         await new Promise((resolve) => setTimeout(resolve, interPageDelayMs));
@@ -1411,14 +1422,23 @@ async function fetchAllBolOrders(credentials) {
       let response;
 
       try {
+        const queryParams = new URLSearchParams({
+          status: String(plan.status),
+          page: String(page),
+        });
+        if (plan.fulfilmentMethod) {
+          queryParams.set('fulfilment-method', String(plan.fulfilmentMethod));
+        }
+
         response = await bolApiRequest(
           credentials,
-          `/orders?status=${encodeURIComponent(status)}&fulfilment-method=FBR&page=${page}`,
+          `/orders?${queryParams.toString()}`,
         );
       } catch (error) {
         if (page === 1) {
-          console.warn('[BOL SYNC] Skipping unsupported status filter', {
-            status,
+          console.warn('[BOL SYNC] Skipping unsupported fetch plan', {
+            status: plan.status,
+            fulfilmentMethod: plan.fulfilmentMethod,
             message: error.message,
           });
         }
@@ -1451,6 +1471,12 @@ async function fetchAllBolOrders(credentials) {
         break;
       }
     }
+
+    console.log('[BOL SYNC] Fetch plan completed', {
+      status: plan.status,
+      fulfilmentMethod: plan.fulfilmentMethod || 'ALL',
+      uniqueOrdersSoFar: dedupedOrders.size,
+    });
   }
 
   return Array.from(dedupedOrders.values());

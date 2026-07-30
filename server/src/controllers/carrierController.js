@@ -22,6 +22,75 @@ const parseCredentialsSafely = (value) => {
   }
 };
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isRetryableTrackingError = (error) => {
+  const message = String(error?.message || '').toLowerCase();
+  return (
+    message.includes('timeout')
+    || message.includes('temporar')
+    || message.includes('429')
+    || message.includes('500')
+    || message.includes('502')
+    || message.includes('503')
+    || message.includes('504')
+    || message.includes('fetch failed')
+    || message.includes('network')
+    || message.includes('econnreset')
+    || message.includes('etimedout')
+    || message.includes('eai_again')
+    || message.includes('enotfound')
+  );
+};
+
+const pushTrackingWithRetry = async ({
+  platform,
+  orderNumber,
+  trackingCode,
+  push,
+}) => {
+  const normalizedTrackingCode = String(trackingCode || '').trim();
+  if (!normalizedTrackingCode) return;
+
+  const retryDelaysMs = [0, 1500, 4000];
+  let lastError = null;
+
+  for (let attempt = 0; attempt < retryDelaysMs.length; attempt += 1) {
+    try {
+      if (retryDelaysMs[attempt] > 0) {
+        await sleep(retryDelaysMs[attempt]);
+      }
+
+      await push();
+      if (attempt > 0) {
+        console.log('[TRACKING PUSH] Succeeded after retry', {
+          platform,
+          orderNumber,
+          attempt: attempt + 1,
+        });
+      }
+      return;
+    } catch (error) {
+      lastError = error;
+      const retryable = isRetryableTrackingError(error);
+
+      console.warn('[TRACKING PUSH] Failed attempt', {
+        platform,
+        orderNumber,
+        attempt: attempt + 1,
+        retryable,
+        message: error?.message,
+      });
+
+      if (!retryable || attempt === retryDelaysMs.length - 1) {
+        break;
+      }
+    }
+  }
+
+  throw lastError || new Error(`Tracking push failed for ${platform} order ${orderNumber}`);
+};
+
 const normalizeDpdCredentials = (rawCredentials = {}) => {
   const credentials = { ...rawCredentials };
   const trimMaybe = (value) => (value === undefined || value === null ? value : String(value).trim());
@@ -728,6 +797,86 @@ export const generateCarrierLabels = async (req, res) => {
       const packageList = Array.isArray(packages) ? packages : [];
       if (packageList.length === 0) return;
 
+      const createManualOrderForPackage = async (pkg = {}, index = 0) => {
+        if (pkg?.isReturn === true) return null;
+
+        const explicitOrderNumber = String(pkg?.orderNumber || '').trim();
+        const manualOrderNumber = explicitOrderNumber || `MANUAL-${Date.now()}-${index + 1}`;
+
+        const fallbackStreet = String(pkg?.street || '').trim();
+        const fallbackZipCode = String(pkg?.zipCode || '').trim();
+        const fallbackCity = String(pkg?.city || '').trim();
+        const fallbackCountry = String(pkg?.country || 'NL').trim().toUpperCase() || 'NL';
+        const fallbackAddress = String(pkg?.address || '').trim()
+          || [fallbackStreet, [fallbackZipCode, fallbackCity].filter(Boolean).join(' ')].filter(Boolean).join(', ')
+          || 'Onbekend adres';
+
+        const parsedAddress = parseAddress(fallbackAddress);
+        const customerName = String(pkg?.customerName || 'Handmatige zending').trim() || 'Handmatige zending';
+        const customerEmail = String(pkg?.email || '').trim() || null;
+
+        const existingOrder = await prisma.order.findFirst({
+          where: {
+            installationId: carrier.installationId,
+            orderNumber: manualOrderNumber,
+          },
+          select: { id: true },
+        });
+
+        if (existingOrder?.id) {
+          return existingOrder.id;
+        }
+
+        const createdOrder = await prisma.order.create({
+          data: {
+            orderNumber: manualOrderNumber,
+            installationId: carrier.installationId,
+            userId: req.user?.id || null,
+            customerName,
+            customerEmail,
+            address: fallbackAddress,
+            country: fallbackCountry,
+            storeName: 'Handmatig',
+            platform: 'manual',
+            orderDate: new Date(),
+            deliveryDate: null,
+            orderStatus: 'verzonden',
+            orderStatusCode: 'SHIPPED',
+            shippingStatus: 'SHIPPED',
+            shippingMethod: selectedShippingMethod || null,
+            orderValue: 0,
+            itemCount: 1,
+            supplierTracking: null,
+            status: 'verzonden',
+            orderItems: {
+              create: {
+                productName: 'Handmatige zending',
+                productImage: null,
+                ean: null,
+                sku: null,
+                quantity: 1,
+                price: 0,
+                unitPrice: 0,
+                weight: null,
+                supplier: 'Handmatig',
+                externalId: null,
+              },
+            },
+          },
+          select: { id: true },
+        });
+
+        console.log('[SHIPMENT MANUAL] Created order for manual label', {
+          orderId: createdOrder.id,
+          orderNumber: manualOrderNumber,
+          customerName,
+          city: fallbackCity || parsedAddress.city || null,
+          country: fallbackCountry,
+        });
+
+        return createdOrder.id;
+      };
+
       const orderNumbersFromPackages = Array.from(
         new Set(
           packageList.map((pkg) => {
@@ -762,6 +911,9 @@ export const generateCarrierLabels = async (req, res) => {
           if (orderNumberKey && ordersByOrderNumber.has(orderNumberKey)) {
             orderId = ordersByOrderNumber.get(orderNumberKey);
           }
+        }
+        if (!orderId) {
+          orderId = await createManualOrderForPackage(pkg, index);
         }
         if (!orderId) continue;
         resolvedPackages.push({ orderId, generatedLabel: generatedLabels[index] || null });
@@ -860,54 +1012,81 @@ export const generateCarrierLabels = async (req, res) => {
             select: { platform: true, orderNumber: true, installationId: true },
           });
           if (orderRecord?.platform === 'kaufland' && generatedLabel?.trackingCode) {
-            await sendKauflandTracking(
-              String(orderRecord.installationId),
-              orderRecord.orderNumber,
-              generatedLabel.trackingCode,
-              carrier.carrierType,
-              selectedShippingMethod,
-            ).catch(err => console.error('[KAUFLAND TRACKING] Async error:', err.message));
+            await pushTrackingWithRetry({
+              platform: 'kaufland',
+              orderNumber: orderRecord.orderNumber,
+              trackingCode: generatedLabel.trackingCode,
+              push: () => sendKauflandTracking(
+                String(orderRecord.installationId),
+                orderRecord.orderNumber,
+                generatedLabel.trackingCode,
+                carrier.carrierType,
+                selectedShippingMethod,
+              ),
+            }).catch((err) => console.error('[KAUFLAND TRACKING] Retry failed:', err.message));
           }
           if (orderRecord?.platform === 'bol.com' && generatedLabel?.trackingCode) {
-            await sendBolTracking(
-              String(orderRecord.installationId),
-              orderRecord.orderNumber,
-              generatedLabel.trackingCode,
-              carrier.carrierType,
-              selectedShippingMethod,
-            ).catch(err => console.error('[BOL TRACKING] Async error:', err.message));
+            await pushTrackingWithRetry({
+              platform: 'bol.com',
+              orderNumber: orderRecord.orderNumber,
+              trackingCode: generatedLabel.trackingCode,
+              push: () => sendBolTracking(
+                String(orderRecord.installationId),
+                orderRecord.orderNumber,
+                generatedLabel.trackingCode,
+                carrier.carrierType,
+                selectedShippingMethod,
+              ),
+            }).catch((err) => console.error('[BOL TRACKING] Retry failed:', err.message));
           }
           if (orderRecord?.platform === 'bricobravo' && generatedLabel?.trackingCode) {
-            await sendBricoBravoTracking(
-              String(orderRecord.installationId),
-              orderRecord.orderNumber,
-              generatedLabel.trackingCode,
-              carrier.carrierType,
-              selectedShippingMethod,
-              generatedLabel.trackingUrl || null,
-            ).catch(err => console.error('[BRICOBRAVO TRACKING] Async error:', err.message));
+            await pushTrackingWithRetry({
+              platform: 'bricobravo',
+              orderNumber: orderRecord.orderNumber,
+              trackingCode: generatedLabel.trackingCode,
+              push: () => sendBricoBravoTracking(
+                String(orderRecord.installationId),
+                orderRecord.orderNumber,
+                generatedLabel.trackingCode,
+                carrier.carrierType,
+                selectedShippingMethod,
+                generatedLabel.trackingUrl || null,
+              ),
+            }).catch((err) => console.error('[BRICOBRAVO TRACKING] Retry failed:', err.message));
           }
           if (orderRecord?.platform === 'shopify' && generatedLabel?.trackingCode) {
-            await sendShopifyTracking(
-              String(orderRecord.installationId),
-              orderRecord.orderNumber,
-              generatedLabel.trackingCode,
-              carrier.carrierType,
-              generatedLabel.trackingUrl || null,
-            ).catch(err => console.error('[SHOPIFY TRACKING] Async error:', err.message));
+            await pushTrackingWithRetry({
+              platform: 'shopify',
+              orderNumber: orderRecord.orderNumber,
+              trackingCode: generatedLabel.trackingCode,
+              push: () => sendShopifyTracking(
+                String(orderRecord.installationId),
+                orderRecord.orderNumber,
+                generatedLabel.trackingCode,
+                carrier.carrierType,
+                generatedLabel.trackingUrl || null,
+              ),
+            }).catch((err) => console.error('[SHOPIFY TRACKING] Retry failed:', err.message));
           }
         }
       }
     };
 
     const parseAddress = (address = '') => {
-      const parts = String(address).split(',').map(p => p.trim()).filter(Boolean);
-      let street = parts.length > 1 ? parts.slice(0, -1).join(', ') : parts[0] || '';
+      const parts = String(address).split(',').map((p) => p.trim()).filter(Boolean);
+      const fullStreet = parts.join(', ');
+      let street = fullStreet;
       let zipCode = '';
       let city = '';
       const last = parts[parts.length - 1] || '';
       const match = last.match(/(\d{4}\s?[A-Z]{2})\s+(.+)/i);
-      if (match) { zipCode = match[1].replace(/\s+/g, ''); city = match[2].trim(); }
+
+      if (match) {
+        zipCode = match[1].replace(/\s+/g, '');
+        city = match[2].trim();
+        street = parts.length > 1 ? parts.slice(0, -1).join(', ') : fullStreet;
+      }
+
       return { street, zipCode, city };
     };
 
@@ -935,7 +1114,7 @@ export const generateCarrierLabels = async (req, res) => {
       const normalizedStreet = normalizeStreetLine(street);
       if (!normalizedStreet) return { street: '', houseNumber: '', houseNumberExtension: '' };
 
-      const suffixMatch = normalizedStreet.match(/^(.*?)[\s,]+(\d+[A-Za-z0-9\-/]*)(?:\s+([A-Za-z0-9\-/]+))?$/);
+      const suffixMatch = normalizedStreet.match(/^(.*?)[\s,]+(\d+[A-Za-z0-9\-/]*)(?:[\s,]+([A-Za-z0-9\-/]+))?$/);
       if (!suffixMatch) return { street: normalizedStreet, houseNumber: '', houseNumberExtension: '' };
 
       return {
@@ -968,7 +1147,7 @@ export const generateCarrierLabels = async (req, res) => {
         const postalIndex = addressParts.findIndex((part) => looksLikePostalSegment(part, country));
         if (postalIndex > 0) street = String(addressParts.slice(0, postalIndex).join(', ') || '').trim();
       }
-      if (!street) street = String(addressParts[0] || address.street || pkg.address || '').trim();
+      if (!street) street = String(addressParts.join(', ') || address.street || pkg.address || '').trim();
       street = normalizeStreetLine(street);
 
       if (!zipCode && country === 'NL') {

@@ -210,6 +210,20 @@ const firstNonEmptyOrderValue = (...values: any[]) => {
   return undefined;
 };
 
+const getComputedItemCount = (order: any) => {
+  const items = Array.isArray(order?.orderItems) ? order.orderItems : [];
+  if (items.length > 0) {
+    const total = items.reduce((sum: number, item: any) => {
+      const quantity = Number(item?.quantity);
+      return sum + (Number.isFinite(quantity) && quantity > 0 ? quantity : 1);
+    }, 0);
+    if (total > 0) return total;
+  }
+
+  const fallback = Number(order?.itemCount);
+  return Number.isFinite(fallback) && fallback > 0 ? fallback : 0;
+};
+
 const toValidDate = (value: any): Date | null => {
   if (!value) return null;
   const parsed = new Date(value);
@@ -1661,7 +1675,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
       'Land': order.country,
       'Store': order.storeName,
       'Platform': order.platform || 'bol.com',
-      'Aantal items': order.itemCount,
+      'Aantal items': getComputedItemCount(order),
       'Orderwaarde': order.orderValue ? `€${order.orderValue.toFixed(2)}` : '',
       'Besteldatum': order.orderDate ? new Date(order.orderDate).toLocaleDateString('nl-NL') : '',
       'Leverdatum': order.deliveryDate ? new Date(order.deliveryDate).toLocaleDateString('nl-NL') : '',
@@ -2308,7 +2322,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
                         </TableCell>
                         <TableCell>
                           <div className="text-center">
-                            <div className="text-sm text-slate-900">{order.itemCount}</div>
+                            <div className="text-sm text-slate-900">{getComputedItemCount(order)}</div>
                             <div className="text-xs text-slate-500">€ {order.orderValue?.toFixed(2) || '0.00'}</div>
                           </div>
                         </TableCell>
@@ -2779,7 +2793,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
                                           )}
                                           <div className="flex justify-between text-sm">
                                             <span className="text-slate-500">Aantal besteld</span>
-                                            <span className="text-slate-900">{item.quantity || order.itemCount}</span>
+                                            <span className="text-slate-900">{item.quantity || getComputedItemCount(order)}</span>
                                           </div>
                                           <div className="flex justify-between text-sm">
                                             <span className="text-slate-500">Prijs</span>
