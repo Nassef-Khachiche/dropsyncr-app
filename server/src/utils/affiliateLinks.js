@@ -5,11 +5,11 @@
  * /dp/{ASIN}-vorm, zodat elke variant die de inkoper plakt (zoekresultaat,
  * mobiele link, met review-parameters) altijd dezelfde link oplevert.
  *
- * De tag staat bewust vast voor alle installaties.
+ * Tags kunnen via environment variables worden overschreven.
  */
 
-const AMAZON_TAG = 'woolsocks-21';
-const AMAZON_ASCSUBTAG = '167-OBS-3b1a48d5d41843cd95a41550fd32067b';
+const AMAZON_TAG = String(process.env.AMAZON_TAG || '').trim();
+const AMAZON_ASCSUBTAG = String(process.env.AMAZON_ASCSUBTAG || '').trim();
 
 const extractAmazonTld = (url) => {
   const match = String(url).match(/https?:\/\/[^/]*amazon\.([a-z.]+)\//i);
@@ -24,10 +24,13 @@ const extractAsin = (url) => {
 
 export const isAmazonUrl = (url) => String(url || '').toLowerCase().includes('amazon.');
 
-const isAlreadyTagged = (url) =>
-  new RegExp(`[?&]tag=${AMAZON_TAG}(&|$)`, 'i').test(String(url || ''));
+const isAlreadyTagged = (url) => {
+  if (!AMAZON_TAG) return false;
+  return new RegExp(`[?&]tag=${AMAZON_TAG}(&|$)`, 'i').test(String(url || ''));
+};
 
 export const buildAmazonAffiliateLink = (url) => {
+  if (!AMAZON_TAG || !AMAZON_ASCSUBTAG) return String(url || '').trim();
   const asin = extractAsin(url);
   if (!asin) return String(url || '').trim();
   const tld = extractAmazonTld(url);
