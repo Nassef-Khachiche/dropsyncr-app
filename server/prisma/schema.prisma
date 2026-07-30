@@ -46,6 +46,8 @@ model Installation {
   defaultForUsers User[]          @relation("UserDefaultInstallation")
   warehouseAddress WarehouseAddress?
   warehouseLocations WarehouseLocation[]
+  suppliers          Supplier[]
+  purchaseOrders     PurchaseOrder[]
 }
 
 model AutomationRule {
@@ -113,6 +115,7 @@ model Order {
   user             User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
   orderItems       OrderItem[]
   tracking         Tracking?
+  purchaseOrders   PurchaseOrder[]
 
   @@index([installationId])
   @@index([userId])
@@ -144,6 +147,7 @@ model OrderItem {
   unitPrice    Float    @default(0) @db.Float
   order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product      Product? @relation(fields: [productId], references: [id])
+  purchaseOrder PurchaseOrder?
 
   @@index([orderId])
   @@index([productId])
@@ -165,6 +169,7 @@ model Product {
   eanAliases       ProductEanAlias[]
   price            Float
   purchasePrice    Float?
+  supplierUrl      String?           @db.Text
   totalStock       Int               @default(0)
   availableStock   Int               @default(0)
   fulfillmentStock Int               @default(0)
@@ -473,4 +478,66 @@ model LabelHistory {
 
   @@index([orderId])
   @@index([carrierId], map: "LabelHistory_carrierId_fkey")
+}
+
+model Supplier {
+  id             Int      @id @default(autoincrement())
+  installationId Int
+  name           String
+  websiteUrl     String?  @db.Text
+  active         Boolean  @default(true)
+
+  loginUrl       String?  @db.Text
+  loginUsername  String?
+  loginPassword  String?  @db.Text   // AES-256-GCM versleuteld, nooit plain opslaan
+  loginNote      String?  @db.Text
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  installation   Installation    @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  purchaseOrders PurchaseOrder[]
+
+  @@unique([installationId, name])
+  @@index([installationId])
+}
+
+model PurchaseOrder {
+  id               Int       @id @default(autoincrement())
+  installationId   Int
+  orderId          Int
+  orderItemId      Int       @unique
+  supplierId       Int?
+
+  status           String    // 'ordered' | 'not_ordered'
+
+  supplierOrderId  String?
+  supplierTracking String?
+
+  buyPrice         Float?    @db.Float
+  excludeVat       Boolean   @default(false)
+  buyPriceNet      Float?    @db.Float
+  shippingCost     Float?    @db.Float
+  sellPrice        Float?    @db.Float
+  vatAmount        Float?    @db.Float
+  commissionAmount Float?    @db.Float
+  netProfit        Float?    @db.Float
+
+  notOrderedReason String?
+  note             String?   @db.Text
+
+  processedById    Int?      // userId, bewust zonder relatie om User niet te raken
+  processedAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  installation     Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  order            Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderItem        OrderItem    @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  supplier         Supplier?    @relation(fields: [supplierId], references: [id])
+
+  @@index([installationId])
+  @@index([orderId])
+  @@index([supplierId])
+  @@index([status])
 }

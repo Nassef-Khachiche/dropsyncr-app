@@ -840,34 +840,113 @@ class ApiService {
     });
   }
 
-  // Warehouse Locations
-  async getLocations(installationId: string) {
-    return this.request<{ locations: any[] }>(`/locations?installationId=${installationId}`);
+  // Suppliers
+  async getSuppliers(installationId: string) {
+    return this.request<any[]>(`/suppliers?installationId=${installationId}`);
   }
 
-  async createLocation(data: any) {
-    return this.request<any>('/locations', {
+  async createSupplier(data: any) {
+    return this.request<any>('/suppliers', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
-  async bulkCreateLocations(data: any) {
-    return this.request<{ locations: any[]; count: number }>('/locations/bulk', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async updateLocation(id: number, data: any) {
-    return this.request<any>(`/locations/${id}`, {
+  async updateSupplier(id: number, data: any) {
+    return this.request<any>(`/suppliers/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
   }
 
-  async deleteLocation(id: number) {
-    return this.request<{ message: string }>(`/locations/${id}`, {
+  async deleteSupplier(id: number) {
+    return this.request<{ message: string }>(`/suppliers/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Purchase Orders (Purchasing)
+  async getPurchaseOrders(params: {
+    installationId: string;
+    tab?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+    withoutTracking?: boolean;
+    includeArchive?: boolean;
+  }) {
+    const queryParams = new URLSearchParams();
+    queryParams.append('installationId', params.installationId);
+    if (params.tab) queryParams.append('tab', params.tab);
+    if (params.search) queryParams.append('search', params.search);
+    if (params.page) queryParams.append('page', params.page.toString());
+    if (params.limit) queryParams.append('limit', params.limit.toString());
+    if (params.withoutTracking) queryParams.append('withoutTracking', 'true');
+    if (params.includeArchive) queryParams.append('includeArchive', 'true');
+
+    return this.request<{ items: any[]; pagination: any; counts: any; archive: any }>(
+      `/purchase-orders?${queryParams.toString()}`
+    );
+  }
+
+  async getProductPurchaseHistory(params: {
+    installationId: string;
+    ean: string;
+    excludeOrderId?: number;
+  }) {
+    const queryParams = new URLSearchParams();
+    queryParams.append('installationId', params.installationId);
+    queryParams.append('ean', params.ean);
+    if (params.excludeOrderId) queryParams.append('excludeOrderId', params.excludeOrderId.toString());
+
+    return this.request<any>(`/purchase-orders/history?${queryParams.toString()}`);
+  }
+
+  async processPurchaseOrder(data: {
+    orderItemIds: number[];
+    supplierId: number;
+    buyPrice?: number;
+    excludeVat?: boolean;
+    shippingCost?: number;
+    supplierOrderId?: string;
+    note?: string;
+  }) {
+    return this.request<{ success: boolean; purchaseOrders: any[] }>('/purchase-orders/process', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async markPurchaseOrderNotOrdered(data: { orderItemIds: number[]; reason: string; note?: string }) {
+    return this.request<{ success: boolean; purchaseOrders: any[] }>('/purchase-orders/not-ordered', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async saveProductSupplierUrl(data: { orderItemId: number; url: string }) {
+    return this.request<{ success: boolean; supplierUrl: string; isAffiliate: boolean }>(
+      '/purchase-orders/supplier-url',
+      { method: 'POST', body: JSON.stringify(data) }
+    );
+  }
+
+  async markPurchaseOrderCanceled(data: { orderItemIds: number[]; reason?: string; note?: string }) {
+    return this.request<{ success: boolean; purchaseOrders: any[] }>('/purchase-orders/canceled', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updatePurchaseOrderTracking(id: number, supplierTracking: string) {
+    return this.request<{ success: boolean; purchaseOrder: any }>(`/purchase-orders/${id}/tracking`, {
+      method: 'PUT',
+      body: JSON.stringify({ supplierTracking }),
+    });
+  }
+
+  async resetPurchaseOrder(id: number) {
+    return this.request<{ success: boolean }>(`/purchase-orders/${id}`, {
       method: 'DELETE',
     });
   }
