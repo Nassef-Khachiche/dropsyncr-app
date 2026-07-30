@@ -355,9 +355,40 @@ const bolTokenCache = new Map();
 const bolEnrichmentCache = new Map();
 const BOL_ENRICHMENT_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
+// Per-credential request pacing to avoid bursty Bol API traffic and repeated 429 responses.
+const bolRequestSchedule = new Map();
+const bolMinRequestIntervalMsRaw = parseInt(process.env.BOL_MIN_REQUEST_INTERVAL_MS || '350', 10);
+const BOL_MIN_REQUEST_INTERVAL_MS = Number.isFinite(bolMinRequestIntervalMsRaw) && bolMinRequestIntervalMsRaw >= 0
+  ? bolMinRequestIntervalMsRaw
+  : 350;
+const bolPost429ExtraCooldownMsRaw = parseInt(process.env.BOL_POST_429_EXTRA_COOLDOWN_MS || '500', 10);
+const BOL_POST_429_EXTRA_COOLDOWN_MS = Number.isFinite(bolPost429ExtraCooldownMsRaw) && bolPost429ExtraCooldownMsRaw >= 0
+  ? bolPost429ExtraCooldownMsRaw
+  : 500;
+
 // Tracks endpoints that returned 403 per credential set, so we don't retry them on every order.
 // Keyed by "clientId:endpoint" → true
 const bol403EndpointCache = new Set();
+
+const getBolCredentialKey = (credentials = {}) => `${credentials.clientId || 'unknown'}:${credentials.clientSecret || 'unknown'}`;
+
+const scheduleNextBolRequest = (credentials = {}, delayMs = BOL_MIN_REQUEST_INTERVAL_MS) => {
+  const key = getBolCredentialKey(credentials);
+  const now = Date.now();
+  const currentNext = Number(bolRequestSchedule.get(key) || 0);
+  const next = Math.max(currentNext, now + Math.max(0, delayMs));
+  bolRequestSchedule.set(key, next);
+};
+
+const waitForBolRequestSlot = async (credentials = {}) => {
+  const key = getBolCredentialKey(credentials);
+  const now = Date.now();
+  const scheduledAt = Number(bolRequestSchedule.get(key) || 0);
+  if (scheduledAt > now) {
+    await new Promise((resolve) => setTimeout(resolve, scheduledAt - now));
+  }
+  scheduleNextBolRequest(credentials, BOL_MIN_REQUEST_INTERVAL_MS);
+};
 
 async function getBolAccessToken(credentials) {
   const { clientId, clientSecret } = credentials;
@@ -419,6 +450,7 @@ async function bolApiRequestRaw(
     contentType = 'application/vnd.retailer.v10+json',
   } = {},
 ) {
+  await waitForBolRequestSlot(credentials);
   const accessToken = await getBolAccessToken(credentials);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 25000);
@@ -461,12 +493,14 @@ async function bolApiRequestRaw(
   if (response.status === 429) {
     const retryAfter = parseInt(response.headers.get('Retry-After') || '10', 10);
     const waitMs = (Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 10) * 1000;
+    scheduleNextBolRequest(credentials, waitMs + BOL_POST_429_EXTRA_COOLDOWN_MS);
     console.warn(`[BOL] Rate limited (429) on ${endpoint}, retrying after ${waitMs}ms`);
     await new Promise((resolve) => setTimeout(resolve, waitMs));
     // Invalidate cached token in case it was part of the problem
     const { clientId, clientSecret } = credentials;
     bolTokenCache.delete(`${clientId}:${clientSecret}`);
     const freshToken = await getBolAccessToken(credentials);
+    await waitForBolRequestSlot(credentials);
     const retryController = new AbortController();
     const retryTimeout = setTimeout(() => retryController.abort(), 25000);
     try {
@@ -2026,6 +2060,7 @@ const fetchBolProductAssetsByUsage = async ({ credentials, ean, usage }) => {
 
 const enrichBolProductData = async ({ credentials, ean }) => {
   const eanValue = firstNonEmptyString(ean);
+  const includeAdditionalAssets = String(process.env.BOL_ENRICHMENT_INCLUDE_ADDITIONAL_ASSETS || 'false').trim().toLowerCase() === 'true';
 
   if (!eanValue) {
     return null;
@@ -2048,9 +2083,27 @@ const enrichBolProductData = async ({ credentials, ean }) => {
 
     const { endpoint, data } = enrichmentResponse;
 
-    // Fetch asset types sequentially to avoid parallel bursts that trigger 429 rate limits
-    const primaryAssets = await fetchBolProductAssetsByUsage({ credentials, ean: eanValue, usage: 'PRIMARY' });
-    const additionalAssets = await fetchBolProductAssetsByUsage({ credentials, ean: eanValue, usage: 'ADDITIONAL' });
+    // Try to resolve image from base content payload first. This avoids expensive
+    // /products/*/assets calls for most products.
+    const baseResolvedImage = resolveImageFromBolEnrichment(data);
+    let primaryAssets = null;
+    let additionalAssets = null;
+
+    if (!baseResolvedImage) {
+      primaryAssets = await fetchBolProductAssetsByUsage({ credentials, ean: eanValue, usage: 'PRIMARY' });
+
+      const primaryMergedData = {
+        ...data,
+        product: { ...(data?.product || {}) },
+        assetsByUsage: [primaryAssets].filter(Boolean),
+        assets: [primaryAssets].filter(Boolean).map((assetResponse) => assetResponse.data),
+      };
+
+      const imageAfterPrimary = resolveImageFromBolEnrichment(primaryMergedData);
+      if (!imageAfterPrimary && includeAdditionalAssets) {
+        additionalAssets = await fetchBolProductAssetsByUsage({ credentials, ean: eanValue, usage: 'ADDITIONAL' });
+      }
+    }
 
     const assetResponses = [primaryAssets, additionalAssets].filter(Boolean);
     const mergedEnrichmentData = {
@@ -2060,7 +2113,7 @@ const enrichBolProductData = async ({ credentials, ean }) => {
       assets: assetResponses.map((assetResponse) => assetResponse.data).filter(Boolean),
     };
 
-    const resolvedImage = resolveImageFromBolEnrichment(mergedEnrichmentData);
+    const resolvedImage = baseResolvedImage || resolveImageFromBolEnrichment(mergedEnrichmentData);
 
     return { endpoint, data: mergedEnrichmentData, resolvedImage };
   } catch (error) {

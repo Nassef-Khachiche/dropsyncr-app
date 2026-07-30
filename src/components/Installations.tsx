@@ -45,6 +45,13 @@ interface Installation {
   createdAt: string;
 }
 
+interface AppUser {
+  id: number;
+  email: string;
+  name: string;
+  isGlobalAdmin?: boolean;
+}
+
 export function Installations() {
   const [installations, setInstallations] = useState<Installation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,7 +59,8 @@ export function Installations() {
   const [filterType, setFilterType] = useState('all');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingInstallation, setEditingInstallation] = useState<Installation | null>(null);
-  const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [allUsers, setAllUsers] = useState<AppUser[]>([]);
+  const [userSearchQuery, setUserSearchQuery] = useState('');
   const [formData, setFormData] = useState({
     name: '',
     type: 'own',
@@ -101,6 +109,7 @@ export function Installations() {
 
   const handleCreate = () => {
     setEditingInstallation(null);
+    setUserSearchQuery('');
     setFormData({
       name: '',
       type: 'own',
@@ -114,6 +123,7 @@ export function Installations() {
 
   const handleEdit = (installation: Installation) => {
     setEditingInstallation(installation);
+    setUserSearchQuery('');
     setFormData({
       name: installation.name,
       type: installation.type,
@@ -184,6 +194,36 @@ export function Installations() {
         ? prev.userIds.filter(id => id !== userId)
         : [...prev.userIds, userId],
     }));
+  };
+
+  const filteredUsers = allUsers.filter((user) => {
+    const normalizedQuery = userSearchQuery.trim().toLowerCase();
+    if (!normalizedQuery) return true;
+
+    const name = String(user.name || '').toLowerCase();
+    const email = String(user.email || '').toLowerCase();
+    return name.includes(normalizedQuery) || email.includes(normalizedQuery);
+  });
+
+  const allFilteredUsersSelected =
+    filteredUsers.length > 0 && filteredUsers.every((user) => formData.userIds.includes(user.id));
+
+  const toggleFilteredUsers = () => {
+    setFormData((prev) => {
+      if (allFilteredUsersSelected) {
+        return {
+          ...prev,
+          userIds: prev.userIds.filter((id) => !filteredUsers.some((user) => user.id === id)),
+        };
+      }
+
+      const mergedIds = new Set(prev.userIds);
+      filteredUsers.forEach((user) => mergedIds.add(user.id));
+      return {
+        ...prev,
+        userIds: Array.from(mergedIds),
+      };
+    });
   };
 
   return (
@@ -415,33 +455,72 @@ export function Installations() {
 
             <div className="space-y-2">
               <Label>Toegewezen Gebruikers</Label>
-              <div className="border border-slate-200 rounded-lg p-4 max-h-48 overflow-y-auto">
+              <div className="flex items-center justify-between text-xs text-slate-500">
+                <span>{formData.userIds.length} geselecteerd</span>
+                <span>{filteredUsers.length} zichtbaar</span>
+              </div>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <Input
+                  value={userSearchQuery}
+                  onChange={(e) => setUserSearchQuery(e.target.value)}
+                  placeholder="Zoek gebruiker op naam of e-mail..."
+                  className="pl-10"
+                />
+              </div>
+              <div className="border border-slate-200 rounded-lg overflow-hidden">
                 {allUsers.length === 0 ? (
-                  <p className="text-sm text-slate-500">Geen gebruikers beschikbaar</p>
+                  <p className="text-sm text-slate-500 p-4">Geen gebruikers beschikbaar</p>
+                ) : filteredUsers.length === 0 ? (
+                  <p className="text-sm text-slate-500 p-4">Geen gebruikers gevonden voor deze zoekopdracht</p>
                 ) : (
-                  <div className="space-y-2">
-                    {allUsers.map((user) => (
-                      <div key={user.id} className="flex items-center space-x-2">
-                        <input
-                          type="checkbox"
-                          id={`user-${user.id}`}
-                          checked={formData.userIds.includes(user.id)}
-                          onChange={() => toggleUser(user.id)}
-                          className="rounded border-slate-300"
-                        />
-                        <Label
-                          htmlFor={`user-${user.id}`}
-                          className="cursor-pointer flex-1"
-                        >
-                          {user.name} ({user.email})
-                          {user.isGlobalAdmin && (
-                            <Badge variant="outline" className="ml-2 text-xs">
-                              Global Admin
-                            </Badge>
-                          )}
-                        </Label>
-                      </div>
-                    ))}
+                  <div className="max-h-64 overflow-y-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-slate-50/50">
+                          <TableHead className="w-10">
+                            <input
+                              type="checkbox"
+                              checked={allFilteredUsersSelected}
+                              onChange={toggleFilteredUsers}
+                              className="rounded border-slate-300"
+                              aria-label="Selecteer alle zichtbare gebruikers"
+                            />
+                          </TableHead>
+                          <TableHead>Naam</TableHead>
+                          <TableHead>E-mail</TableHead>
+                          <TableHead className="text-right">Rol</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredUsers.map((user) => (
+                          <TableRow key={user.id}>
+                            <TableCell>
+                              <input
+                                type="checkbox"
+                                id={`user-${user.id}`}
+                                checked={formData.userIds.includes(user.id)}
+                                onChange={() => toggleUser(user.id)}
+                                className="rounded border-slate-300"
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Label htmlFor={`user-${user.id}`} className="cursor-pointer">
+                                {user.name || '-'}
+                              </Label>
+                            </TableCell>
+                            <TableCell className="text-slate-600">{user.email || '-'}</TableCell>
+                            <TableCell className="text-right">
+                              {user.isGlobalAdmin ? (
+                                <Badge variant="outline" className="text-xs">Global Admin</Badge>
+                              ) : (
+                                <span className="text-xs text-slate-500">Gebruiker</span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
                   </div>
                 )}
               </div>
@@ -451,7 +530,10 @@ export function Installations() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setIsDialogOpen(false)}
+                onClick={() => {
+                  setIsDialogOpen(false);
+                  setUserSearchQuery('');
+                }}
               >
                 Annuleren
               </Button>
