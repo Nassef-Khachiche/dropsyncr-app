@@ -83,7 +83,7 @@ model UserInstallation {
 
 model Order {
   id               Int          @id @default(autoincrement())
-  orderNumber      String       @unique
+  orderNumber      String
   installationId   Int
   userId           Int?
   customerName     String
@@ -118,6 +118,7 @@ model Order {
   purchaseOrders   PurchaseOrder[]
 
   @@index([installationId])
+  @@unique([installationId, orderNumber])
   @@index([userId])
   @@index([orderStatus])
   @@index([orderStatusCode])

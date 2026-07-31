@@ -432,10 +432,27 @@ function mapCarrierTypeToShopifyCompany(carrierType) {
   return normalized.toUpperCase();
 }
 
+function buildShopifyLocalOrderNumber(installationId, order) {
+  const installationIdNumber = parseInt(installationId, 10);
+  const orderToken = String(order?.order_number || order?.id || '').trim();
+  if (!orderToken) return '';
+  if (!Number.isFinite(installationIdNumber)) return orderToken;
+  return `${installationIdNumber}-${orderToken}`;
+}
+
 function parseShopifyOrderToken(orderNumber) {
   const raw = String(orderNumber || '').trim();
   if (!raw) return '';
-  return raw.replace(/^shopify-/i, '').trim();
+
+  // Support legacy format (shopify-12345) and new installation-prefixed format (12-12345).
+  let normalized = raw.replace(/^shopify-/i, '').trim();
+
+  const installationPrefixMatch = normalized.match(/^\d+-(.+)$/);
+  if (installationPrefixMatch?.[1]) {
+    normalized = installationPrefixMatch[1].trim();
+  }
+
+  return normalized.replace(/^shopify-/i, '').trim();
 }
 
 async function resolveShopifyOrderIdFromLocalOrderNumber(credentials, localOrderNumber) {
@@ -600,7 +617,8 @@ export async function syncShopifyOrdersForInstallation({ installationId, integra
   let updatedCount = 0;
 
   for (const order of allOrders) {
-    const orderNumber = `shopify-${order.order_number || order.id}`;
+    const orderNumber = buildShopifyLocalOrderNumber(installationId, order);
+    if (!orderNumber) continue;
     const internalStatus = mapShopifyOrderToInternalStatus(order);
     const orderStatusCode = mapToOrderStatusCode(internalStatus);
 
@@ -1040,7 +1058,7 @@ export async function handleShopifyWebhook(req, res) {
     }
 
     if (topic === 'orders-cancelled' || order.cancelled_at) {
-      const orderNumber = `shopify-${order.order_number || order.id}`;
+      const orderNumber = buildShopifyLocalOrderNumber(matchingIntegration.installationId, order);
       await prisma.order.updateMany({
         where: {
           orderNumber,

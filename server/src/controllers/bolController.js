@@ -992,12 +992,17 @@ async function getBolLabelWithFallbackInternal(
   {
     preferredShippingLabelOfferId = null,
     prefetchedOrderItems = null,
+    installationId = null,
   } = {},
 ) {
   const normalizedOrderId = String(orderId || '').trim();
   if (!normalizedOrderId) {
     throw new Error('Order ID is required to get Bol shipping label');
   }
+
+  const installationIdNumber = Number.isFinite(Number(installationId))
+    ? Number(installationId)
+    : null;
 
   const errors = [];
   const normalizedPreferredShippingLabelOfferId = String(preferredShippingLabelOfferId || '').trim();
@@ -1143,7 +1148,10 @@ async function getBolLabelWithFallbackInternal(
     // Before using them, verify they are still eligible via delivery-options endpoint.
     try {
       const dbOrder = await prisma.order.findFirst({
-        where: { orderNumber: normalizedOrderId },
+        where: {
+          orderNumber: normalizedOrderId,
+          ...(installationIdNumber ? { installationId: installationIdNumber } : {}),
+        },
         include: { orderItems: { select: { externalId: true, quantity: true } } },
       });
       if (dbOrder?.orderItems?.length > 0) {
@@ -2728,7 +2736,10 @@ export const getBolShippingLabel = async (req, res) => {
     const installationIdNumber = parseInt(installationId, 10);
 
     const matchingOrders = await prisma.order.findMany({
-      where: { orderNumber: normalizedOrderId },
+      where: {
+        orderNumber: normalizedOrderId,
+        installationId: installationIdNumber,
+      },
       select: { id: true, installationId: true, isVVB: true },
     });
 
@@ -2868,7 +2879,10 @@ export const getBolShippingLabel = async (req, res) => {
               // DB fallback
               try {
                 const dbOrder = await prisma.order.findFirst({
-                  where: { orderNumber: normalizedOrderId },
+                  where: {
+                    orderNumber: normalizedOrderId,
+                    installationId: installationIdNumber,
+                  },
                   include: { orderItems: { select: { externalId: true, quantity: true } } },
                 });
                 if (dbOrder?.orderItems?.length > 0) {
@@ -2911,6 +2925,7 @@ export const getBolShippingLabel = async (req, res) => {
           {
             preferredShippingLabelOfferId: resolvedShippingLabelOfferId,
             prefetchedOrderItems,
+            installationId: installationIdNumber,
           },
         );
         labelData = fallbackResult.labelData;
@@ -3085,7 +3100,10 @@ export const getBolShippingLabel = async (req, res) => {
             // DB fallback: use stored externalId values
             try {
               const dbOrder = await prisma.order.findFirst({
-                where: { orderNumber: normalizedOrderId },
+                where: {
+                  orderNumber: normalizedOrderId,
+                  installationId: installationIdNumber,
+                },
                 include: { orderItems: { select: { externalId: true, quantity: true } } },
               });
               if (dbOrder?.orderItems?.length > 0) {
@@ -3430,10 +3448,14 @@ export const getBolLabelByOrder = async (req, res) => {
     }
 
     const normalizedOrderId = String(orderId).trim();
+    const installationIdNumber = parseInt(installationId, 10);
 
     // 1. Check DB for a previously-persisted label URL
     const dbOrder = await prisma.order.findFirst({
-      where: { orderNumber: normalizedOrderId },
+      where: {
+        orderNumber: normalizedOrderId,
+        installationId: installationIdNumber,
+      },
       include: {
         label: true,
         labels: { orderBy: { createdAt: 'desc' }, take: 1 },
@@ -3563,8 +3585,21 @@ export const updateBolShipment = async (req, res) => {
       shipmentData
     );
 
+    const installationIdNumber = parseInt(installationId, 10);
+    const targetOrder = await prisma.order.findFirst({
+      where: {
+        orderNumber: String(orderId || '').trim(),
+        installationId: installationIdNumber,
+      },
+      select: { id: true },
+    });
+
+    if (!targetOrder) {
+      return res.status(404).json({ error: 'Order not found for this installation' });
+    }
+
     const updatedOrder = await prisma.order.update({
-      where: { orderNumber: orderId },
+      where: { id: targetOrder.id },
       data: {
         status: 'verzonden',
         orderStatus: 'verzonden',
