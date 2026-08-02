@@ -243,6 +243,43 @@ const resolveBolTransporterCode = (carrierType, shippingMethod) => {
   return 'OTHER';
 };
 
+const waitForBolShipmentProcess = async (credentials, initialPayload, { maxAttempts = 6, delayMs = 1500 } = {}) => {
+  const readStatus = (payload) => String(payload?.status || '').trim().toUpperCase();
+  const assertNotFailed = (payload) => {
+    const status = readStatus(payload);
+    if (['FAILURE', 'FAILED', 'ERROR'].includes(status)) {
+      const detail = String(payload?.errorMessage || payload?.description || '').trim();
+      throw new Error(detail ? `Bol shipment mislukt: ${detail}` : 'Bol shipment mislukt');
+    }
+    return status;
+  };
+
+  const initialStatus = assertNotFailed(initialPayload);
+  if (initialStatus === 'SUCCESS') return initialPayload;
+
+  const processStatusId = String(
+    initialPayload?.processStatusId
+    || extractFirstLinkId(initialPayload, '/shared/process-status')
+    || extractFirstLinkId(initialPayload, '/process-status')
+    || ''
+  ).trim();
+
+  if (!processStatusId) return initialPayload;
+
+  const endpoint = `https://api.bol.com/shared/process-status/${encodeURIComponent(processStatusId)}`;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    if (attempt > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+
+    const payload = await bolApiRequest(credentials, endpoint);
+    const status = assertNotFailed(payload);
+    if (status === 'SUCCESS') return payload;
+  }
+
+  throw new Error(`Bol shipment verwerking niet voltooid voor process ${processStatusId}`);
+};
+
 export async function sendBolTracking(installationId, orderNumber, trackingCode, carrierType = null, shippingMethod = null, integrationId = null) {
   const normalizedOrderNumber = String(orderNumber || '').trim();
   const normalizedTrackingCode = String(trackingCode || '').trim();
@@ -305,7 +342,8 @@ export async function sendBolTracking(installationId, orderNumber, trackingCode,
         await new Promise((resolve) => setTimeout(resolve, retryDelays[attempt]));
       }
 
-      await bolApiRequest(credentials, '/shipments', 'POST', shipmentBody);
+      const shipmentProcess = await bolApiRequest(credentials, '/shipments', 'POST', shipmentBody);
+      await waitForBolShipmentProcess(credentials, shipmentProcess);
       await prisma.order.updateMany({
         where: { orderNumber: normalizedOrderNumber, installationId: installationIdNumber },
         data: {

@@ -24,6 +24,38 @@ const parseCredentialsSafely = (value) => {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const extractWeGrowTrackingCode = (payload) => {
+  const trackingKeys = new Set([
+    'carrier_tracking_id',
+    'carrier_tracking_code',
+    'track_and_trace',
+    'tracking_code',
+    'tracking_number',
+  ]);
+  const visited = new Set();
+
+  const findTrackingCode = (value) => {
+    if (!value || typeof value !== 'object' || visited.has(value)) return null;
+    visited.add(value);
+
+    for (const [key, nestedValue] of Object.entries(value)) {
+      if (trackingKeys.has(String(key).toLowerCase())) {
+        const normalized = String(nestedValue || '').trim();
+        if (normalized) return normalized;
+      }
+    }
+
+    for (const nestedValue of Object.values(value)) {
+      const trackingCode = findTrackingCode(nestedValue);
+      if (trackingCode) return trackingCode;
+    }
+
+    return null;
+  };
+
+  return findTrackingCode(payload);
+};
+
 const isRetryableTrackingError = (error) => {
   const message = String(error?.message || '').toLowerCase();
   return (
@@ -367,7 +399,7 @@ const WEGROW_SELECTED_CARRIER_COUNTRY_SERVICE_CODE_OVERRIDES = {
   },
   'dpd-standaard': {
     NL: 'wegrow_home_economy',
-    BE: 'wegrow_home_economy',
+    BE: 'wegrow_home_premium',
   },
   'postat-standaard': {
     AT: 'wegrow_home_premium',
@@ -938,6 +970,20 @@ export const generateCarrierLabels = async (req, res) => {
           if (isReturnBatch) {
             return prisma.$executeRaw`
               UPDATE \`Order\` SET updatedAt = NOW()
+              WHERE id = ${orderId} AND installationId = ${carrier.installationId}
+            `;
+          }
+
+          if (!generatedTrackingCode) {
+            if (hasShippingMethodColumn) {
+              return prisma.$executeRaw`
+                UPDATE \`Order\` SET shippingMethod = ${selectedShippingMethod}, orderStatus = 'label-aangemaakt',
+                status = 'label-aangemaakt', updatedAt = NOW()
+                WHERE id = ${orderId} AND installationId = ${carrier.installationId}
+              `;
+            }
+            return prisma.$executeRaw`
+              UPDATE \`Order\` SET orderStatus = 'label-aangemaakt', status = 'label-aangemaakt', updatedAt = NOW()
               WHERE id = ${orderId} AND installationId = ${carrier.installationId}
             `;
           }
@@ -1905,12 +1951,14 @@ export const generateCarrierLabels = async (req, res) => {
 
         const format = firstLabel.format || payload.label_format || 'pdf';
         const mimeType = getLabelMimeType(format);
+        const trackingCode = extractWeGrowTrackingCode(firstLabel)
+          || extractWeGrowTrackingCode(responseData);
 
         labels.push({
           packageId: pkg.id || index,
           carrierType: carrier.carrierType,
           shippingMethod: selectedShippingMethod || selectedWeGrowCarrier || packageServiceCode,
-          trackingCode: firstLabel.carrier_tracking_id || `${carrier.carrierType.toUpperCase()}-${Date.now()}-${index}`,
+          trackingCode,
           labelUrl: `data:${mimeType};base64,${firstLabel.base64_label}`,
           trackingUrl: firstLabel.carrier_tracking_url || null,
           shipmentId: responseData?.id || null,
@@ -1938,7 +1986,7 @@ export const generateCarrierLabels = async (req, res) => {
       packageId: pkg.id || index,
       carrierType: carrier.carrierType,
       shippingMethod: selectedShippingMethod,
-      trackingCode: `${carrier.carrierType.toUpperCase()}-${Date.now()}-${index}`,
+      trackingCode: null,
       labelUrl: null,
     }));
 
