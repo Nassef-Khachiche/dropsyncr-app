@@ -28,6 +28,8 @@ import {
   Ban,
   Archive,
   Layers,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import {
   LineChart,
@@ -291,17 +293,19 @@ export function OrderManagement({ activeProfile }: OrderManagementProps) {
   });
 
   const columnCount = activeTab === 'ordered' ? 11 : 9;
+  const startItemIndex = pagination.total === 0 ? 0 : ((pagination.page - 1) * PAGE_SIZE) + 1;
+  const endItemIndex = Math.min(pagination.page * PAGE_SIZE, pagination.total);
 
   return (
-    <div className="space-y-4">
+    <div className="orders-overview space-y-6">
       <div>
         <h2 className="text-2xl bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent mb-1">
           {t('purchasingTitle')}
         </h2>
-        <p className="text-sm text-slate-500">{t('purchasingSubtitle')}</p>
+        <p className="orders-subtitle text-slate-600">{t('purchasingSubtitle')}</p>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="orders-stats grid grid-cols-2 lg:grid-cols-4 gap-4">
         {statCards.map((card) => {
           const Icon = card.icon;
           const isActive = activeTab === card.id;
@@ -313,13 +317,13 @@ export function OrderManagement({ activeProfile }: OrderManagementProps) {
                 isActive ? 'ring-2 ring-indigo-500 border-indigo-300' : ''
               }`}
             >
-              <CardContent className="p-4">
+              <CardContent className="orders-stat-content p-4">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-slate-500 mb-1">{card.label}</p>
                     <p className={`text-3xl font-bold ${card.valueClass}`}>{card.count}</p>
                   </div>
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center ${card.iconWrapClass}`}>
+                  <div className={`orders-stat-icon w-12 h-12 rounded-full flex items-center justify-center ${card.iconWrapClass}`}>
                     <Icon className={`w-6 h-6 ${card.iconClass}`} />
                   </div>
                 </div>
@@ -329,13 +333,15 @@ export function OrderManagement({ activeProfile }: OrderManagementProps) {
         })}
       </div>
 
-      <div className="flex items-center gap-2 flex-wrap">
+      <Card className="border-slate-200 shadow-sm">
+        <CardContent className="p-6">
+      <div className="purchasing-toolbar flex items-center gap-2 flex-wrap mb-6">
         <button
           onClick={loadItems}
           className="inline-flex items-center gap-2 h-9 px-4 rounded-lg text-sm text-slate-700 border border-slate-300 bg-white hover:bg-slate-50 transition-colors"
         >
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          {t('refresh')}
+          <span>{t('refresh')}</span>
         </button>
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -389,11 +395,11 @@ export function OrderManagement({ activeProfile }: OrderManagementProps) {
         </p>
       )}
 
-      <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+      <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="purchasing-table w-full caption-bottom text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-left text-slate-500">
+              <tr className="border-b bg-slate-50/50 text-left">
                 <th className="py-2.5 px-3">{t('orderNumber')}</th>
                 <th className="py-2.5 px-3">{t('customerName')}</th>
                 <th className="py-2.5 px-3">{t('colCountry')}</th>
@@ -568,29 +574,47 @@ export function OrderManagement({ activeProfile }: OrderManagementProps) {
         </div>
       </div>
 
-      <div className="flex items-center justify-between text-xs text-slate-500">
-        <span>
-          {t('pageLabel')} {pagination.page} {t('ofLabel')} {pagination.totalPages} ({pagination.total} {t('ordersLabel')})
-        </span>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={pagination.page <= 1}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-          >
-            {t('previousPage')}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={pagination.page >= pagination.totalPages}
-            onClick={() => setPage((p) => p + 1)}
-          >
-            {t('nextPage')}
-          </Button>
+      <div className="mt-6 flex items-center justify-between p-4 bg-gradient-to-r from-slate-50 to-indigo-50/30 rounded-xl border border-slate-200">
+        <div className="text-sm text-slate-700">
+          {pagination.total} {t('ordersLabel')}
+          {pagination.total > 0 && (
+            <span className="text-slate-500"> • {startItemIndex} - {endItemIndex}</span>
+          )}
+        </div>
+        <div className="purchasing-status-summary flex gap-6 text-sm">
+          <span className="text-slate-600"><span className="text-orange-600">●</span> {statCards[0].label}: {counts.open}</span>
+          <span className="text-slate-600"><span className="text-emerald-600">●</span> {statCards[2].label}: {counts.ordered}</span>
+          <span className="text-slate-600"><span className="text-rose-600">●</span> {statCards[3].label}: {counts.canceled}</span>
         </div>
       </div>
+
+      <div className="mt-4 flex items-center justify-end gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-slate-200"
+            disabled={loading || pagination.page <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+          >
+            <ChevronLeft className="w-4 h-4 mr-1" />
+            {t('previousPage')}
+          </Button>
+          <span className="text-sm text-slate-600 px-2">
+            {t('pageLabel')} {pagination.page} {t('ofLabel')} {pagination.totalPages}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-slate-200"
+            disabled={loading || pagination.page >= pagination.totalPages}
+            onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
+          >
+            {t('nextPage')}
+            <ChevronRight className="w-4 h-4 ml-1" />
+          </Button>
+      </div>
+        </CardContent>
+      </Card>
 
       {confirmReset && (
         <Dialog open onOpenChange={(open) => !open && setConfirmReset(null)}>

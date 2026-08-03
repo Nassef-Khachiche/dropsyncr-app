@@ -342,12 +342,12 @@ export function ProductManagement({ activeProfile, isGlobalAdmin = false }: Prod
   return (
     <div className="space-y-6 min-w-0">
       {/* Header */}
-      <div className="flex items-center justify-between min-w-0">
-        <div className="min-w-0 flex-1 mr-4">
+      <div className="product-management-header flex items-center justify-between min-w-0">
+        <div className="product-management-heading min-w-0 flex-1 mr-4">
           <h1 className="text-3xl bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent mb-2 truncate">{t('productManagement')}</h1>
           <p className="text-slate-600 truncate">{t('productManagementSubtitle')}</p>
         </div>
-        <Button onClick={() => setShowNewProductDialog(true)} className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 flex-shrink-0">
+        <Button onClick={() => setShowNewProductDialog(true)} className="product-management-new-button bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 flex-shrink-0">
           <Plus className="w-4 h-4 mr-2" />{t('newProduct')}
         </Button>
       </div>

@@ -132,9 +132,9 @@ export function ProfileSwitcher({ activeProfile, onProfileChange }: ProfileSwitc
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" className="gap-2 border-slate-200 shadow-sm hover:bg-slate-50">
+        <Button variant="outline" className="profile-switcher-trigger gap-2 border-slate-200 shadow-sm hover:bg-slate-50">
           <Building2 className="w-4 h-4 text-indigo-600" />
-          <span>{currentInstallation?.name || t('noInstallation')}</span>
+          <span className="profile-switcher-name">{currentInstallation?.name || t('noInstallation')}</span>
           <ChevronDown className="w-4 h-4 text-slate-400" />
         </Button>
       </DropdownMenuTrigger>

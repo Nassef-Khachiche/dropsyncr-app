@@ -617,21 +617,21 @@ export function InventoryManagement({ activeProfile, isGlobalAdmin = false }: In
     <div className="space-y-6 min-w-0 overflow-hidden">
 
       {/* Header */}
-      <div className="flex items-center justify-between min-w-0">
-        <div className="min-w-0 flex-1 mr-4">
+      <div className="inventory-header flex items-center justify-between min-w-0">
+        <div className="inventory-heading min-w-0 flex-1 mr-4">
           <h2 className="text-2xl bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent mb-2 truncate">{t('inventoryManagement')}</h2>
           <p className="text-slate-600 truncate">{t('inventoryManagementSubtitle')}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="inventory-header-actions flex items-center gap-2">
           {isGlobalAdmin && (
-            <Button onClick={() => { resetInboundDialog(); setShowInboundDialog(true); }} className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 gap-2">
+            <Button onClick={() => { resetInboundDialog(); setShowInboundDialog(true); }} className="inventory-inbound-button bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 gap-2">
               <Plus className="w-4 h-4" />Voorraad inboeken
             </Button>
           )}
-          <Button variant="outline" size="sm" onClick={() => setShowGlobalHistoryDialog(true)} className="gap-2 border-slate-200">
+          <Button variant="outline" size="sm" onClick={() => setShowGlobalHistoryDialog(true)} className="inventory-history-button gap-2 border-slate-200">
             <History className="w-4 h-4" />Historie
           </Button>
-          <Button variant="outline" size="sm" onClick={loadInventory} disabled={loading} className="gap-2 border-slate-200">
+          <Button variant="outline" size="sm" onClick={loadInventory} disabled={loading} className="inventory-refresh-button gap-2 border-slate-200">
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </Button>
         </div>

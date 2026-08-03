@@ -1930,24 +1930,24 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
   const endOrderIndex = Math.min(currentPage * ORDERS_PER_PAGE, totalOrders);
 
   return (
-    <div className="space-y-6">
+    <div className="orders-overview space-y-6">
       <div>
         <h2 className="text-2xl bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent mb-2">
           Bestellingen
         </h2>
-        <p className="text-slate-600">Beheer en verwerk al je openstaande orders</p>
+        <p className="orders-subtitle text-slate-600">Beheer en verwerk al je openstaande orders</p>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="orders-stats grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className={`border-slate-200 shadow-sm cursor-pointer hover:shadow-md transition-shadow ${filterStatus === 'openstaand' && !filterFulfillmentType && !filterExpiringTomorrow ? 'ring-2 ring-indigo-500 border-indigo-300' : ''}`} onClick={() => { if (filterStatus === 'openstaand' && !filterFulfillmentType && !filterExpiringTomorrow) { setFilterStatus('all'); } else { setFilterStatus('openstaand'); setFilterFulfillmentType(null); setFilterExpiringTomorrow(false); } }}>
-          <CardContent className="p-4">
+          <CardContent className="orders-stat-content p-4">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-slate-500 mb-1"> {t('openOrders')} </p>
                 <p className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">{statsOpenOrders}</p>
               </div>
-              <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center">
+              <div className="orders-stat-icon w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center">
                 <ShoppingBag className="w-6 h-6 text-indigo-600" />
               </div>
             </div>
@@ -1957,13 +1957,13 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
         {/* Needs picking — alleen voor global admins */}
         {isGlobalAdmin && (
           <Card className={`border-slate-200 shadow-sm cursor-pointer hover:shadow-md transition-shadow ${filterStatus === 'openstaand' && filterFulfillmentType === 'fulfillment' ? 'ring-2 ring-indigo-500 border-indigo-300' : ''}`} onClick={() => { if (filterStatus === 'openstaand' && filterFulfillmentType === 'fulfillment') { setFilterStatus('all'); setFilterFulfillmentType(null); } else { setFilterStatus('openstaand'); setFilterFulfillmentType('fulfillment'); setFilterExpiringTomorrow(false); } }}>
-            <CardContent className="p-4">
+            <CardContent className="orders-stat-content p-4">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-slate-500 mb-1">{t('needsPicking')}</p>
                   <p className="text-3xl font-bold text-emerald-600">{statsNeedsPicking}</p>
                 </div>
-                <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center">
+                <div className="orders-stat-icon w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center">
                   <PackageCheck className="w-6 h-6 text-emerald-600" />
                 </div>
               </div>
@@ -1972,26 +1972,26 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
         )}
 
         <Card className="border-slate-200 shadow-sm cursor-pointer hover:shadow-md transition-shadow" onClick={() => { setFilterStatus('openstaand'); setFilterFulfillmentType(null); setFilterExpiringTomorrow(true); }}>
-          <CardContent className="p-4">
+          <CardContent className="orders-stat-content p-4">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-slate-500 mb-1">{t('expiringTomorrow')}</p>
                 <p className={`text-3xl font-bold ${statsExpiringTomorrow > 0 ? 'text-amber-600' : 'text-slate-600'}`}>{statsExpiringTomorrow}</p>
               </div>
-              <div className={`w-12 h-12 rounded-full flex items-center justify-center ${statsExpiringTomorrow > 0 ? 'bg-amber-100' : 'bg-slate-100'}`}>
+              <div className={`orders-stat-icon w-12 h-12 rounded-full flex items-center justify-center ${statsExpiringTomorrow > 0 ? 'bg-amber-100' : 'bg-slate-100'}`}>
                 <AlertTriangle className={`w-6 h-6 ${statsExpiringTomorrow > 0 ? 'text-amber-600' : 'text-slate-400'}`} />
               </div>
             </div>
           </CardContent>
         </Card>
         <Card className="border-slate-200 shadow-sm cursor-pointer hover:shadow-md transition-shadow" onClick={() => { setFilterStatus('verzonden'); setFilterFulfillmentType(null); setFilterExpiringTomorrow(false); }}>
-          <CardContent className="p-4">
+          <CardContent className="orders-stat-content p-4">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-slate-500 mb-1">{t('processed')}</p>
                 <p className="text-3xl font-bold text-purple-600">{statsProcessed}</p>
               </div>
-              <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
+              <div className="orders-stat-icon w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
                 <Star className="w-6 h-6 text-purple-600" />
               </div>
             </div>
@@ -2002,7 +2002,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
       <Card className="border-slate-200 shadow-sm">
         <CardHeader>
           <div className="flex items-center justify-between">
-            <div className="flex gap-2">
+            <div className="orders-actions flex gap-2">
               <Button 
                 variant="outline" 
                 size="sm" 
@@ -2011,7 +2011,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
                 disabled={filteredOrders.length === 0}
               >
                 <Download className="w-4 h-4" />
-                Exporteren
+                <span className="orders-action-label">Exporteren</span>
               </Button>
               {isGlobalAdmin && selectedOrders.length > 0 && (
                 <Button
@@ -2020,7 +2020,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
                   onClick={handleOpenPicklist}
                 >
                   <ClipboardList className="w-4 h-4" />
-                  Picklijst ({selectedOrders.length})
+                  <span className="orders-action-label">Picklijst ({selectedOrders.length})</span>
                 </Button>
               )}
               <Button
@@ -2031,7 +2031,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
                 disabled={loading}
               >
                 <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                Vernieuwen
+                <span className="orders-action-label">Vernieuwen</span>
               </Button>
             </div>
           </div>
@@ -2039,7 +2039,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
         <CardContent>
           {/* Filters */}
           <div className="space-y-3 mb-6">
-            <div className="flex gap-3 items-center">
+            <div className="orders-primary-filters flex gap-3 items-center">
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <Input
@@ -2063,7 +2063,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
                   </span>
                 )}
               </Button>
-              <Select value={filterStore} onValueChange={setFilterStore}>
+              <div className="orders-secondary-filter"><Select value={filterStore} onValueChange={setFilterStore}>
                 <SelectTrigger className="w-48 border-slate-200 shadow-sm"><SelectValue placeholder="Store" /></SelectTrigger>
                 <SelectContent className="border-slate-200 shadow-lg">
                   <SelectItem value="all">Alle stores</SelectItem>
@@ -2071,8 +2071,8 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
                     <SelectItem key={storeOption.id} value={storeOption.id}>{storeOption.name}</SelectItem>
                   ))}
                 </SelectContent>
-              </Select>
-              <Select value={filterStatus} onValueChange={setFilterStatus}>
+              </Select></div>
+              <div className="orders-secondary-filter"><Select value={filterStatus} onValueChange={setFilterStatus}>
                 <SelectTrigger className="w-48 border-slate-200 shadow-sm"><SelectValue placeholder="Status" /></SelectTrigger>
                 <SelectContent className="border-slate-200 shadow-lg">
                   <SelectItem value="all">Alle statussen</SelectItem>
@@ -2081,11 +2081,11 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
                   <SelectItem value="verzonden">Verzonden</SelectItem>
                   <SelectItem value="geannuleerd">Geannuleerd</SelectItem>
                 </SelectContent>
-              </Select>
+              </Select></div>
             </div>
 
             {/* Sortering — altijd zichtbaar */}
-            <div className="flex items-center gap-3 flex-wrap">
+            <div className="orders-sort flex items-center gap-3 flex-wrap">
               <span className="text-sm text-slate-600 font-medium">Sorteren:</span>
               {[
                 { value: 'storeName', label: 'Store' },
@@ -2823,7 +2823,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
           </div>
 
           {/* Summary */}
-          <div className="mt-6 flex items-center justify-between p-4 bg-gradient-to-r from-slate-50 to-indigo-50/30 rounded-xl border border-slate-200">
+          <div className="orders-summary mt-6 flex items-center justify-between p-4 bg-gradient-to-r from-slate-50 to-indigo-50/30 rounded-xl border border-slate-200">
             <div className="text-sm text-slate-700">
               {totalOrders} orders gevonden
               {totalOrders > 0 && (

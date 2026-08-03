@@ -27,6 +27,7 @@ import logo from '../assets/dropsyncr-wit-transparant.png';
 interface AppSidebarProps {
   activeView: string;
   onViewChange: (view: string) => void;
+  className?: string;
 }
 
 interface MenuItem {
@@ -83,7 +84,7 @@ const menuItems: { sectionKey: 'orderManagement' | 'warehouseManagement' | 'anal
   },
 ];
 
-export function AppSidebar({ activeView, onViewChange }: AppSidebarProps) {
+export function AppSidebar({ activeView, onViewChange, className }: AppSidebarProps) {
   const { user } = useAuth();
   const { t } = useLanguage();
   const [expandedSections, setExpandedSections] = useState<string[]>([
@@ -123,7 +124,7 @@ export function AppSidebar({ activeView, onViewChange }: AppSidebarProps) {
   const isSectionExpanded = (section: string) => expandedSections.includes(section);
 
   return (
-    <aside className="w-64 bg-white border-r border-slate-200 flex flex-col h-dvh sticky top-0 self-stretch">
+    <aside className={cn("w-64 bg-white border-r border-slate-200 flex flex-col h-dvh sticky top-0 self-stretch", className)}>
       {/* Logo */}
       <div className="p-6 border-b border-slate-200">
         <div className="flex items-center gap-3">
