@@ -404,15 +404,15 @@ export function Retouren({ activeProfile }: RetourenProps) {
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="space-y-6">
-        <div className="flex items-center justify-between gap-4">
-          <TabsList className="bg-slate-100 p-1">
+        <div className="returns-toolbar flex items-center justify-between gap-4">
+          <TabsList className="returns-tabs bg-slate-100 p-1">
             <TabsTrigger value="open" className="gap-2">{t('openReturnsTab')}{openCount > 0 && <Badge variant="outline" className="ml-1 bg-white border-slate-200">{openCount}</Badge>}</TabsTrigger>
             <TabsTrigger value="processed" className="gap-2">{t('processedReturnsTab')}{returns.filter((r) => r.status === 'processed').length > 0 && <Badge variant="outline" className="ml-1 bg-white border-slate-200">{returns.filter((r) => r.status === 'processed').length}</Badge>}</TabsTrigger>
             <TabsTrigger value="returnbox" className="gap-2">{t('returnBoxTab')}{returnBoxCount > 0 && <Badge variant="outline" className="ml-1 bg-white border-slate-200">{returnBoxCount}</Badge>}</TabsTrigger>
           </TabsList>
-          <div className="flex items-center gap-3">
+          <div className="returns-actions flex items-center gap-3">
             {activeTab !== 'returnbox' && (
-              <div className="relative">
+              <div className="returns-search relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <Input placeholder={t('searchReturns')} value={searchQuery === '__filter_waiting_qr__' ? '' : searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10 pr-10 border-slate-200 w-[420px]" />
                 {searchQuery.length > 0 && searchQuery !== '__filter_waiting_qr__' && (
@@ -422,7 +422,7 @@ export function Retouren({ activeProfile }: RetourenProps) {
             )}
             <Button variant="outline" size="sm" className="gap-2 border-slate-200" onClick={loadReturns} disabled={loading}><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></Button>
             {activeTab === 'open' && (
-              <Button onClick={() => setShowNewReturnModal(true)} className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700">
+              <Button onClick={() => setShowNewReturnModal(true)} className="register-return-button bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700">
                 <Plus className="w-4 h-4 mr-2" />{t('registerReturn')}
               </Button>
             )}

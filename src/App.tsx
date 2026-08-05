@@ -24,8 +24,9 @@ import { Retouren } from './components/Retouren';
 import { LocationManager } from './components/LocationManager';
 import { ProductManagement } from './components/ProductManagement';
 import { OrderManagement } from './components/OrderManagement';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Menu, X } from 'lucide-react';
 import { Toaster } from 'sonner';
+import { Button } from './components/ui/button';
 
 export default function App() {
   const { isAuthenticated, loading, logout, user } = useAuth();
@@ -39,6 +40,7 @@ export default function App() {
     setActiveProfile(profileId);
   };
   const [activeView, setActiveView] = useState('orders');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const isGlobalAdmin =
     user?.isGlobalAdmin === true ||
@@ -116,15 +118,43 @@ export default function App() {
   }
 
   return (
-    <div className="flex min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/30 overflow-hidden">
+    <div className="app-shell flex min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/30 overflow-hidden">
       <GlobalTextTranslator />
       <Toaster richColors position="top-right" />
-      <AppSidebar activeView={activeView} onViewChange={setActiveView} />
+      {mobileMenuOpen && (
+        <div className="mobile-navigation-layer" role="dialog" aria-modal="true" aria-label="Navigation">
+          <button className="mobile-navigation-backdrop" aria-label="Close navigation" onClick={() => setMobileMenuOpen(false)} />
+          <div className="mobile-navigation-panel">
+            <button className="mobile-navigation-close" aria-label="Close navigation" onClick={() => setMobileMenuOpen(false)}>
+              <X className="w-5 h-5" />
+            </button>
+            <AppSidebar
+              className="app-sidebar-mobile"
+              activeView={activeView}
+              onViewChange={(view) => {
+                setActiveView(view);
+                setMobileMenuOpen(false);
+              }}
+            />
+          </div>
+        </div>
+      )}
+      <AppSidebar className="app-sidebar-desktop" activeView={activeView} onViewChange={setActiveView} />
       
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div className="app-workspace flex-1 flex flex-col min-w-0 overflow-hidden">
         <header className="bg-white/80 backdrop-blur-xl border-b border-slate-200/60 sticky top-0 z-40 shadow-sm">
-          <div className="px-8 py-5 flex items-center justify-end">
-            <div className="flex items-center gap-3">
+          <div className="app-header px-8 py-5 flex items-center justify-end">
+            <Button
+              className="mobile-menu-trigger"
+              variant="outline"
+              size="icon"
+              aria-label="Open navigation"
+              aria-expanded={mobileMenuOpen}
+              onClick={() => setMobileMenuOpen(true)}
+            >
+              <Menu className="w-5 h-5" />
+            </Button>
+            <div className="app-header-actions flex items-center gap-3">
               <LanguageSwitcher />
               <ProfileSwitcher 
                 activeProfile={activeProfile} 
@@ -134,7 +164,7 @@ export default function App() {
           </div>
         </header>
 
-        <main className="flex-1 p-8 overflow-auto min-w-0">
+        <main className="app-main flex-1 p-8 overflow-auto min-w-0">
           <div className="min-w-0 max-w-full">
             {renderView()}
           </div>

@@ -25,10 +25,10 @@ export function Login() {
   };
 
   return (
-    <div className="min-h-screen w-screen flex items-center justify-center" style={{ background: '#453f63' }}>
-      <div className="grid grid-cols-1 overflow-hidden rounded-2xl p-3 shadow-2xl md:grid-cols-2" style={{ background: '#211c2d', width: '95vw', height: '95vh' }}>
+    <div className="login-shell min-h-screen w-screen flex items-center justify-center" style={{ background: '#453f63' }}>
+      <div className="login-card grid grid-cols-1 overflow-hidden rounded-2xl p-3 shadow-2xl md:grid-cols-2" style={{ background: '#211c2d', width: '95vw', height: '95vh' }}>
         {/* Linker kant */}
-        <div className="relative flex min-h-[320px] flex-col overflow-hidden rounded-xl p-8 md:p-12" style={{ background: 'linear-gradient(135deg, #2d1b69 0%, #4f46e5 50%, #7c3aed 100%)' }}>
+        <div className="login-brand-panel relative flex min-h-[320px] flex-col overflow-hidden rounded-xl p-8 md:p-12" style={{ background: 'linear-gradient(135deg, #2d1b69 0%, #4f46e5 50%, #7c3aed 100%)' }}>
         
           <div className="absolute inset-0 overflow-hidden pointer-events-none">
             <div className="absolute -top-20 -left-20 w-72 h-72 rounded-full opacity-30" style={{ background: 'radial-gradient(circle, #818cf8, transparent)' }} />
@@ -44,7 +44,7 @@ export function Login() {
           </div>
 
           {/* Tekst midden */}
-          <div className="relative z-10 flex flex-1 items-center py-12">
+          <div className="login-brand-copy relative z-10 flex flex-1 items-center py-12">
             <div className="max-w-md space-y-10">
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white" style={{ opacity: 0.72 }}>
                 Orderbeheer zonder ruis
@@ -66,19 +66,19 @@ export function Login() {
           </div>
 
           {/* Footer links */}
-          <div className="relative z-10">
+          <div className="login-brand-footer relative z-10">
             <p className="text-white text-xs" style={{ opacity: 0.72 }}>© 2026 Dropsyncr — Alle rechten voorbehouden</p>
           </div>
         </div>
 
         {/* Rechter kant: login */}
-        <div className="flex items-center justify-center px-6 py-10 md:px-12 lg:px-20">
+        <div className="login-form-panel flex items-center justify-center px-6 py-10 md:px-12 lg:px-20">
           <div className="w-full max-w-md">
 
-            <div className="mb-10">
+            <div className="login-intro mb-10">
               <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em]" style={{ color: '#818cf8' }}>Welkom terug</p>
               <h1 className="text-4xl font-bold mb-3" style={{ color: '#f1f5f9' }}>Inloggen</h1>
-              <p className="text-sm leading-6" style={{ color: '#94a3b8' }}>Voer je gegevens in om verder te gaan met je Dropsyncr dashboard.</p>
+              <p className="login-subtitle text-sm leading-6" style={{ color: '#94a3b8' }}>Voer je gegevens in om verder te gaan met je Dropsyncr dashboard.</p>
             </div>
 
             {error && (
