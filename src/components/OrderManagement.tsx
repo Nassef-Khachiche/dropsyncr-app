@@ -28,6 +28,12 @@ import {
   Ban,
   Archive,
   Layers,
+  ArrowUp,
+  ArrowDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
 } from 'lucide-react';
 import {
   LineChart,
@@ -61,6 +67,8 @@ interface PurchaseItem {
   platform: string;
   orderDate: string | null;
   deliveryDate: string | null;
+  vatRate: number;
+  defaultShippingCost: number;
   ean: string | null;
   productName: string;
   productImage: string | null;
@@ -96,9 +104,16 @@ interface HistoryData {
   }[];
 }
 
-const VAT_RATE = 0.21;
 const COMMISSION_RATE = 0.15;
 const PAGE_SIZE = 25;
+const DEFAULT_VAT_RATE = 0.21;
+
+// 19% blijft 19%, 25,5% houdt zijn decimaal.
+const formatVatPercent = (rate: number) => {
+  const percent = rate * 100;
+  const text = Number.isInteger(percent) ? String(percent) : percent.toFixed(1).replace('.', ',');
+  return `${text}%`;
+};
 
 const fmt = (value: number | null | undefined) => (Number(value) || 0).toFixed(2);
 
@@ -136,6 +151,10 @@ export function OrderManagement({ activeProfile }: OrderManagementProps) {
   const [page, setPage] = useState(1);
   const [withoutTracking, setWithoutTracking] = useState(false);
   const [includeArchive, setIncludeArchive] = useState(false);
+  const [stores, setStores] = useState<string[]>([]);
+  const [storeFilter, setStoreFilter] = useState('all');
+  const [sortBy, setSortBy] = useState<'orderDate' | 'deliveryDate'>('orderDate');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [processing, setProcessing] = useState<PurchaseItem | null>(null);
   const [confirmReset, setConfirmReset] = useState<PurchaseItem | null>(null);
@@ -152,8 +171,12 @@ export function OrderManagement({ activeProfile }: OrderManagementProps) {
         limit: PAGE_SIZE,
         withoutTracking: activeTab === 'ordered' ? withoutTracking : false,
         includeArchive: activeTab === 'ordered' ? includeArchive : false,
+        storeName: storeFilter,
+        sortBy,
+        sortDir,
       });
       setItems(data.items || []);
+      setStores(data.stores || []);
       setCounts(data.counts || { open: 0, not_ordered: 0, ordered: 0, canceled: 0 });
       setPagination(data.pagination || { page: 1, totalPages: 1, total: 0 });
       setArchiveInfo(data.archive || { active: false, recentDays: 30 });
@@ -163,7 +186,7 @@ export function OrderManagement({ activeProfile }: OrderManagementProps) {
     } finally {
       setLoading(false);
     }
-  }, [activeProfile, activeTab, search, page, withoutTracking, includeArchive]);
+  }, [activeProfile, activeTab, search, page, withoutTracking, includeArchive, storeFilter, sortBy, sortDir]);
 
   useEffect(() => {
     loadItems();
@@ -182,6 +205,22 @@ export function OrderManagement({ activeProfile }: OrderManagementProps) {
     setWithoutTracking(false);
     setIncludeArchive(false);
   };
+
+  // Klik op dezelfde kolom draait de richting om; een andere kolom start oplopend.
+  const toggleSort = (field: 'orderDate' | 'deliveryDate') => {
+    if (sortBy === field) {
+      setSortDir((dir) => (dir === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(field);
+      setSortDir('asc');
+    }
+    setPage(1);
+  };
+
+  const sortOptions: { id: 'orderDate' | 'deliveryDate'; label: string }[] = [
+    { id: 'orderDate', label: t('colOrderDate') },
+    { id: 'deliveryDate', label: t('colDeliveryDeadline') },
+  ];
 
   const handleTrackingSave = async (purchaseOrderId: number, tracking: string) => {
     try {
@@ -290,7 +329,11 @@ export function OrderManagement({ activeProfile }: OrderManagementProps) {
     rowsPerOrder.set(item.orderId, (rowsPerOrder.get(item.orderId) || 0) + 1);
   });
 
-  const columnCount = activeTab === 'ordered' ? 11 : 9;
+  // 5 vaste kolommen + besteldatum + actie, plus wat de tab er zelf bij zet.
+  const columnCount =
+    7 +
+    (activeTab === 'ordered' ? 5 : 2) +
+    (activeTab === 'not_ordered' || activeTab === 'canceled' ? 3 : 0);
 
   return (
     <div className="space-y-4">
@@ -349,6 +392,25 @@ export function OrderManagement({ activeProfile }: OrderManagementProps) {
             className="pl-10 h-9 text-sm border-slate-200 bg-white focus:border-indigo-300"
           />
         </div>
+        <select
+          value={storeFilter}
+          onChange={(e) => {
+            setStoreFilter(e.target.value);
+            setPage(1);
+          }}
+          className={`h-9 px-3 text-sm border rounded-lg outline-none transition-colors ${
+            storeFilter !== 'all'
+              ? 'border-indigo-300 bg-indigo-50 text-indigo-800'
+              : 'border-slate-300 bg-white text-slate-700'
+          }`}
+        >
+          <option value="all">{t('allStores')}</option>
+          {stores.map((store) => (
+            <option key={store} value={store}>
+              {store}
+            </option>
+          ))}
+        </select>
         {activeTab === 'ordered' && (
           <>
             <button
@@ -389,6 +451,32 @@ export function OrderManagement({ activeProfile }: OrderManagementProps) {
         </p>
       )}
 
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-sm text-slate-600 mr-2">{t('sortBy')}:</span>
+        {sortOptions.map((option) => {
+          const isActive = sortBy === option.id;
+          return (
+            <button
+              key={option.id}
+              onClick={() => toggleSort(option.id)}
+              className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm transition-all ${
+                isActive
+                  ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white shadow-md'
+                  : 'bg-white border border-slate-200 text-slate-700 hover:border-indigo-300 hover:bg-indigo-50'
+              }`}
+            >
+              {option.label}
+              {isActive &&
+                (sortDir === 'asc' ? (
+                  <ArrowUp className="w-3.5 h-3.5" />
+                ) : (
+                  <ArrowDown className="w-3.5 h-3.5" />
+                ))}
+            </button>
+          );
+        })}
+      </div>
+
       <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -399,6 +487,7 @@ export function OrderManagement({ activeProfile }: OrderManagementProps) {
                 <th className="py-2.5 px-3">{t('colCountry')}</th>
                 <th className="py-2.5 px-3">{t('colStore')}</th>
                 <th className="py-2.5 px-3">{t('eanCode')}</th>
+                <th className="py-2.5 px-3">{t('colOrderDate')}</th>
                 {activeTab !== 'ordered' && (
                   <th className="py-2.5 px-3 text-center">{t('colItemsPrice')}</th>
                 )}
@@ -409,6 +498,12 @@ export function OrderManagement({ activeProfile }: OrderManagementProps) {
                 {activeTab === 'ordered' && <th className="py-2.5 px-3">{t('colOrderedBy')}</th>}
                 {(activeTab === 'not_ordered' || activeTab === 'canceled') && (
                   <th className="py-2.5 px-3">{t('colReason')}</th>
+                )}
+                {(activeTab === 'not_ordered' || activeTab === 'canceled') && (
+                  <th className="py-2.5 px-3">{t('colProcessedAt')}</th>
+                )}
+                {(activeTab === 'not_ordered' || activeTab === 'canceled') && (
+                  <th className="py-2.5 px-3">{t('colProcessedBy')}</th>
                 )}
                 {activeTab === 'ordered' && <th className="py-2.5 px-3">{t('supplierName')}</th>}
                 {activeTab === 'ordered' && <th className="py-2.5 px-3">{t('colSupplierOrderId')}</th>}
@@ -473,16 +568,28 @@ export function OrderManagement({ activeProfile }: OrderManagementProps) {
                         )}
                       </td>
                       <td className="py-2.5 px-3 font-mono text-xs text-slate-500">{item.ean || '-'}</td>
+                      <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
+                        {isFirstOfOrder ? formatDate(item.orderDate) : ''}
+                      </td>
                       {activeTab !== 'ordered' && (
                         <td className="py-2.5 px-3 text-center">
                           <div className="flex items-center justify-center gap-1.5">
-                            <span className="text-slate-900">{item.quantity}</span>
+                            {item.quantity > 1 ? (
+                              <span
+                                className="inline-flex items-center justify-center min-w-[30px] px-2 py-0.5 rounded font-bold text-amber-900 bg-amber-100 border border-amber-300"
+                                title={t('multipleUnitsTitle')}
+                              >
+                                {item.quantity}×
+                              </span>
+                            ) : (
+                              <span className="text-slate-900">{item.quantity}</span>
+                            )}
                             {item.mergedItemCount > 1 && (
                               <span
-                                className="text-[10px] px-1 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-100"
+                                className="text-[10px] px-1 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100"
                                 title={t('mergedItemsTitle')}
                               >
-                                {item.mergedItemCount}×
+                                {item.mergedItemCount} {t('linesLabel')}
                               </span>
                             )}
                           </div>
@@ -507,6 +614,16 @@ export function OrderManagement({ activeProfile }: OrderManagementProps) {
                       {(activeTab === 'not_ordered' || activeTab === 'canceled') && (
                         <td className="py-2.5 px-3 text-slate-600">
                           {item.purchaseOrder?.notOrderedReason || '-'}
+                        </td>
+                      )}
+                      {(activeTab === 'not_ordered' || activeTab === 'canceled') && (
+                        <td className="py-2.5 px-3 text-xs text-slate-600 whitespace-nowrap">
+                          {formatDateTime(item.purchaseOrder?.processedAt || null)}
+                        </td>
+                      )}
+                      {(activeTab === 'not_ordered' || activeTab === 'canceled') && (
+                        <td className="py-2.5 px-3 text-slate-700">
+                          {item.purchaseOrder?.processedByName || '-'}
                         </td>
                       )}
                       {activeTab === 'ordered' && (
@@ -572,13 +689,25 @@ export function OrderManagement({ activeProfile }: OrderManagementProps) {
         <span>
           {t('pageLabel')} {pagination.page} {t('ofLabel')} {pagination.totalPages} ({pagination.total} {t('ordersLabel')})
         </span>
-        <div className="flex gap-2">
+        <div className="flex gap-1.5">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={pagination.page <= 1}
+            onClick={() => setPage(1)}
+            title={t('firstPage')}
+            className="px-2"
+          >
+            <ChevronsLeft className="w-4 h-4" />
+          </Button>
           <Button
             variant="outline"
             size="sm"
             disabled={pagination.page <= 1}
             onClick={() => setPage((p) => Math.max(1, p - 1))}
+            className="gap-1"
           >
+            <ChevronLeft className="w-4 h-4" />
             {t('previousPage')}
           </Button>
           <Button
@@ -586,8 +715,20 @@ export function OrderManagement({ activeProfile }: OrderManagementProps) {
             size="sm"
             disabled={pagination.page >= pagination.totalPages}
             onClick={() => setPage((p) => p + 1)}
+            className="gap-1"
           >
             {t('nextPage')}
+            <ChevronRight className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={pagination.page >= pagination.totalPages}
+            onClick={() => setPage(pagination.totalPages)}
+            title={t('lastPage')}
+            className="px-2"
+          >
+            <ChevronsRight className="w-4 h-4" />
           </Button>
         </div>
       </div>
@@ -734,7 +875,9 @@ function ProcessDialog({
     item.productPurchasePrice != null ? String(item.productPurchasePrice) : '0'
   );
   const [excludeVat, setExcludeVat] = useState(false);
-  const [shippingCost, setShippingCost] = useState('7');
+  const [shippingCost, setShippingCost] = useState(
+    item.defaultShippingCost != null ? String(item.defaultShippingCost) : '0'
+  );
   const [supplierId, setSupplierId] = useState('');
   const [supplierOrderId, setSupplierOrderId] = useState('');
   const [note, setNote] = useState('');
@@ -778,11 +921,13 @@ function ProcessDialog({
   // De inkoper vult de stuksprijs in; de marge rekent met het totaal van de regel.
   const quantity = Math.max(1, Number(item.quantity) || 1);
   const sell = Number(item.sellPrice) || 0;
-  const vat = (sell * VAT_RATE) / (1 + VAT_RATE);
+  const vatRate = Number(item.vatRate) || DEFAULT_VAT_RATE;
+  const vatLabelSuffix = `${item.country} ${formatVatPercent(vatRate)}`;
+  const vat = (sell * vatRate) / (1 + vatRate);
   const commission = sell * COMMISSION_RATE;
   const unitBuy = parseFloat(String(buyPrice).replace(',', '.')) || 0;
   const totalBuy = unitBuy * quantity;
-  const buyNet = excludeVat ? totalBuy / (1 + VAT_RATE) : totalBuy;
+  const buyNet = excludeVat ? totalBuy / (1 + vatRate) : totalBuy;
   const shipping = parseFloat(shippingCost) || 0;
   const netProfit = sell - vat - commission - buyNet - shipping;
 
@@ -1028,7 +1173,9 @@ function ProcessDialog({
                     onChange={(e) => setExcludeVat(e.target.checked)}
                     className="rounded border-slate-300 accent-indigo-600 w-4 h-4"
                   />
-                  <span className="text-sm text-slate-700">{t('excludeVatLabel')}</span>
+                  <span className="text-sm text-slate-700">
+                    {t('excludeVatLabel')} ({formatVatPercent(vatRate)})
+                  </span>
                 </label>
                 <p className="text-xs text-slate-400 ml-6 mt-1">
                   {t('netLabel')}: EUR {fmt(buyNet)}
@@ -1040,7 +1187,7 @@ function ProcessDialog({
             <div className="p-8 space-y-2.5 md:border-r border-slate-200 bg-slate-50/40">
               <p className="text-xs uppercase tracking-wide text-slate-400 font-semibold mb-1">{t('profitCalculation')}</p>
               <ProfitRow label={t('sellPriceLabel')} value={`EUR ${fmt(sell)}`} />
-              <ProfitRow label={t('vatLabel')} value={`- EUR ${fmt(vat)}`} negative />
+              <ProfitRow label={`${t('vatLabel')} (${vatLabelSuffix})`} value={`- EUR ${fmt(vat)}`} negative />
               <ProfitRow label={t('commissionLabel')} value={`- EUR ${fmt(commission)}`} negative />
               <ProfitRow label={t('buyPriceNetLabel')} value={`- EUR ${fmt(buyNet)}`} negative />
               <div className="flex items-center justify-between py-2 border-b border-slate-100">

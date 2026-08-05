@@ -897,6 +897,23 @@ class ApiService {
     });
   }
 
+  // Shipping Rates
+  async getShippingRates(installationId: string) {
+    return this.request<{ rates: { countryCode: string; amount: number; configured: boolean }[] }>(
+      `/shipping-rates?installationId=${installationId}`
+    );
+  }
+
+  async saveShippingRates(data: {
+    installationId: number;
+    rates: { countryCode: string; amount: number }[];
+  }) {
+    return this.request<{ success: boolean; rates: any[] }>('/shipping-rates', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
   // Purchase Orders (Purchasing)
   async getPurchaseOrders(params: {
     installationId: string;
@@ -906,6 +923,9 @@ class ApiService {
     limit?: number;
     withoutTracking?: boolean;
     includeArchive?: boolean;
+    storeName?: string;
+    sortBy?: string;
+    sortDir?: string;
   }) {
     const queryParams = new URLSearchParams();
     queryParams.append('installationId', params.installationId);
@@ -915,8 +935,11 @@ class ApiService {
     if (params.limit) queryParams.append('limit', params.limit.toString());
     if (params.withoutTracking) queryParams.append('withoutTracking', 'true');
     if (params.includeArchive) queryParams.append('includeArchive', 'true');
+    if (params.storeName && params.storeName !== 'all') queryParams.append('storeName', params.storeName);
+    if (params.sortBy) queryParams.append('sortBy', params.sortBy);
+    if (params.sortDir) queryParams.append('sortDir', params.sortDir);
 
-    return this.request<{ items: any[]; pagination: any; counts: any; archive: any }>(
+    return this.request<{ items: any[]; pagination: any; counts: any; archive: any; stores: string[]; sort: any }>(
       `/purchase-orders?${queryParams.toString()}`
     );
   }
