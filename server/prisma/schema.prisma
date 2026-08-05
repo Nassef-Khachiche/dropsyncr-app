@@ -48,6 +48,7 @@ model Installation {
   warehouseLocations WarehouseLocation[]
   suppliers          Supplier[]
   purchaseOrders     PurchaseOrder[]
+  shippingRates      ShippingRate[]
 }
 
 model AutomationRule {
@@ -541,4 +542,18 @@ model PurchaseOrder {
   @@index([orderId])
   @@index([supplierId])
   @@index([status])
+}
+
+model ShippingRate {
+  id             Int      @id @default(autoincrement())
+  installationId Int
+  countryCode    String   @db.VarChar(2)
+  amount         Float    @db.Float
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  installation   Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+
+  @@unique([installationId, countryCode])
+  @@index([installationId])
 }

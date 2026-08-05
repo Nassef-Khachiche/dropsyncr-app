@@ -1,5 +1,7 @@
 import prisma from '../config/database.js';
 import { toAffiliateUrl, isAmazonUrl } from '../utils/affiliateLinks.js';
+import { getVatRate, DEFAULT_VAT_RATE } from '../utils/vatRates.js';
+import { loadShippingRateMap, getShippingRateForCountry } from './shippingRateController.js';
 
 /**
  * Order Management — inkoop van dropship orders.
@@ -21,7 +23,6 @@ import { toAffiliateUrl, isAmazonUrl } from '../utils/affiliateLinks.js';
  * blijven kloppen.
  */
 
-const VAT_RATE = 0.21;
 const COMMISSION_RATE = 0.15;
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -50,14 +51,19 @@ const resolveUnitPrice = (orderItem) => {
 
 const resolveQuantity = (orderItem) => Math.max(1, parseInt(orderItem?.quantity || 1, 10) || 1);
 
-const calculateMargin = ({ sellPrice, buyPrice, excludeVat, shippingCost }) => {
+/**
+ * Marge van één regel. Het BTW-tarief hangt af van het land van de klantorder;
+ * de verkoopprijs is inclusief BTW, dus we rekenen die eruit.
+ */
+const calculateMargin = ({ sellPrice, buyPrice, excludeVat, shippingCost, vatRate }) => {
   const sell = round2(sellPrice);
   const buy = Number(buyPrice) || 0;
   const shipping = Number(shippingCost) || 0;
+  const rate = Number.isFinite(vatRate) ? vatRate : DEFAULT_VAT_RATE;
 
-  const vatAmount = round2((sell * VAT_RATE) / (1 + VAT_RATE));
+  const vatAmount = round2((sell * rate) / (1 + rate));
   const commissionAmount = round2(sell * COMMISSION_RATE);
-  const buyPriceNet = round2(excludeVat ? buy / (1 + VAT_RATE) : buy);
+  const buyPriceNet = round2(excludeVat ? buy / (1 + rate) : buy);
   const netProfit = round2(sell - vatAmount - commissionAmount - buyPriceNet - shipping);
 
   return {
@@ -71,6 +77,14 @@ const calculateMargin = ({ sellPrice, buyPrice, excludeVat, shippingCost }) => {
 };
 
 const getRecentCutoffDate = () => new Date(Date.now() - ORDERED_RECENT_DAYS * 24 * 60 * 60 * 1000);
+
+// Sorteren mag alleen op velden die op Order staan, zodat we veilig kunnen doorgeven.
+const SORTABLE_FIELDS = new Set(['orderDate', 'deliveryDate']);
+
+const resolveSort = (sortBy, sortDir) => ({
+  by: SORTABLE_FIELDS.has(String(sortBy)) ? String(sortBy) : 'orderDate',
+  dir: String(sortDir).toLowerCase() === 'desc' ? 'desc' : 'asc',
+});
 
 // Filter op orderitem-niveau, afhankelijk van de gekozen tab.
 const buildItemTabFilter = (tab, { withoutTracking = false, includeArchive = false } = {}) => {
@@ -117,7 +131,7 @@ const groupOrderItems = (orderItems = []) => {
 };
 
 // Eén samengevoegde regel voor de frontend.
-const toListRow = (order, itemsInGroup, userMap = new Map()) => {
+const toListRow = (order, itemsInGroup, userMap = new Map(), shippingRateMap = new Map()) => {
   const primary = itemsInGroup[0];
   const purchaseOrder = primary.purchaseOrder || null;
 
@@ -141,6 +155,9 @@ const toListRow = (order, itemsInGroup, userMap = new Map()) => {
     platform: order.platform,
     orderDate: order.orderDate,
     deliveryDate: order.deliveryDate,
+    // Landgebonden tarieven, zodat de dialog meteen goed rekent.
+    vatRate: getVatRate(order.country),
+    defaultShippingCost: getShippingRateForCountry(shippingRateMap, order.country),
     ean: primary.ean,
     sku: primary.sku,
     productName: primary.productName,
@@ -183,6 +200,9 @@ export const getPurchaseOrders = async (req, res) => {
       limit = DEFAULT_PAGE_SIZE,
       withoutTracking,
       includeArchive,
+      storeName = '',
+      sortBy = 'orderDate',
+      sortDir = 'asc',
     } = req.query;
 
     if (!installationId) {
@@ -229,18 +249,32 @@ export const getPurchaseOrders = async (req, res) => {
       }),
     ]);
 
+    const selectedStore = String(storeName || '').trim();
+
     const orderWhere = {
       ...baseOrderWhere,
       ...buildOrderSearchFilter(search),
+      ...(selectedStore && selectedStore !== 'all' ? { storeName: selectedStore } : {}),
       orderItems: { some: itemTabFilter },
     };
 
-    // Oudste order bovenaan zodat de langst wachtende bestelling eerst komt.
+    // Stores voor het filter-dropdown — los van zoekterm en tab, zodat de opties
+    // niet wegvallen zodra je filtert.
+    const storeRows = await prisma.order.findMany({
+      where: baseOrderWhere,
+      select: { storeName: true },
+      distinct: ['storeName'],
+      orderBy: { storeName: 'asc' },
+    });
+    const stores = storeRows.map((row) => row.storeName).filter(Boolean);
+
+    const sort = resolveSort(sortBy, sortDir);
+    const shippingRateMap = await loadShippingRateMap(installationIdNumber);
     const [total, orders] = await Promise.all([
       prisma.order.count({ where: orderWhere }),
       prisma.order.findMany({
         where: orderWhere,
-        orderBy: [{ orderDate: 'asc' }, { id: 'asc' }],
+        orderBy: [{ [sort.by]: sort.dir }, { id: sort.dir }],
         skip,
         take: pageSize,
         include: {
@@ -279,7 +313,7 @@ export const getPurchaseOrders = async (req, res) => {
     const items = [];
     for (const order of orders) {
       for (const group of groupOrderItems(order.orderItems)) {
-        items.push(toListRow(order, group, userMap));
+        items.push(toListRow(order, group, userMap, shippingRateMap));
       }
     }
 
@@ -303,6 +337,8 @@ export const getPurchaseOrders = async (req, res) => {
         active: wantsArchive,
         recentDays: ORDERED_RECENT_DAYS,
       },
+      stores,
+      sort,
     });
   } catch (error) {
     console.error('[PURCHASE ORDER] List error:', error);
@@ -379,6 +415,7 @@ export const processPurchaseOrder = async (req, res) => {
         buyPrice: lineBuyPrice,
         excludeVat: Boolean(excludeVat),
         shippingCost: shippingPerItem,
+        vatRate: getVatRate(orderItem.order.country),
       });
 
       const data = {

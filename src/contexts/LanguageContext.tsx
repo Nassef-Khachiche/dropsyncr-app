@@ -426,7 +426,24 @@ type TranslationKey =
   | 'errorSavingSupplierLink'
   | 'affiliateHint'
   | 'colOrderedAt'
-  | 'colOrderedBy';
+  | 'colOrderedBy'
+  | 'shippingRatesTab'
+  | 'shippingRatesTitle'
+  | 'shippingRatesSubtitle'
+  | 'shippingRatesConfigured'
+  | 'shippingRatesSaved'
+  | 'errorLoadingShippingRates'
+  | 'errorSavingShippingRates'
+  | 'searchCountry'
+  | 'unsavedChanges'
+  | 'allStores'
+  | 'colOrderDate'
+  | 'colProcessedAt'
+  | 'colProcessedBy'
+  | 'multipleUnitsTitle'
+  | 'linesLabel'
+  | 'firstPage'
+  | 'lastPage';
 
 type Dictionary = Record<TranslationKey, string>;
 
@@ -677,14 +694,14 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     noPurchaseOrders: 'No orders found',
     processOrder: 'Process order',
     sellPriceLabel: 'Sell price',
-    vatLabel: 'VAT (21%)',
+    vatLabel: 'VAT',
     commissionLabel: 'Commission (15%)',
     buyPriceNetLabel: 'Buy price (net)',
     shippingCostLabel: 'Shipping cost',
     netProfitLabel: 'Net profit',
     buyPriceLabel: 'Buy price (EUR)',
     supplierOrderIdLabel: 'Supplier order ID',
-    excludeVatLabel: 'Exclude VAT (21%)',
+    excludeVatLabel: 'Exclude VAT',
     netLabel: 'Net',
     chooseSupplier: 'Choose supplier',
     noteLabel: 'Note',
@@ -856,6 +873,23 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     affiliateHint: 'Amazon links are automatically converted to an affiliate link.',
     colOrderedAt: 'Ordered at',
     colOrderedBy: 'Ordered by',
+    shippingRatesTab: 'Shipping costs',
+    shippingRatesTitle: 'Shipping costs per country',
+    shippingRatesSubtitle: 'Used to calculate the margin when processing a purchase order. The buyer can still adjust the amount per order.',
+    shippingRatesConfigured: 'configured',
+    shippingRatesSaved: 'Shipping costs saved',
+    errorLoadingShippingRates: 'Could not load shipping costs',
+    errorSavingShippingRates: 'Could not save shipping costs',
+    searchCountry: 'Search country...',
+    unsavedChanges: 'You have unsaved changes',
+    allStores: 'All stores',
+    colOrderDate: 'Order date',
+    colProcessedAt: 'Processed at',
+    colProcessedBy: 'Processed by',
+    multipleUnitsTitle: 'Note: multiple units of this product',
+    linesLabel: 'lines',
+    firstPage: 'First page',
+    lastPage: 'Last page',
   },
   nl: {
     loading: 'Laden...',
@@ -1103,14 +1137,14 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     noPurchaseOrders: 'Geen orders gevonden',
     processOrder: 'Order verwerken',
     sellPriceLabel: 'Verkoopprijs',
-    vatLabel: 'BTW (21%)',
+    vatLabel: 'BTW',
     commissionLabel: 'Commissie (15%)',
     buyPriceNetLabel: 'Inkoopprijs (netto)',
     shippingCostLabel: 'Verzendkosten',
     netProfitLabel: 'Nettowinst',
     buyPriceLabel: 'Inkoopprijs (EUR)',
     supplierOrderIdLabel: 'Ordernummer leverancier',
-    excludeVatLabel: 'Excl. BTW (21%)',
+    excludeVatLabel: 'Excl. BTW',
     netLabel: 'Netto',
     chooseSupplier: 'Kies leverancier',
     noteLabel: 'Notitie',
@@ -1282,6 +1316,23 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     affiliateHint: 'Amazon-links worden automatisch omgezet naar een affiliate-link.',
     colOrderedAt: 'Besteld op',
     colOrderedBy: 'Besteld door',
+    shippingRatesTab: 'Verzendkosten',
+    shippingRatesTitle: 'Verzendkosten per land',
+    shippingRatesSubtitle: 'Wordt gebruikt om de marge te berekenen bij het verwerken van een inkooporder. De inkoper kan het bedrag per bestelling nog aanpassen.',
+    shippingRatesConfigured: 'ingesteld',
+    shippingRatesSaved: 'Verzendkosten opgeslagen',
+    errorLoadingShippingRates: 'Kon verzendkosten niet laden',
+    errorSavingShippingRates: 'Kon verzendkosten niet opslaan',
+    searchCountry: 'Zoek land...',
+    unsavedChanges: 'Je hebt niet-opgeslagen wijzigingen',
+    allStores: 'Alle stores',
+    colOrderDate: 'Besteldatum',
+    colProcessedAt: 'Verwerkt op',
+    colProcessedBy: 'Verwerkt door',
+    multipleUnitsTitle: 'Let op: meerdere stuks van dit product',
+    linesLabel: 'regels',
+    firstPage: 'Eerste pagina',
+    lastPage: 'Laatste pagina',
   },
   de: {
     loading: 'Ladt...',
@@ -1529,14 +1580,14 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     noPurchaseOrders: 'Keine Bestellungen gefunden',
     processOrder: 'Bestellung bearbeiten',
     sellPriceLabel: 'Verkaufspreis',
-    vatLabel: 'MwSt. (21%)',
+    vatLabel: 'MwSt.',
     commissionLabel: 'Provision (15%)',
     buyPriceNetLabel: 'Einkaufspreis (netto)',
     shippingCostLabel: 'Versandkosten',
     netProfitLabel: 'Nettogewinn',
     buyPriceLabel: 'Einkaufspreis (EUR)',
     supplierOrderIdLabel: 'Bestellnummer Lieferant',
-    excludeVatLabel: 'Ohne MwSt. (21%)',
+    excludeVatLabel: 'Ohne MwSt.',
     netLabel: 'Netto',
     chooseSupplier: 'Lieferant wahlen',
     noteLabel: 'Notiz',
@@ -1708,6 +1759,23 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     affiliateHint: 'Amazon-Links werden automatisch in einen Affiliate-Link umgewandelt.',
     colOrderedAt: 'Bestellt am',
     colOrderedBy: 'Bestellt von',
+    shippingRatesTab: 'Versandkosten',
+    shippingRatesTitle: 'Versandkosten pro Land',
+    shippingRatesSubtitle: 'Wird zur Margenberechnung bei der Bearbeitung einer Bestellung verwendet. Der Einkäufer kann den Betrag pro Bestellung noch anpassen.',
+    shippingRatesConfigured: 'konfiguriert',
+    shippingRatesSaved: 'Versandkosten gespeichert',
+    errorLoadingShippingRates: 'Versandkosten konnten nicht geladen werden',
+    errorSavingShippingRates: 'Versandkosten konnten nicht gespeichert werden',
+    searchCountry: 'Land suchen...',
+    unsavedChanges: 'Sie haben ungespeicherte Änderungen',
+    allStores: 'Alle Stores',
+    colOrderDate: 'Bestelldatum',
+    colProcessedAt: 'Bearbeitet am',
+    colProcessedBy: 'Bearbeitet von',
+    multipleUnitsTitle: 'Achtung: mehrere Stück dieses Produkts',
+    linesLabel: 'Zeilen',
+    firstPage: 'Erste Seite',
+    lastPage: 'Letzte Seite',
   },
 };
 

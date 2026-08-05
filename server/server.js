@@ -30,6 +30,7 @@ import warehouseProductRoutes from './src/routes/warehouseProductRoutes.js';
 import stockRoutes from './src/routes/StockRoutes.js';
 import supplierRoutes from './src/routes/supplierRoutes.js';
 import purchaseOrderRoutes from './src/routes/purchaseOrderRoutes.js';
+import shippingRateRoutes from './src/routes/shippingRateRoutes.js';
 
 // Cron jobs
 import { startBolSyncCronJob } from './src/jobs/bolSyncJob.js';
@@ -148,6 +149,7 @@ app.use('/api/warehouse-products', warehouseProductRoutes);
 app.use('/api/stock', stockRoutes);
 app.use('/api/suppliers', supplierRoutes);
 app.use('/api/purchase-orders', purchaseOrderRoutes);
+app.use('/api/shipping-rates', shippingRateRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
