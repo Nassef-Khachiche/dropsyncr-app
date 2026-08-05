@@ -4595,3 +4595,1152 @@ html {
     min-width: 0;
   }
 }
+
+/* Analytics module — eigen opmaak, los van de Tailwind-bundel. */
+.analytics-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.analytics-charts-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1.5rem;
+}
+
+.analytics-split-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.5rem;
+}
+
+.analytics-cost-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+/* ── KPI-kaart ──────────────────────────────────────────────────────────── */
+
+.analytics-kpi {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 1.25rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 1rem;
+  background: linear-gradient(160deg, #fff 55%, var(--kpi-tint) 100%);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
+  overflow: hidden;
+  transition: box-shadow .18s ease, transform .18s ease;
+}
+
+.analytics-kpi:hover {
+  box-shadow: 0 8px 24px -8px rgb(15 23 42 / 18%);
+  transform: translateY(-1px);
+}
+
+/* Gekleurde accentbalk bovenaan geeft elke KPI zijn eigen identiteit. */
+.analytics-kpi::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: var(--kpi-accent);
+}
+
+.analytics-kpi-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  margin-bottom: .875rem;
+}
+
+.analytics-kpi-label {
+  font-size: .8125rem;
+  font-weight: 500;
+  color: #64748b;
+  letter-spacing: .01em;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.analytics-kpi-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex-shrink: 0;
+  border-radius: .625rem;
+  background: var(--kpi-accent);
+  color: #fff;
+  box-shadow: 0 4px 10px -4px var(--kpi-shadow);
+}
+
+.analytics-kpi-value {
+  font-size: 1.75rem;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--kpi-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.analytics-kpi-foot {
+  display: flex;
+  align-items: center;
+  gap: .375rem;
+  margin-top: .625rem;
+  font-size: .75rem;
+  color: #64748b;
+  flex-wrap: wrap;
+}
+
+.analytics-kpi-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: .1875rem;
+  padding: .125rem .375rem;
+  border-radius: .375rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.analytics-kpi-delta.is-up { color: #047857; background: #ecfdf5; }
+.analytics-kpi-delta.is-down { color: #be123c; background: #fff1f2; }
+.analytics-kpi-delta.is-flat { color: #64748b; background: #f1f5f9; }
+
+/* Kleurvarianten. */
+.analytics-kpi.kpi-indigo  { --kpi-accent: linear-gradient(135deg,#6366f1,#8b5cf6); --kpi-tint:#eef2ff; --kpi-text:#4338ca; --kpi-shadow:rgb(99 102 241 / 55%); }
+.analytics-kpi.kpi-emerald { --kpi-accent: linear-gradient(135deg,#10b981,#14b8a6); --kpi-tint:#ecfdf5; --kpi-text:#047857; --kpi-shadow:rgb(16 185 129 / 55%); }
+.analytics-kpi.kpi-purple  { --kpi-accent: linear-gradient(135deg,#a855f7,#ec4899); --kpi-tint:#faf5ff; --kpi-text:#7e22ce; --kpi-shadow:rgb(168 85 247 / 55%); }
+.analytics-kpi.kpi-amber   { --kpi-accent: linear-gradient(135deg,#f59e0b,#f97316); --kpi-tint:#fffbeb; --kpi-text:#b45309; --kpi-shadow:rgb(245 158 11 / 55%); }
+.analytics-kpi.kpi-sky     { --kpi-accent: linear-gradient(135deg,#0ea5e9,#3b82f6); --kpi-tint:#f0f9ff; --kpi-text:#0369a1; --kpi-shadow:rgb(14 165 233 / 55%); }
+.analytics-kpi.kpi-rose    { --kpi-accent: linear-gradient(135deg,#f43f5e,#ec4899); --kpi-tint:#fff1f2; --kpi-text:#be123c; --kpi-shadow:rgb(244 63 94 / 55%); }
+
+/* ── Store-badge ────────────────────────────────────────────────────────── */
+
+.analytics-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: .1875rem .5rem;
+  border-radius: .375rem;
+  font-size: .75rem;
+  font-weight: 600;
+  letter-spacing: .01em;
+  white-space: nowrap;
+}
+
+.analytics-badge.tone-0 { background:#eef2ff; color:#4338ca; }
+.analytics-badge.tone-1 { background:#ecfdf5; color:#047857; }
+.analytics-badge.tone-2 { background:#fff7ed; color:#c2410c; }
+.analytics-badge.tone-3 { background:#faf5ff; color:#7e22ce; }
+.analytics-badge.tone-4 { background:#f0f9ff; color:#0369a1; }
+.analytics-badge.tone-5 { background:#fff1f2; color:#be123c; }
+.analytics-badge.tone-6 { background:#f0fdfa; color:#0f766e; }
+
+/* ── Tabellen ───────────────────────────────────────────────────────────── */
+
+.analytics-table {
+  width: 100%;
+  font-size: .875rem;
+  border-collapse: collapse;
+}
+
+.analytics-table th {
+  padding: .5rem .75rem;
+  font-size: .6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: #94a3b8;
+  border-bottom: 1px solid #e2e8f0;
+  white-space: nowrap;
+}
+
+.analytics-table td {
+  padding: .6875rem .75rem;
+  color: #334155;
+  border-bottom: 1px solid #f1f5f9;
+  white-space: nowrap;
+}
+
+.analytics-table tbody tr:last-child td { border-bottom: 0; }
+.analytics-table tbody tr:hover td { background: #f8fafc; }
+
+.analytics-num {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.analytics-pill-warn {
+  display: inline-block;
+  padding: .0625rem .375rem;
+  border-radius: .3125rem;
+  font-size: .75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  background: #fff1f2;
+  color: #be123c;
+}
+
+/* ── Kostenkaart ────────────────────────────────────────────────────────── */
+
+.analytics-cost {
+  display: flex;
+  align-items: flex-start;
+  gap: .75rem;
+  padding: 1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: .75rem;
+  background: #fff;
+  transition: border-color .15s ease;
+}
+
+.analytics-cost:hover { border-color: #cbd5e1; }
+
+.analytics-cost-dot {
+  width: .625rem;
+  height: .625rem;
+  margin-top: .375rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.analytics-cost-label {
+  font-size: .75rem;
+  font-weight: 500;
+  color: #64748b;
+}
+
+.analytics-cost-value {
+  margin-top: .125rem;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: -.01em;
+  font-variant-numeric: tabular-nums;
+  color: #0f172a;
+  white-space: nowrap;
+}
+
+.analytics-cost-share {
+  margin-top: .125rem;
+  font-size: .75rem;
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Top producten ──────────────────────────────────────────────────────── */
+
+.analytics-rank {
+  width: 1.375rem;
+  height: 1.375rem;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: .375rem;
+  background: #f1f5f9;
+  color: #64748b;
+  font-size: .6875rem;
+  font-weight: 700;
+}
+
+.analytics-bar-track {
+  margin-top: .3125rem;
+  height: .375rem;
+  border-radius: 999px;
+  background: #f1f5f9;
+  overflow: hidden;
+}
+
+.analytics-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #6366f1, #a855f7);
+}
+
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+
+@media (max-width: 1279px) {
+  .analytics-kpi-grid,
+  .analytics-cost-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .analytics-charts-grid,
+  .analytics-split-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 767px) {
+  .analytics-kpi-grid,
+  .analytics-cost-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .75rem;
+  }
+}
+
+@media (max-width: 639px) {
+  .app-main .analytics-kpi-grid,
+  .app-main .analytics-cost-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: .5rem !important;
+  }
+
+  .analytics-kpi { padding: .875rem; }
+  .analytics-kpi-value { font-size: 1.25rem; }
+  .analytics-kpi-icon { display: none; }
+
+  .analytics-filters { width: 100%; }
+  .analytics-filters > * { min-width: 0; }
+}
+
+/* Analytics — formulierelementen en marge-indicatoren. */
+.analytics-input,
+.analytics-select {
+  height: 2.25rem;
+  padding: 0 .625rem;
+  border: 1px solid #e2e8f0;
+  border-radius: .5rem;
+  background: #fff;
+  font-size: .875rem;
+  color: #334155;
+  outline: none;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.analytics-input:focus,
+.analytics-select:focus {
+  border-color: #a5b4fc;
+  box-shadow: 0 0 0 3px rgb(99 102 241 / 12%);
+}
+
+.analytics-input { width: 14rem; }
+
+.analytics-margin {
+  display: inline-block;
+  padding: .125rem .4375rem;
+  border-radius: .375rem;
+  font-size: .75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.analytics-margin.is-good { background:#ecfdf5; color:#047857; }
+.analytics-margin.is-thin { background:#fffbeb; color:#b45309; }
+.analytics-margin.is-loss { background:#fff1f2; color:#be123c; }
+
+.analytics-mono {
+  font-family: var(--font-mono);
+  font-size: .75rem;
+  color: #94a3b8;
+}
+
+.analytics-product-name {
+  display: block;
+  max-width: 20rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #334155;
+}
+
+.analytics-toolbar {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 639px) {
+  .analytics-toolbar { width: 100%; }
+  .analytics-toolbar > * { flex: 1 1 100%; }
+  .analytics-input { width: 100%; }
+  .analytics-product-name { max-width: 11rem; }
+}
+
+/* Analytics — periodeschakelaar en store-selectie. */
+.analytics-segmented {
+  display: inline-flex;
+  gap: .25rem;
+  padding: .25rem;
+  border: 1px solid #e2e8f0;
+  border-radius: .625rem;
+  background: #fff;
+}
+
+.analytics-segmented button {
+  padding: .3125rem .75rem;
+  border-radius: .4375rem;
+  font-size: .8125rem;
+  font-weight: 500;
+  color: #475569;
+  transition: background-color .15s ease, color .15s ease;
+}
+
+.analytics-segmented button:hover { background: #f1f5f9; }
+
+.analytics-segmented button.is-active {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+}
+
+.analytics-segmented button.is-active:hover { background: linear-gradient(135deg, #6366f1, #8b5cf6); }
+
+.analytics-store-pills {
+  display: flex;
+  align-items: center;
+  gap: .375rem;
+  flex-wrap: wrap;
+}
+
+.analytics-store-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: .375rem;
+  padding: .25rem .625rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  background: #fff;
+  font-size: .75rem;
+  font-weight: 500;
+  color: #64748b;
+  transition: border-color .15s ease, color .15s ease, background-color .15s ease;
+}
+
+.analytics-store-pill:hover { border-color: #cbd5e1; color: #334155; }
+
+.analytics-store-pill.is-active {
+  border-color: transparent;
+  color: #fff;
+}
+
+.analytics-store-dot {
+  width: .5rem;
+  height: .5rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.analytics-store-pill.is-active .analytics-store-dot { background: rgb(255 255 255 / 70%) !important; }
+
+.analytics-rank-cell {
+  color: #94a3b8;
+  font-size: .75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 639px) {
+  .analytics-store-pills { width: 100%; }
+}
+
+/* Targets — invoerraster per maand. */
+.analytics-target-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: .75rem;
+}
+
+.analytics-target-field {
+  display: flex;
+  flex-direction: column;
+  gap: .3125rem;
+}
+
+.analytics-target-label {
+  font-size: .75rem;
+  font-weight: 500;
+  color: #64748b;
+  text-transform: capitalize;
+}
+
+.analytics-target-input {
+  display: flex;
+  align-items: center;
+  gap: .375rem;
+  height: 2.25rem;
+  padding: 0 .625rem;
+  border: 1px solid #e2e8f0;
+  border-radius: .5rem;
+  background: #fff;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.analytics-target-input:focus-within {
+  border-color: #a5b4fc;
+  box-shadow: 0 0 0 3px rgb(99 102 241 / 12%);
+}
+
+.analytics-target-input span {
+  font-size: .8125rem;
+  color: #94a3b8;
+}
+
+.analytics-target-input input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-size: .875rem;
+  font-variant-numeric: tabular-nums;
+  color: #0f172a;
+}
+
+/* Voortgangsbalk in de maandtabel. */
+.analytics-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+}
+
+.analytics-progress {
+  justify-content: center;
+  min-width: 9rem;
+}
+
+.analytics-progress-track {
+  width: 6rem;
+  height: .5rem;
+  border-radius: 999px;
+  background: #eef2f7;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.analytics-progress-pct {
+  width: 2.25rem;
+  text-align: right;
+  font-size: .75rem;
+  font-variant-numeric: tabular-nums;
+  color: #64748b;
+}
+
+.analytics-progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+}
+
+.analytics-progress-fill.is-hit { background: linear-gradient(90deg, #6366f1, #8b5cf6); }
+.analytics-progress-fill.is-near { background: linear-gradient(90deg, #818cf8, #a78bfa); }
+.analytics-progress-fill.is-miss { background: linear-gradient(90deg, #a5b4fc, #c4b5fd); }
+.analytics-progress-fill.is-open { background: #e2e8f0; }
+
+/* Meer lucht tussen de kolommen in analytics-tabellen. */
+.analytics-table th,
+.analytics-table td { padding-left: 1rem; padding-right: 1rem; }
+.analytics-table th:first-child,
+.analytics-table td:first-child { padding-left: .75rem; }
+.analytics-table th:last-child,
+.analytics-table td:last-child { padding-right: .75rem; }
+
+.analytics-status {
+  display: inline-block;
+  padding: .125rem .5rem;
+  border-radius: 999px;
+  font-size: .75rem;
+  font-weight: 600;
+}
+
+.analytics-status.is-hit { background:#ecfdf5; color:#047857; }
+.analytics-status.is-near { background:#fffbeb; color:#b45309; }
+.analytics-status.is-miss { background:#fff1f2; color:#be123c; }
+.analytics-status.is-open { background:#f1f5f9; color:#64748b; }
+
+@media (max-width: 1023px) {
+  .analytics-target-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 639px) {
+  .app-main .analytics-target-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+/* Ordertype-badge: dropship versus fulfilment. */
+.analytics-type {
+  display: inline-block;
+  padding: .125rem .4375rem;
+  border-radius: .375rem;
+  font-size: .6875rem;
+  font-weight: 700;
+  letter-spacing: .03em;
+}
+
+.analytics-type.is-ds { background:#eef2ff; color:#4338ca; }
+.analytics-type.is-ffm { background:#f0fdfa; color:#0f766e; }
+
+/* Kosten-breakdown met verhoudingsbalk. */
+.analytics-costbar {
+  display: flex;
+  height: .875rem;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #f1f5f9;
+}
+
+.analytics-costbar span {
+  display: block;
+  height: 100%;
+  transition: width .25s ease;
+}
+
+.analytics-costbar span:first-child { border-radius: 999px 0 0 999px; }
+.analytics-costbar span:last-child { border-radius: 0 999px 999px 0; }
+
+.analytics-costrow {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .625rem .75rem;
+  border-radius: .5rem;
+  transition: background-color .15s ease;
+}
+
+.analytics-costrow:hover { background: #f8fafc; }
+
+.analytics-costrow-label {
+  flex: 1;
+  min-width: 0;
+  font-size: .875rem;
+  color: #475569;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.analytics-costrow-share {
+  width: 3.25rem;
+  text-align: right;
+  font-size: .75rem;
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+}
+
+.analytics-costrow-value {
+  width: 6rem;
+  text-align: right;
+  font-size: .875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #0f172a;
+}
+
+.analytics-costtotal {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  margin-top: .25rem;
+  padding: .75rem;
+  border-top: 1px solid #e2e8f0;
+  font-size: .875rem;
+}
+
+.analytics-costtotal-value {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.analytics-vatnote {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  margin-top: .75rem;
+  padding: .625rem .75rem;
+  border: 1px dashed #e2e8f0;
+  border-radius: .5rem;
+  font-size: .8125rem;
+  color: #64748b;
+}
+
+/* Totaalregel onderaan een analytics-tabel. */
+.analytics-table tbody tr:last-child td { background: #f8fafc; }
+.analytics-table tbody tr:last-child:hover td { background: #f1f5f9; }
+
+.analytics-total-cell {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #0f172a;
+}
+
+/* Variant voor pagina's met minder KPI's, zodat ze de breedte vullen. */
+.analytics-kpi-grid.is-three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (max-width: 1023px) {
+  .analytics-kpi-grid.is-three {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 639px) {
+  .app-main .analytics-kpi-grid.is-three {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+.analytics-form-label {
+  display: block;
+  margin-bottom: .3125rem;
+  font-size: .75rem;
+  font-weight: 500;
+  color: #64748b;
+}
+
+/* Vier KPI's naast elkaar. */
+.analytics-kpi-grid.is-four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 1023px) {
+  .analytics-kpi-grid.is-four {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 639px) {
+  .app-main .analytics-kpi-grid.is-four {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+.analytics-amount-positive {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #047857;
+}
+
+/* Ad spend invoerraster: één blokje per dag met bedrag en ROAS. */
+.analytics-adspend-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: .75rem;
+}
+
+.analytics-adspend-day {
+  display: flex;
+  flex-direction: column;
+  gap: .3125rem;
+  padding: .625rem;
+  border: 1px solid #e2e8f0;
+  border-radius: .625rem;
+  background: #fff;
+}
+
+.analytics-adspend-label {
+  font-size: .75rem;
+  font-weight: 500;
+  color: #64748b;
+  text-transform: capitalize;
+}
+
+.analytics-adspend-fields {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: .375rem;
+}
+
+.analytics-adspend-fields .analytics-target-input {
+  height: 2rem;
+  padding: 0 .5rem;
+}
+
+@media (max-width: 1279px) {
+  .analytics-adspend-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 767px) {
+  .analytics-adspend-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 639px) {
+  .app-main .analytics-adspend-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+/* Vaste kosten: categorieblokken met posten. */
+.analytics-costgroup {
+  border: 1px solid #e2e8f0;
+  border-radius: .75rem;
+  background: #fff;
+  overflow: hidden;
+}
+
+.analytics-costgroup-head {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .75rem 1rem;
+  border-bottom: 1px solid #f1f5f9;
+  border-left: 3px solid transparent;
+  background: #f8fafc;
+}
+
+.analytics-costgroup-name {
+  flex: 1;
+  min-width: 0;
+  font-size: .875rem;
+  font-weight: 600;
+  color: #0f172a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.analytics-costgroup-total {
+  font-size: .8125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #475569;
+  white-space: nowrap;
+}
+
+.analytics-costgroup-body {
+  padding: .5rem .75rem .75rem;
+}
+
+.analytics-costitem {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .375rem .25rem;
+  border-radius: .375rem;
+  transition: background-color .15s ease;
+}
+
+.analytics-costitem:hover { background: #f8fafc; }
+
+.analytics-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: .3125rem;
+  border-radius: .375rem;
+  color: #94a3b8;
+  transition: color .15s ease, background-color .15s ease;
+}
+
+.analytics-icon-btn:hover { color: #4338ca; background: #eef2ff; }
+.analytics-icon-btn.is-danger:hover { color: #be123c; background: #fff1f2; }
+.analytics-icon-btn.is-confirm { color: #047857; }
+.analytics-icon-btn.is-confirm:hover { color: #047857; background: #ecfdf5; }
+
+.analytics-additem {
+  display: inline-flex;
+  align-items: center;
+  gap: .375rem;
+  margin-top: .375rem;
+  padding: .375rem .5rem;
+  border-radius: .375rem;
+  font-size: .8125rem;
+  color: #6366f1;
+  transition: background-color .15s ease;
+}
+
+.analytics-additem:hover { background: #eef2ff; }
+
+.analytics-addcard {
+  padding: 1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: .75rem;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.analytics-addrow {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  max-width: 100%;
+}
+
+.analytics-addcard .analytics-input {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.analytics-addcard button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+@media (max-width: 639px) {
+  .analytics-addrow { flex-wrap: wrap; }
+  .analytics-addcard .analytics-input { flex-basis: 100%; }
+}
+
+/* Signals: samenvattingsblokken en de losse meldingen. */
+.analytics-signal-summary {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: .25rem;
+  padding: 1.25rem;
+  border: 1px solid;
+  border-radius: 1rem;
+  text-align: left;
+  transition: box-shadow .18s ease, transform .18s ease;
+}
+
+.analytics-signal-summary:hover {
+  box-shadow: 0 8px 24px -10px rgb(15 23 42 / 20%);
+  transform: translateY(-1px);
+}
+
+.analytics-signal-summary.is-active {
+  box-shadow: 0 0 0 2px currentColor inset;
+}
+
+.analytics-signal-summary.sev-critical { border-color:#fecdd3; background:#fff1f2; color:#be123c; }
+.analytics-signal-summary.sev-warning  { border-color:#fde68a; background:#fffbeb; color:#b45309; }
+.analytics-signal-summary.sev-info     { border-color:#bae6fd; background:#f0f9ff; color:#0369a1; }
+
+.analytics-signal-count {
+  font-size: 1.875rem;
+  font-weight: 600;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.analytics-signal-summary-label {
+  font-size: .8125rem;
+  opacity: .85;
+}
+
+.analytics-signal {
+  display: flex;
+  align-items: flex-start;
+  gap: .875rem;
+  padding: .875rem 1rem;
+  border: 1px solid #e2e8f0;
+  border-left: 3px solid transparent;
+  border-radius: .625rem;
+  background: #fff;
+  transition: border-color .15s ease, background-color .15s ease;
+}
+
+.analytics-signal:hover { background: #f8fafc; }
+
+.analytics-signal.sev-critical { border-left-color:#f43f5e; }
+.analytics-signal.sev-warning  { border-left-color:#f59e0b; }
+.analytics-signal.sev-info     { border-left-color:#0ea5e9; }
+
+.analytics-signal-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  flex-shrink: 0;
+  border-radius: .5rem;
+}
+
+.analytics-signal.sev-critical .analytics-signal-icon { background:#fff1f2; color:#be123c; }
+.analytics-signal.sev-warning  .analytics-signal-icon { background:#fffbeb; color:#b45309; }
+.analytics-signal.sev-info     .analytics-signal-icon { background:#f0f9ff; color:#0369a1; }
+
+.analytics-signal-body {
+  display: flex;
+  flex-direction: column;
+  gap: .125rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.analytics-signal-category {
+  font-size: .6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: #94a3b8;
+}
+
+.analytics-signal-title {
+  font-size: .875rem;
+  font-weight: 500;
+  color: #0f172a;
+}
+
+.analytics-signal-detail {
+  font-size: .75rem;
+  color: #64748b;
+}
+
+.analytics-signal-value {
+  flex-shrink: 0;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #0f172a;
+  white-space: nowrap;
+}
+
+.analytics-signal-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: .375rem;
+  color: #94a3b8;
+  transition: color .15s ease, background-color .15s ease;
+}
+
+.analytics-signal-action:hover { color: #4338ca; background: #eef2ff; }
+
+.analytics-signal-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .5rem;
+  padding: 3rem 1rem;
+  color: #94a3b8;
+}
+
+.analytics-signal-empty svg { color: #34d399; }
+.analytics-signal-empty p { font-size: .9375rem; color: #475569; }
+.analytics-signal-empty span { font-size: .8125rem; }
+
+@media (max-width: 639px) {
+  .analytics-signal { flex-wrap: wrap; }
+  .analytics-signal-value { width: 100%; text-align: right; }
+}
+
+/* Analytics exports. */
+.analytics-export-period {
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.analytics-export-presets {
+  display: flex;
+  align-items: center;
+  gap: .375rem;
+  flex-wrap: wrap;
+  padding-bottom: .125rem;
+}
+
+.analytics-export-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.analytics-export-card {
+  display: flex;
+  flex-direction: column;
+  padding: 1.25rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 1rem;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
+  transition: box-shadow .18s ease, transform .18s ease;
+}
+
+.analytics-export-card:hover {
+  box-shadow: 0 8px 24px -10px rgb(15 23 42 / 20%);
+  transform: translateY(-1px);
+}
+
+.analytics-export-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.analytics-export-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: .625rem;
+  box-shadow: 0 4px 10px -4px rgb(15 23 42 / 25%);
+}
+
+.analytics-export-title {
+  font-size: .9375rem;
+  font-weight: 600;
+  color: #0f172a;
+  margin-bottom: .25rem;
+}
+
+.analytics-export-desc {
+  font-size: .75rem;
+  line-height: 1.45;
+  color: #64748b;
+  margin-bottom: .75rem;
+  flex: 1;
+}
+
+.analytics-export-count {
+  font-size: .75rem;
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 1rem;
+}
+
+.analytics-export-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .5rem;
+  width: 100%;
+  padding: .5rem 1rem;
+  border-radius: .5rem;
+  font-size: .875rem;
+  font-weight: 500;
+  color: #fff;
+  transition: opacity .15s ease;
+}
+
+.analytics-export-button:hover:not(:disabled) { opacity: .9; }
+
+.analytics-export-button:disabled {
+  background: #f1f5f9;
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
+@media (max-width: 1279px) {
+  .analytics-export-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 1023px) {
+  .analytics-export-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 639px) {
+  .app-main .analytics-export-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .analytics-export-period > div { flex: 1 1 100%; }
+  .analytics-export-period .analytics-input { width: 100%; }
+}

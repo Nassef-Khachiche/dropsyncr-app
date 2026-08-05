@@ -443,7 +443,331 @@ type TranslationKey =
   | 'multipleUnitsTitle'
   | 'linesLabel'
   | 'firstPage'
-  | 'lastPage';
+  | 'lastPage'
+  | 'analyticsOverview'
+  | 'analyticsOverviewSubtitle'
+  | 'last30days'
+  | 'yearToDate'
+  | 'allCountries'
+  | 'storesLabel'
+  | 'countriesLabel'
+  | 'resetFilters'
+  | 'noOptionsAvailable'
+  | 'kpiNetRevenue'
+  | 'kpiNetProfit'
+  | 'kpiActiveOrders'
+  | 'kpiCancelRate'
+  | 'kpiAvgOrderValue'
+  | 'dailyRevenueTitle'
+  | 'revenuePerStoreTitle'
+  | 'storeBreakdownTitle'
+  | 'topProductsTitle'
+  | 'costBreakdownTitle'
+  | 'costCogs'
+  | 'costShipping'
+  | 'costCommission'
+  | 'costAdSpend'
+  | 'costFixed'
+  | 'ofRevenue'
+  | 'unitsShort'
+  | 'noDataForPeriod'
+  | 'errorLoadingAnalytics'
+  | 'statusNotTrackedYet'
+  | 'costSourcesPendingHint'
+  | 'salesSection'
+  | 'financeSection'
+  | 'operationsSection'
+  | 'productAnalytics'
+  | 'productAnalyticsSubtitle'
+  | 'topTenProductsTitle'
+  | 'allProducts'
+  | 'searchProductSkuBrand'
+  | 'sortByRevenue'
+  | 'sortByUnits'
+  | 'sortByMargin'
+  | 'sortByCancelRate'
+  | 'colSku'
+  | 'colUnits'
+  | 'colMargin'
+  | 'colMarginPct'
+  | 'colAvgPrice'
+  | 'colCancelShort'
+  | 'colReturnShort'
+  | 'exportsSection'
+  | 'storeTrends'
+  | 'storeTrendsSubtitle'
+  | 'perWeek'
+  | 'perMonth'
+  | 'revenueOverTimeTitle'
+  | 'storeOverviewTitle'
+  | 'selectAtLeastOneStore'
+  | 'colCancellations'
+  | 'colAvgOrder'
+  | 'channelProfitability'
+  | 'channelProfitabilitySubtitle'
+  | 'revenueVsCostsTitle'
+  | 'channelDetailTitle'
+  | 'colPurchase'
+  | 'colPlatform'
+  | 'colAdsShort'
+  | 'colGrossMargin'
+  | 'colNetMargin'
+  | 'colNetProfit'
+  | 'colCountries'
+  | 'targetsForecast'
+  | 'targetsForecastSubtitle'
+  | 'targetsTab'
+  | 'targetsTitle'
+  | 'targetsSubtitle'
+  | 'targetsSaved'
+  | 'errorLoadingTargets'
+  | 'errorSavingTargets'
+  | 'spreadJanuary'
+  | 'fillJanuaryFirst'
+  | 'yearTotal'
+  | 'noTargetsYetHint'
+  | 'kpiYearTarget'
+  | 'kpiRealised'
+  | 'kpiStillToGo'
+  | 'kpiAboveTarget'
+  | 'kpiForecast'
+  | 'ofTarget'
+  | 'basedOn'
+  | 'basedOnLast'
+  | 'daysLabel'
+  | 'monthsLabel'
+  | 'targetVsActualTitle'
+  | 'monthDetailTitle'
+  | 'forecastLabel'
+  | 'colMonth'
+  | 'colTarget'
+  | 'colRealised'
+  | 'colGap'
+  | 'colProgress'
+  | 'colStatus'
+  | 'statusAchieved'
+  | 'statusNearly'
+  | 'statusBehind'
+  | 'statusUpcoming'
+  | 'statusNoTarget'
+  | 'dailySummary'
+  | 'dailySummarySubtitle'
+  | 'noOrdersThisDay'
+  | 'ordersOfDay'
+  | 'cancelledLabel'
+  | 'colOrderType'
+  | 'colPurchased'
+  | 'colGrossProfit'
+  | 'colCountry'
+  | 'purchaseStock'
+  | 'purchaseOrdered'
+  | 'purchasePartial'
+  | 'purchaseNotOrdered'
+  | 'totalCosts'
+  | 'vatCollected'
+  | 'monthlySummary'
+  | 'monthlySummarySubtitle'
+  | 'revenueAndProfitTitle'
+  | 'marginTrendTitle'
+  | 'monthlyPnlTitle'
+  | 'totalLabel'
+  | 'vatOverview'
+  | 'vatOverviewSubtitle'
+  | 'vatEuTitle'
+  | 'vatNonEuTitle'
+  | 'vatNonEuHint'
+  | 'noNonEuOrders'
+  | 'kpiVatToDeclare'
+  | 'kpiEuRevenue'
+  | 'kpiNonEuRevenue'
+  | 'colRevenueIncl'
+  | 'colRevenueExcl'
+  | 'colVatAmount'
+  | 'payouts'
+  | 'payoutsSubtitle'
+  | 'payoutsLabel'
+  | 'newPayout'
+  | 'editPayout'
+  | 'payoutCreated'
+  | 'payoutUpdated'
+  | 'payoutDeleted'
+  | 'deletePayoutTitle'
+  | 'deletePayoutConfirm'
+  | 'errorLoadingPayouts'
+  | 'errorSavingPayout'
+  | 'errorDeletingPayout'
+  | 'noPayoutsYet'
+  | 'payoutsPerDateTitle'
+  | 'payoutHistoryTitle'
+  | 'kpiTotalPaidOut'
+  | 'kpiLastPayout'
+  | 'kpiAvgPayout'
+  | 'colPayoutDate'
+  | 'colPeriod'
+  | 'colChannel'
+  | 'colAmount'
+  | 'periodFrom'
+  | 'periodTo'
+  | 'noChannelSelected'
+  | 'fillAllRequiredFields'
+  | 'amountMustBePositive'
+  | 'kpiPayoutCount'
+  | 'adSpend'
+  | 'adSpendSubtitle'
+  | 'modeOverview'
+  | 'modeEntry'
+  | 'enterAdSpendTitle'
+  | 'spreadFirstDay'
+  | 'fillFirstDayFirst'
+  | 'monthTotal'
+  | 'adSpendSaved'
+  | 'errorLoadingAdSpend'
+  | 'errorSavingAdSpend'
+  | 'noAdSpendYet'
+  | 'noChannelsAvailable'
+  | 'roasShort'
+  | 'entriesLabel'
+  | 'kpiTotalAdSpend'
+  | 'kpiRoasCalculated'
+  | 'kpiRoasReported'
+  | 'kpiAdRatio'
+  | 'basedOnOwnRevenue'
+  | 'asReportedByPlatform'
+  | 'adSpendVsRevenueTitle'
+  | 'spendPerChannelTitle'
+  | 'roasPerChannelTitle'
+  | 'colSpend'
+  | 'colShare'
+  | 'colRoasCalculated'
+  | 'colRoasReported'
+  | 'colAdRatio'
+  | 'fixedCosts'
+  | 'fixedCostsSubtitle'
+  | 'newCategory'
+  | 'categoryNamePlaceholder'
+  | 'itemNamePlaceholder'
+  | 'addCostItem'
+  | 'createFirstCategory'
+  | 'noItemsInCategory'
+  | 'noFixedCostsYet'
+  | 'deleteGroupConfirm'
+  | 'groupDeleted'
+  | 'errorLoadingFixedCosts'
+  | 'errorSavingFixedCosts'
+  | 'distributionTitle'
+  | 'totalPerMonth'
+  | 'kpiPerMonth'
+  | 'kpiPerYear'
+  | 'kpiLargestPost'
+  | 'kpiSecondLargestPost'
+  | 'costItemsLabel'
+  | 'twelveMonths'
+  | 'ofTotal'
+  | 'signals'
+  | 'signalsSubtitle'
+  | 'severityCritical'
+  | 'severityWarning'
+  | 'severityInfo'
+  | 'activeSignals'
+  | 'showAll'
+  | 'goToPage'
+  | 'noSignalsFound'
+  | 'noSignalsHint'
+  | 'errorLoadingSignals'
+  | 'signalCategory_purchasing'
+  | 'signalCategory_fulfilment'
+  | 'signalCategory_margin'
+  | 'signalCategory_quality'
+  | 'signalCategory_marketing'
+  | 'signalCategory_setup'
+  | 'signalUnorderedDeadlineTitle'
+  | 'signalUnorderedDeadlineDetail'
+  | 'signalOverdueTitle'
+  | 'signalOverdueDetail'
+  | 'signalStaleNotOrderedTitle'
+  | 'signalStaleNotOrderedDetail'
+  | 'signalCancelRateTitle'
+  | 'signalCancelRateDetail'
+  | 'signalNegativeMarginTitle'
+  | 'signalNegativeMarginDetail'
+  | 'signalThinMarginTitle'
+  | 'signalThinMarginDetail'
+  | 'signalMissingCostTitle'
+  | 'signalMissingCostDetail'
+  | 'signalReturnRateTitle'
+  | 'signalReturnRateDetail'
+  | 'signalMissingShippingRateTitle'
+  | 'signalMissingShippingRateDetail'
+  | 'signalLowRoasTitle'
+  | 'signalLowRoasDetail'
+  | 'signalHighAdRatioTitle'
+  | 'signalHighAdRatioDetail'
+  | 'cancelAnalysis'
+  | 'cancelAnalysisSubtitle'
+  | 'viewPerStore'
+  | 'viewPerProduct'
+  | 'noCancellations'
+  | 'kpiCancelledTotal'
+  | 'kpiLostRevenue'
+  | 'kpiAvgCancelValue'
+  | 'cancelRatePerStoreTitle'
+  | 'cancelRatePerProductTitle'
+  | 'storeDetailTitle'
+  | 'productDetailTitle'
+  | 'colTotalOrders'
+  | 'colCancelled'
+  | 'colLostRevenue'
+  | 'ofLabel'
+  | 'returnsAnalytics'
+  | 'returnsAnalyticsSubtitle'
+  | 'noReturnsInPeriod'
+  | 'kpiTotalReturns'
+  | 'kpiReturnRate'
+  | 'kpiReturnValue'
+  | 'kpiProcessed'
+  | 'relativeToOrders'
+  | 'avgLabel'
+  | 'stillOpen'
+  | 'returnsOverTimeTitle'
+  | 'returnsPerStoreTitle'
+  | 'returnsStoreDetailTitle'
+  | 'colReturns'
+  | 'colReturnValue'
+  | 'colOrdersInPeriod'
+  | 'colProcessed'
+  | 'analyticsExports'
+  | 'analyticsExportsSubtitle'
+  | 'exportPeriodTitle'
+  | 'fromLabel'
+  | 'toLabel'
+  | 'currentQuarter'
+  | 'rowsInPeriod'
+  | 'rowsLabel'
+  | 'downloadXlsx'
+  | 'busyLabel'
+  | 'loadingLabel'
+  | 'exportDownloaded'
+  | 'exportFailed'
+  | 'exportOrders'
+  | 'exportOrdersDesc'
+  | 'exportOrderItems'
+  | 'exportOrderItemsDesc'
+  | 'exportProducts'
+  | 'exportProductsDesc'
+  | 'exportPurchaseOrders'
+  | 'exportPurchaseOrdersDesc'
+  | 'exportVat'
+  | 'exportVatDesc'
+  | 'exportPnl'
+  | 'exportPnlDesc'
+  | 'exportReturns'
+  | 'exportReturnsDesc'
+  | 'exportPayouts'
+  | 'exportPayoutsDesc'
+  | 'exportAdSpend'
+  | 'exportAdSpendDesc'
+  | 'exportFixedCosts'
+  | 'exportFixedCostsDesc';
 
 type Dictionary = Record<TranslationKey, string>;
 
@@ -890,7 +1214,331 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     linesLabel: 'lines',
     firstPage: 'First page',
     lastPage: 'Last page',
-  },
+    analyticsOverview: 'Analytics Overview',
+    analyticsOverviewSubtitle: 'Complete overview of revenue, costs and margin',
+    last30days: 'Last 30 days',
+    yearToDate: 'Year to date',
+    allCountries: 'All countries',
+    storesLabel: 'stores',
+    countriesLabel: 'countries',
+    resetFilters: 'Reset filters',
+    noOptionsAvailable: 'No options available',
+    kpiNetRevenue: 'Net revenue (excl. VAT)',
+    kpiNetProfit: 'Net profit',
+    kpiActiveOrders: 'Active orders',
+    kpiCancelRate: 'Cancellation rate',
+    kpiAvgOrderValue: 'Avg. order value',
+    dailyRevenueTitle: 'Revenue per day',
+    revenuePerStoreTitle: 'Revenue per store',
+    storeBreakdownTitle: 'Store breakdown',
+    topProductsTitle: 'Top products (revenue)',
+    costBreakdownTitle: 'Cost breakdown',
+    costCogs: 'Purchase price',
+    costShipping: 'Shipping costs',
+    costCommission: 'Commission',
+    costAdSpend: 'Advertising',
+    costFixed: 'Fixed costs',
+    ofRevenue: 'of revenue',
+    unitsShort: 'pcs',
+    noDataForPeriod: 'No data in this period',
+    errorLoadingAnalytics: 'Could not load analytics',
+    statusNotTrackedYet: 'not tracked yet',
+    costSourcesPendingHint: 'Advertising and fixed costs are not tracked yet and therefore show as 0.',
+    salesSection: 'SALES',
+    financeSection: 'FINANCE',
+    operationsSection: 'OPERATIONS',
+    exportsSection: 'EXPORTS',
+    productAnalytics: 'Product Analytics',
+    productAnalyticsSubtitle: 'Revenue, margin and performance per product',
+    topTenProductsTitle: 'Top 10 products (revenue)',
+    allProducts: 'All products',
+    searchProductSkuBrand: 'Search product, SKU, EAN or brand...',
+    sortByRevenue: 'Sort by: revenue',
+    sortByUnits: 'Sort by: units',
+    sortByMargin: 'Sort by: margin%',
+    sortByCancelRate: 'Sort by: cancel%',
+    colSku: 'SKU',
+    colUnits: 'Units',
+    colMargin: 'Margin',
+    colMarginPct: 'Margin%',
+    colAvgPrice: 'Avg. price',
+    colCancelShort: 'Cancel%',
+    colReturnShort: 'Return%',
+    storeTrends: 'Store Trends',
+    storeTrendsSubtitle: 'Revenue trends per store over time',
+    perWeek: 'Per week',
+    perMonth: 'Per month',
+    revenueOverTimeTitle: 'Revenue per store over time',
+    storeOverviewTitle: 'Store overview',
+    selectAtLeastOneStore: 'Select at least one store',
+    colCancellations: 'Cancellations',
+    colAvgOrder: 'Avg. order',
+    channelProfitability: 'Channel Profitability',
+    channelProfitabilitySubtitle: 'Gross and net margin per sales channel',
+    revenueVsCostsTitle: 'Revenue vs. costs per channel',
+    channelDetailTitle: 'Channel detail',
+    colPurchase: 'Purchase',
+    colPlatform: 'Platform',
+    colAdsShort: 'Ads',
+    colGrossMargin: 'Gross margin',
+    colNetMargin: 'Net margin',
+    colNetProfit: 'Net profit',
+    colCountries: 'Countries',
+    targetsForecast: 'Targets & Forecast',
+    targetsForecastSubtitle: 'Targets versus actuals per month',
+    targetsTab: 'Targets',
+    targetsTitle: 'Monthly revenue targets',
+    targetsSubtitle: 'Set a revenue target per month. Analytics compares them against the actual figures.',
+    targetsSaved: 'Targets saved',
+    errorLoadingTargets: 'Could not load targets',
+    errorSavingTargets: 'Could not save targets',
+    spreadJanuary: 'Copy January to all',
+    fillJanuaryFirst: 'Fill in January first',
+    yearTotal: 'Year total',
+    noTargetsYetHint: 'No targets set for this year yet. Add them under Settings > Targets.',
+    kpiYearTarget: 'Year target',
+    kpiRealised: 'Achieved',
+    kpiStillToGo: 'Still to go',
+    kpiAboveTarget: 'Above target',
+    kpiForecast: 'Forecast',
+    ofTarget: 'of target',
+    basedOn: 'based on',
+    basedOnLast: 'based on last',
+    daysLabel: 'days',
+    monthsLabel: 'months',
+    targetVsActualTitle: 'Target versus actual',
+    monthDetailTitle: 'Monthly detail',
+    forecastLabel: 'Forecast',
+    colMonth: 'Month',
+    colTarget: 'Target',
+    colRealised: 'Achieved',
+    colGap: 'Gap',
+    colProgress: 'Progress',
+    colStatus: 'Status',
+    statusAchieved: 'Achieved',
+    statusNearly: 'Nearly',
+    statusBehind: 'Behind',
+    statusUpcoming: 'Upcoming',
+    statusNoTarget: 'No target',
+    dailySummary: 'Daily Summary',
+    dailySummarySubtitle: 'Financial daily overview per order',
+    noOrdersThisDay: 'No orders on this day',
+    ordersOfDay: 'Orders of this day',
+    cancelledLabel: 'cancelled',
+    colOrderType: 'Type',
+    colPurchased: 'Ordered',
+    colGrossProfit: 'Gross profit',
+    colCountry: 'Country',
+    purchaseStock: 'Stock',
+    purchaseOrdered: 'Yes',
+    purchasePartial: 'Partial',
+    purchaseNotOrdered: 'No',
+    totalCosts: 'Total costs',
+    vatCollected: 'VAT collected (not in margin)',
+    monthlySummary: 'Monthly Summary',
+    monthlySummarySubtitle: 'Monthly profit and loss statement',
+    revenueAndProfitTitle: 'Revenue and net profit per month',
+    marginTrendTitle: 'Net margin per month',
+    monthlyPnlTitle: 'Monthly P&L',
+    totalLabel: 'Total',
+    vatOverview: 'VAT Overview',
+    vatOverviewSubtitle: 'VAT per country, per quarter',
+    vatEuTitle: 'EU countries',
+    vatNonEuTitle: 'Outside the EU',
+    vatNonEuHint: 'No European VAT is calculated for these countries.',
+    noNonEuOrders: 'No orders outside the EU this quarter',
+    kpiVatToDeclare: 'VAT payable (EU)',
+    kpiEuRevenue: 'EU revenue (excl. VAT)',
+    kpiNonEuRevenue: 'Non-EU revenue',
+    colRevenueIncl: 'Revenue incl.',
+    colRevenueExcl: 'Revenue excl.',
+    colVatAmount: 'VAT amount',
+    payouts: 'Payouts',
+    payoutsSubtitle: 'Marketplace payouts',
+    payoutsLabel: 'payouts',
+    newPayout: 'New payout',
+    editPayout: 'Edit payout',
+    payoutCreated: 'Payout added',
+    payoutUpdated: 'Payout updated',
+    payoutDeleted: 'Payout deleted',
+    deletePayoutTitle: 'Delete payout',
+    deletePayoutConfirm: 'Are you sure you want to delete this payout?',
+    errorLoadingPayouts: 'Could not load payouts',
+    errorSavingPayout: 'Could not save payout',
+    errorDeletingPayout: 'Could not delete payout',
+    noPayoutsYet: 'No payouts entered yet',
+    payoutsPerDateTitle: 'Payouts per date',
+    payoutHistoryTitle: 'Payout history',
+    kpiTotalPaidOut: 'Total paid out',
+    kpiLastPayout: 'Last payout',
+    kpiAvgPayout: 'Avg. payout',
+    colPayoutDate: 'Payout date',
+    colPeriod: 'Period',
+    colChannel: 'Channel',
+    colAmount: 'Amount',
+    periodFrom: 'Period from',
+    periodTo: 'Period to',
+    noChannelSelected: 'No channel',
+    fillAllRequiredFields: 'Fill in all required fields',
+    amountMustBePositive: 'Amount must be greater than 0',
+    kpiPayoutCount: 'Number of payouts',
+    adSpend: 'Ad Spend',
+    adSpendSubtitle: 'Advertising costs and return per channel',
+    modeOverview: 'Overview',
+    modeEntry: 'Entry',
+    enterAdSpendTitle: 'Enter advertising costs',
+    spreadFirstDay: 'Copy first day to all',
+    fillFirstDayFirst: 'Fill in a day first',
+    monthTotal: 'Month total',
+    adSpendSaved: 'Advertising costs saved',
+    errorLoadingAdSpend: 'Could not load advertising costs',
+    errorSavingAdSpend: 'Could not save advertising costs',
+    noAdSpendYet: 'No advertising costs entered yet',
+    noChannelsAvailable: 'No channels available',
+    roasShort: 'ROAS',
+    entriesLabel: 'days filled in',
+    kpiTotalAdSpend: 'Total advertising costs',
+    kpiRoasCalculated: 'ROAS (calculated)',
+    kpiRoasReported: 'ROAS (reported)',
+    kpiAdRatio: 'Ads / revenue',
+    basedOnOwnRevenue: 'based on own revenue',
+    asReportedByPlatform: 'as reported by platform',
+    adSpendVsRevenueTitle: 'Advertising costs versus revenue',
+    spendPerChannelTitle: 'Spend per channel',
+    roasPerChannelTitle: 'ROAS per channel',
+    colSpend: 'Spend',
+    colShare: 'Share',
+    colRoasCalculated: 'ROAS calculated',
+    colRoasReported: 'ROAS reported',
+    colAdRatio: 'Ads/revenue',
+    fixedCosts: 'Fixed Costs',
+    fixedCostsSubtitle: 'Monthly fixed costs per category',
+    newCategory: 'New category',
+    categoryNamePlaceholder: 'Category name, e.g. Staff',
+    itemNamePlaceholder: 'Cost item name',
+    addCostItem: 'Add item',
+    createFirstCategory: 'Create a category first',
+    noItemsInCategory: 'No items in this category yet',
+    noFixedCostsYet: 'No fixed costs entered yet',
+    deleteGroupConfirm: 'Delete category "{name}"? All items under it will be removed too.',
+    groupDeleted: 'Category deleted',
+    errorLoadingFixedCosts: 'Could not load fixed costs',
+    errorSavingFixedCosts: 'Could not save fixed costs',
+    distributionTitle: 'Distribution per category',
+    totalPerMonth: 'Total per month',
+    kpiPerMonth: 'Total per month',
+    kpiPerYear: 'Total per year',
+    kpiLargestPost: 'Largest item',
+    kpiSecondLargestPost: 'Second largest',
+    costItemsLabel: 'items',
+    twelveMonths: '12 months',
+    ofTotal: 'of total',
+    signals: 'Signals',
+    signalsSubtitle: 'What needs attention right now',
+    severityCritical: 'Critical',
+    severityWarning: 'Warning',
+    severityInfo: 'Informational',
+    activeSignals: 'active signals',
+    showAll: 'Show all',
+    goToPage: 'Go to page',
+    noSignalsFound: 'Everything looks good',
+    noSignalsHint: 'No signals found for this period and these filters.',
+    errorLoadingSignals: 'Could not load signals',
+    signalCategory_purchasing: 'Purchasing',
+    signalCategory_fulfilment: 'Fulfilment',
+    signalCategory_margin: 'Margin',
+    signalCategory_quality: 'Quality',
+    signalCategory_marketing: 'Marketing',
+    signalCategory_setup: 'Settings',
+    signalUnorderedDeadlineTitle: 'Dropship orders not yet purchased',
+    signalUnorderedDeadlineDetail: '{count} orders are due within {days} days but have not been ordered',
+    signalOverdueTitle: 'Delivery deadline passed',
+    signalOverdueDetail: '{count} orders are past their delivery deadline and not yet shipped',
+    signalStaleNotOrderedTitle: 'Stuck on not ordered',
+    signalStaleNotOrderedDetail: '{count} orders have been on not ordered for more than {days} days without a decision',
+    signalCancelRateTitle: 'High cancellation rate at {store}',
+    signalCancelRateDetail: '{cancelled} of {total} orders cancelled',
+    signalNegativeMarginTitle: 'Loss on {product}',
+    signalNegativeMarginDetail: '{revenue} revenue with {loss} loss',
+    signalThinMarginTitle: 'Thin margin on {product}',
+    signalThinMarginDetail: '{revenue} revenue with a margin below 5%',
+    signalMissingCostTitle: 'Purchase price unknown',
+    signalMissingCostDetail: '{units} units sold without a known purchase price — {revenue} revenue without margin calculation',
+    signalReturnRateTitle: 'High return rate on {product}',
+    signalReturnRateDetail: '{returned} returned out of {sold} units sold',
+    signalMissingShippingRateTitle: 'Countries without shipping rate',
+    signalMissingShippingRateDetail: 'No rate set for: {countries}',
+    signalLowRoasTitle: 'Low ROAS at {store}',
+    signalLowRoasDetail: '{spend} in ad spend against {revenue} revenue',
+    signalHighAdRatioTitle: 'Ad spend high relative to revenue',
+    signalHighAdRatioDetail: '{spend} in ads on {revenue} revenue',
+    cancelAnalysis: 'Cancel Analysis',
+    cancelAnalysisSubtitle: 'Where orders are being cancelled',
+    viewPerStore: 'Per store',
+    viewPerProduct: 'Per product',
+    noCancellations: 'No cancellations in this period',
+    kpiCancelledTotal: 'Total cancelled',
+    kpiLostRevenue: 'Lost revenue',
+    kpiAvgCancelValue: 'Avg. cancelled value',
+    cancelRatePerStoreTitle: 'Cancellation rate per store',
+    cancelRatePerProductTitle: 'Cancellation rate per product',
+    storeDetailTitle: 'Detail per store',
+    productDetailTitle: 'Detail per product',
+    colTotalOrders: 'Total orders',
+    colCancelled: 'Cancelled',
+    colLostRevenue: 'Lost revenue',
+    ofLabel: 'of',
+    returnsAnalytics: 'Returns Analytics',
+    returnsAnalyticsSubtitle: 'Returns per store',
+    noReturnsInPeriod: 'No returns in this period',
+    kpiTotalReturns: 'Total returns',
+    kpiReturnRate: 'Return rate',
+    kpiReturnValue: 'Return value',
+    kpiProcessed: 'Processed',
+    relativeToOrders: 'relative to orders',
+    avgLabel: 'avg.',
+    stillOpen: 'still open',
+    returnsOverTimeTitle: 'Returns over time',
+    returnsPerStoreTitle: 'Returns per store',
+    returnsStoreDetailTitle: 'Detail per store',
+    colReturns: 'Returns',
+    colReturnValue: 'Return value',
+    colOrdersInPeriod: 'Orders',
+    colProcessed: 'Processed',
+    analyticsExports: 'Analytics Exports',
+    analyticsExportsSubtitle: 'Download datasets as an Excel file',
+    exportPeriodTitle: 'Export period',
+    fromLabel: 'From',
+    toLabel: 'Up to and including',
+    currentQuarter: 'This quarter',
+    rowsInPeriod: 'rows in this period',
+    rowsLabel: 'rows',
+    downloadXlsx: 'Download .xlsx',
+    busyLabel: 'Working...',
+    loadingLabel: 'Loading...',
+    exportDownloaded: 'Export downloaded',
+    exportFailed: 'Export failed',
+    exportOrders: 'Orders',
+    exportOrdersDesc: 'All orders with amount, VAT, status, type and tracking',
+    exportOrderItems: 'Order lines',
+    exportOrderItemsDesc: 'Every line separately with EAN, SKU, quantity and price',
+    exportProducts: 'Product performance',
+    exportProductsDesc: 'Revenue, margin, cancellations and returns per product',
+    exportPurchaseOrders: 'Purchase orders',
+    exportPurchaseOrdersDesc: 'Processed purchasing with supplier, prices and margin',
+    exportVat: 'VAT per country',
+    exportVatDesc: 'Revenue and VAT amount per country, EU and beyond',
+    exportPnl: 'Monthly P&L',
+    exportPnlDesc: 'Revenue, costs and net profit per month',
+    exportReturns: 'Returns',
+    exportReturnsDesc: 'Returns with reason, status and items',
+    exportPayouts: 'Payouts',
+    exportPayoutsDesc: 'Payouts per channel with period and amount',
+    exportAdSpend: 'Ad spend',
+    exportAdSpendDesc: 'Advertising costs per day per channel with ROAS',
+    exportFixedCosts: 'Fixed costs',
+    exportFixedCostsDesc: 'All fixed costs per category, per month and per year',
+      },
   nl: {
     loading: 'Laden...',
     orderManagement: 'ORDER MANAGEMENT',
@@ -1333,6 +1981,330 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     linesLabel: 'regels',
     firstPage: 'Eerste pagina',
     lastPage: 'Laatste pagina',
+    analyticsOverview: 'Analytics Overzicht',
+    analyticsOverviewSubtitle: 'Totaaloverzicht van omzet, kosten en marge',
+    last30days: 'Afgelopen 30 dagen',
+    yearToDate: 'Jaar tot nu',
+    allCountries: 'Alle landen',
+    storesLabel: 'stores',
+    countriesLabel: 'landen',
+    resetFilters: 'Reset filters',
+    noOptionsAvailable: 'Geen opties beschikbaar',
+    kpiNetRevenue: 'Netto omzet (excl. btw)',
+    kpiNetProfit: 'Nettowinst',
+    kpiActiveOrders: 'Actieve orders',
+    kpiCancelRate: 'Annuleringsratio',
+    kpiAvgOrderValue: 'Gem. orderbedrag',
+    dailyRevenueTitle: 'Omzet per dag',
+    revenuePerStoreTitle: 'Omzet per store',
+    storeBreakdownTitle: 'Store breakdown',
+    topProductsTitle: 'Top producten (omzet)',
+    costBreakdownTitle: 'Kosten breakdown',
+    costCogs: 'Inkoopprijs',
+    costShipping: 'Verzendkosten',
+    costCommission: 'Commissie',
+    costAdSpend: 'Advertenties',
+    costFixed: 'Vaste kosten',
+    ofRevenue: 'van omzet',
+    unitsShort: 'st.',
+    noDataForPeriod: 'Geen data in deze periode',
+    errorLoadingAnalytics: 'Kon analytics niet laden',
+    statusNotTrackedYet: 'nog niet bijgehouden',
+    costSourcesPendingHint: 'Advertenties en vaste kosten worden nog niet bijgehouden en staan daarom op 0.',
+    salesSection: 'SALES',
+    financeSection: 'FINANCE',
+    operationsSection: 'OPERATIONS',
+    exportsSection: 'EXPORTS',
+    productAnalytics: 'Product Analytics',
+    productAnalyticsSubtitle: 'Omzet, marge en prestaties per product',
+    topTenProductsTitle: 'Top 10 producten (omzet)',
+    allProducts: 'Alle producten',
+    searchProductSkuBrand: 'Zoek product, SKU, EAN of merk...',
+    sortByRevenue: 'Sorteren: omzet',
+    sortByUnits: 'Sorteren: stuks',
+    sortByMargin: 'Sorteren: marge%',
+    sortByCancelRate: 'Sorteren: annul.%',
+    colSku: 'SKU',
+    colUnits: 'Stuks',
+    colMargin: 'Marge',
+    colMarginPct: 'Marge%',
+    colAvgPrice: 'Gem. prijs',
+    colCancelShort: 'Annul.%',
+    colReturnShort: 'Retour%',
+    storeTrends: 'Store Trends',
+    storeTrendsSubtitle: 'Omzettrends per store over de tijd',
+    perWeek: 'Per week',
+    perMonth: 'Per maand',
+    revenueOverTimeTitle: 'Omzet per store over tijd',
+    storeOverviewTitle: 'Store overzicht',
+    selectAtLeastOneStore: 'Selecteer minimaal één store',
+    colCancellations: 'Annulaties',
+    colAvgOrder: 'Gem. order',
+    channelProfitability: 'Channel Profitability',
+    channelProfitabilitySubtitle: 'Bruto en netto marge per verkoopkanaal',
+    revenueVsCostsTitle: 'Omzet vs. kosten per kanaal',
+    channelDetailTitle: 'Kanaal detail',
+    colPurchase: 'Inkoop',
+    colPlatform: 'Platform',
+    colAdsShort: 'Adv.',
+    colGrossMargin: 'Br. marge',
+    colNetMargin: 'N. marge',
+    colNetProfit: 'N. winst',
+    colCountries: 'Landen',
+    targetsForecast: 'Targets & Forecast',
+    targetsForecastSubtitle: 'Doelstellingen versus realisatie per maand',
+    targetsTab: 'Targets',
+    targetsTitle: 'Omzetdoelen per maand',
+    targetsSubtitle: 'Vul per maand het omzetdoel in. Analytics zet hier de werkelijke cijfers tegenover.',
+    targetsSaved: 'Targets opgeslagen',
+    errorLoadingTargets: 'Kon targets niet laden',
+    errorSavingTargets: 'Kon targets niet opslaan',
+    spreadJanuary: 'Januari doortrekken',
+    fillJanuaryFirst: 'Vul eerst januari in',
+    yearTotal: 'Jaartotaal',
+    noTargetsYetHint: 'Er zijn nog geen targets ingesteld voor dit jaar. Vul ze in bij Settings > Targets.',
+    kpiYearTarget: 'Jaardoel',
+    kpiRealised: 'Gerealiseerd',
+    kpiStillToGo: 'Nog te gaan',
+    kpiAboveTarget: 'Boven doel',
+    kpiForecast: 'Prognose',
+    ofTarget: 'van doel',
+    basedOn: 'op basis van',
+    basedOnLast: 'op basis van laatste',
+    daysLabel: 'dagen',
+    monthsLabel: 'maanden',
+    targetVsActualTitle: 'Doel versus realisatie',
+    monthDetailTitle: 'Maanddetail',
+    forecastLabel: 'Prognose',
+    colMonth: 'Maand',
+    colTarget: 'Doel',
+    colRealised: 'Gerealiseerd',
+    colGap: 'Verschil',
+    colProgress: 'Voortgang',
+    colStatus: 'Status',
+    statusAchieved: 'Behaald',
+    statusNearly: 'Bijna',
+    statusBehind: 'Achter',
+    statusUpcoming: 'Nog te gaan',
+    statusNoTarget: 'Geen doel',
+    dailySummary: 'Daily Summary',
+    dailySummarySubtitle: 'Financieel dagoverzicht per order',
+    noOrdersThisDay: 'Geen orders op deze dag',
+    ordersOfDay: 'Orders van deze dag',
+    cancelledLabel: 'geannuleerd',
+    colOrderType: 'Type',
+    colPurchased: 'Besteld',
+    colGrossProfit: 'Brutowinst',
+    colCountry: 'Land',
+    purchaseStock: 'Voorraad',
+    purchaseOrdered: 'Ja',
+    purchasePartial: 'Deels',
+    purchaseNotOrdered: 'Nee',
+    totalCosts: 'Totale kosten',
+    vatCollected: 'Geïnde btw (niet in de marge)',
+    monthlySummary: 'Monthly Summary',
+    monthlySummarySubtitle: 'Maandelijkse winst- en verliesrekening',
+    revenueAndProfitTitle: 'Omzet en nettowinst per maand',
+    marginTrendTitle: 'Nettomarge per maand',
+    monthlyPnlTitle: 'Maandelijkse P&L',
+    totalLabel: 'Totaal',
+    vatOverview: 'BTW Overzicht',
+    vatOverviewSubtitle: 'Btw per land, per kwartaal',
+    vatEuTitle: 'EU-landen',
+    vatNonEuTitle: 'Buiten de EU',
+    vatNonEuHint: 'Voor deze landen wordt geen Europese btw berekend.',
+    noNonEuOrders: 'Geen orders buiten de EU in dit kwartaal',
+    kpiVatToDeclare: 'Af te dragen btw (EU)',
+    kpiEuRevenue: 'Omzet EU (excl. btw)',
+    kpiNonEuRevenue: 'Omzet buiten EU',
+    colRevenueIncl: 'Omzet incl.',
+    colRevenueExcl: 'Omzet excl.',
+    colVatAmount: 'Btw-bedrag',
+    payouts: 'Payouts',
+    payoutsSubtitle: 'Uitbetalingen van marketplaces',
+    payoutsLabel: 'uitbetalingen',
+    newPayout: 'Nieuwe uitbetaling',
+    editPayout: 'Uitbetaling bewerken',
+    payoutCreated: 'Uitbetaling toegevoegd',
+    payoutUpdated: 'Uitbetaling bijgewerkt',
+    payoutDeleted: 'Uitbetaling verwijderd',
+    deletePayoutTitle: 'Uitbetaling verwijderen',
+    deletePayoutConfirm: 'Weet je zeker dat je deze uitbetaling wilt verwijderen?',
+    errorLoadingPayouts: 'Kon uitbetalingen niet laden',
+    errorSavingPayout: 'Kon uitbetaling niet opslaan',
+    errorDeletingPayout: 'Kon uitbetaling niet verwijderen',
+    noPayoutsYet: 'Nog geen uitbetalingen ingevoerd',
+    payoutsPerDateTitle: 'Uitbetalingen per datum',
+    payoutHistoryTitle: 'Uitbetalingshistorie',
+    kpiTotalPaidOut: 'Totaal uitbetaald',
+    kpiLastPayout: 'Laatste uitbetaling',
+    kpiAvgPayout: 'Gem. uitbetaling',
+    colPayoutDate: 'Uitbetaaldatum',
+    colPeriod: 'Periode',
+    colChannel: 'Channel',
+    colAmount: 'Bedrag',
+    periodFrom: 'Periode van',
+    periodTo: 'Periode t/m',
+    noChannelSelected: 'Geen channel',
+    fillAllRequiredFields: 'Vul alle verplichte velden in',
+    amountMustBePositive: 'Bedrag moet groter zijn dan 0',
+    kpiPayoutCount: 'Aantal uitbetalingen',
+    adSpend: 'Ad Spend',
+    adSpendSubtitle: 'Advertentiekosten en rendement per channel',
+    modeOverview: 'Overzicht',
+    modeEntry: 'Invoeren',
+    enterAdSpendTitle: 'Advertentiekosten invoeren',
+    spreadFirstDay: 'Eerste dag doortrekken',
+    fillFirstDayFirst: 'Vul eerst een dag in',
+    monthTotal: 'Maandtotaal',
+    adSpendSaved: 'Advertentiekosten opgeslagen',
+    errorLoadingAdSpend: 'Kon advertentiekosten niet laden',
+    errorSavingAdSpend: 'Kon advertentiekosten niet opslaan',
+    noAdSpendYet: 'Nog geen advertentiekosten ingevoerd',
+    noChannelsAvailable: 'Geen channels beschikbaar',
+    roasShort: 'ROAS',
+    entriesLabel: 'dagen ingevuld',
+    kpiTotalAdSpend: 'Totale advertentiekosten',
+    kpiRoasCalculated: 'ROAS (berekend)',
+    kpiRoasReported: 'ROAS (gerapporteerd)',
+    kpiAdRatio: 'Advertenties / omzet',
+    basedOnOwnRevenue: 'op basis van eigen omzet',
+    asReportedByPlatform: 'zoals opgegeven door platform',
+    adSpendVsRevenueTitle: 'Advertentiekosten versus omzet',
+    spendPerChannelTitle: 'Spend per channel',
+    roasPerChannelTitle: 'ROAS per channel',
+    colSpend: 'Spend',
+    colShare: 'Aandeel',
+    colRoasCalculated: 'ROAS berekend',
+    colRoasReported: 'ROAS opgegeven',
+    colAdRatio: 'Adv./omzet',
+    fixedCosts: 'Vaste Kosten',
+    fixedCostsSubtitle: 'Maandelijkse vaste kosten per categorie',
+    newCategory: 'Nieuwe categorie',
+    categoryNamePlaceholder: 'Naam van de categorie, bijv. Personeel',
+    itemNamePlaceholder: 'Naam van de kostenpost',
+    addCostItem: 'Post toevoegen',
+    createFirstCategory: 'Maak eerst een categorie aan',
+    noItemsInCategory: 'Nog geen posten in deze categorie',
+    noFixedCostsYet: 'Nog geen vaste kosten ingevoerd',
+    deleteGroupConfirm: 'Categorie "{name}" verwijderen? Alle posten eronder verdwijnen ook.',
+    groupDeleted: 'Categorie verwijderd',
+    errorLoadingFixedCosts: 'Kon vaste kosten niet laden',
+    errorSavingFixedCosts: 'Kon vaste kosten niet opslaan',
+    distributionTitle: 'Verdeling per categorie',
+    totalPerMonth: 'Totaal per maand',
+    kpiPerMonth: 'Totaal per maand',
+    kpiPerYear: 'Totaal per jaar',
+    kpiLargestPost: 'Grootste post',
+    kpiSecondLargestPost: 'Op één na grootste',
+    costItemsLabel: 'posten',
+    twelveMonths: '12 maanden',
+    ofTotal: 'van totaal',
+    signals: 'Signals',
+    signalsSubtitle: 'Wat er nu aandacht vraagt',
+    severityCritical: 'Kritiek',
+    severityWarning: 'Waarschuwing',
+    severityInfo: 'Informatief',
+    activeSignals: 'actieve signalen',
+    showAll: 'Toon alles',
+    goToPage: 'Ga naar de pagina',
+    noSignalsFound: 'Alles ziet er goed uit',
+    noSignalsHint: 'Geen signalen gevonden voor deze periode en filters.',
+    errorLoadingSignals: 'Kon signalen niet laden',
+    signalCategory_purchasing: 'Inkoop',
+    signalCategory_fulfilment: 'Fulfilment',
+    signalCategory_margin: 'Marge',
+    signalCategory_quality: 'Kwaliteit',
+    signalCategory_marketing: 'Marketing',
+    signalCategory_setup: 'Instellingen',
+    signalUnorderedDeadlineTitle: 'Dropship-orders nog niet besteld',
+    signalUnorderedDeadlineDetail: '{count} orders moeten binnen {days} dagen geleverd zijn maar zijn nog niet ingekocht',
+    signalOverdueTitle: 'Leverdatum verstreken',
+    signalOverdueDetail: '{count} orders zijn over de uiterste leverdatum en nog niet verzonden',
+    signalStaleNotOrderedTitle: 'Blijft liggen op niet besteld',
+    signalStaleNotOrderedDetail: '{count} orders staan langer dan {days} dagen op niet besteld zonder beslissing',
+    signalCancelRateTitle: 'Hoge annuleringsratio bij {store}',
+    signalCancelRateDetail: '{cancelled} van {total} orders geannuleerd',
+    signalNegativeMarginTitle: 'Verlies op {product}',
+    signalNegativeMarginDetail: '{revenue} omzet met {loss} verlies',
+    signalThinMarginTitle: 'Dunne marge op {product}',
+    signalThinMarginDetail: '{revenue} omzet met een marge onder de 5%',
+    signalMissingCostTitle: 'Inkoopprijs onbekend',
+    signalMissingCostDetail: '{units} verkochte stuks zonder bekende inkoopprijs — {revenue} omzet zonder margeberekening',
+    signalReturnRateTitle: 'Hoog retourpercentage op {product}',
+    signalReturnRateDetail: '{returned} retour op {sold} verkochte stuks',
+    signalMissingShippingRateTitle: 'Landen zonder verzendtarief',
+    signalMissingShippingRateDetail: 'Geen tarief ingesteld voor: {countries}',
+    signalLowRoasTitle: 'Lage ROAS op {store}',
+    signalLowRoasDetail: '{spend} advertentiekosten tegenover {revenue} omzet',
+    signalHighAdRatioTitle: 'Advertentiekosten hoog ten opzichte van omzet',
+    signalHighAdRatioDetail: '{spend} aan advertenties bij {revenue} omzet',
+    cancelAnalysis: 'Cancel Analysis',
+    cancelAnalysisSubtitle: 'Waar orders geannuleerd worden',
+    viewPerStore: 'Per store',
+    viewPerProduct: 'Per product',
+    noCancellations: 'Geen annuleringen in deze periode',
+    kpiCancelledTotal: 'Totaal geannuleerd',
+    kpiLostRevenue: 'Gemiste omzet',
+    kpiAvgCancelValue: 'Gem. geannuleerd bedrag',
+    cancelRatePerStoreTitle: 'Annuleringsratio per store',
+    cancelRatePerProductTitle: 'Annuleringsratio per product',
+    storeDetailTitle: 'Detail per store',
+    productDetailTitle: 'Detail per product',
+    colTotalOrders: 'Totaal orders',
+    colCancelled: 'Geannuleerd',
+    colLostRevenue: 'Gemiste omzet',
+    ofLabel: 'van',
+    returnsAnalytics: 'Returns Analytics',
+    returnsAnalyticsSubtitle: 'Retouren per store',
+    noReturnsInPeriod: 'Geen retouren in deze periode',
+    kpiTotalReturns: 'Totaal retouren',
+    kpiReturnRate: 'Retourpercentage',
+    kpiReturnValue: 'Retourwaarde',
+    kpiProcessed: 'Verwerkt',
+    relativeToOrders: 'ten opzichte van orders',
+    avgLabel: 'gem.',
+    stillOpen: 'nog open',
+    returnsOverTimeTitle: 'Retouren over tijd',
+    returnsPerStoreTitle: 'Retouren per store',
+    returnsStoreDetailTitle: 'Detail per store',
+    colReturns: 'Retouren',
+    colReturnValue: 'Retourwaarde',
+    colOrdersInPeriod: 'Orders',
+    colProcessed: 'Verwerkt',
+    analyticsExports: 'Analytics Exports',
+    analyticsExportsSubtitle: 'Download datasets als Excel-bestand',
+    exportPeriodTitle: 'Exportperiode',
+    fromLabel: 'Van',
+    toLabel: 'Tot en met',
+    currentQuarter: 'Dit kwartaal',
+    rowsInPeriod: 'rijen in deze periode',
+    rowsLabel: 'rijen',
+    downloadXlsx: 'Download .xlsx',
+    busyLabel: 'Bezig...',
+    loadingLabel: 'Laden...',
+    exportDownloaded: 'Export gedownload',
+    exportFailed: 'Export mislukt',
+    exportOrders: 'Orders',
+    exportOrdersDesc: 'Alle orders met bedrag, btw, status, type en tracking',
+    exportOrderItems: 'Orderregels',
+    exportOrderItemsDesc: 'Elke regel apart met EAN, SKU, aantal en prijs',
+    exportProducts: 'Productprestaties',
+    exportProductsDesc: 'Per product omzet, marge, annuleringen en retouren',
+    exportPurchaseOrders: 'Inkooporders',
+    exportPurchaseOrdersDesc: 'Verwerkte inkoop met leverancier, prijzen en marge',
+    exportVat: 'Btw per land',
+    exportVatDesc: 'Omzet en btw-bedrag per land, EU en daarbuiten',
+    exportPnl: 'Maandelijkse P&L',
+    exportPnlDesc: 'Omzet, kosten en nettowinst per maand',
+    exportReturns: 'Retouren',
+    exportReturnsDesc: 'Retouren met reden, status en artikelen',
+    exportPayouts: 'Uitbetalingen',
+    exportPayoutsDesc: 'Uitbetalingen per channel met periode en bedrag',
+    exportAdSpend: 'Advertentiekosten',
+    exportAdSpendDesc: 'Advertentiekosten per dag per channel met ROAS',
+    exportFixedCosts: 'Vaste kosten',
+    exportFixedCostsDesc: 'Alle vaste kosten per categorie, per maand en per jaar',
   },
   de: {
     loading: 'Ladt...',
@@ -1776,6 +2748,330 @@ const dictionaries: Record<LanguageCode, Dictionary> = {
     linesLabel: 'Zeilen',
     firstPage: 'Erste Seite',
     lastPage: 'Letzte Seite',
+    analyticsOverview: 'Analytics Übersicht',
+    analyticsOverviewSubtitle: 'Gesamtübersicht von Umsatz, Kosten und Marge',
+    last30days: 'Letzte 30 Tage',
+    yearToDate: 'Jahr bis heute',
+    allCountries: 'Alle Länder',
+    storesLabel: 'Stores',
+    countriesLabel: 'Länder',
+    resetFilters: 'Filter zurücksetzen',
+    noOptionsAvailable: 'Keine Optionen verfügbar',
+    kpiNetRevenue: 'Nettoumsatz (ohne MwSt.)',
+    kpiNetProfit: 'Nettogewinn',
+    kpiActiveOrders: 'Aktive Bestellungen',
+    kpiCancelRate: 'Stornoquote',
+    kpiAvgOrderValue: 'Durchschn. Bestellwert',
+    dailyRevenueTitle: 'Umsatz pro Tag',
+    revenuePerStoreTitle: 'Umsatz pro Store',
+    storeBreakdownTitle: 'Store-Aufschlüsselung',
+    topProductsTitle: 'Top-Produkte (Umsatz)',
+    costBreakdownTitle: 'Kostenaufschlüsselung',
+    costCogs: 'Einkaufspreis',
+    costShipping: 'Versandkosten',
+    costCommission: 'Provision',
+    costAdSpend: 'Werbung',
+    costFixed: 'Fixkosten',
+    ofRevenue: 'vom Umsatz',
+    unitsShort: 'St.',
+    noDataForPeriod: 'Keine Daten in diesem Zeitraum',
+    errorLoadingAnalytics: 'Analytics konnten nicht geladen werden',
+    statusNotTrackedYet: 'noch nicht erfasst',
+    costSourcesPendingHint: 'Werbung und Fixkosten werden noch nicht erfasst und stehen daher auf 0.',
+    salesSection: 'SALES',
+    financeSection: 'FINANCE',
+    operationsSection: 'OPERATIONS',
+    exportsSection: 'EXPORTS',
+    productAnalytics: 'Produkt-Analyse',
+    productAnalyticsSubtitle: 'Umsatz, Marge und Leistung pro Produkt',
+    topTenProductsTitle: 'Top 10 Produkte (Umsatz)',
+    allProducts: 'Alle Produkte',
+    searchProductSkuBrand: 'Produkt, SKU, EAN oder Marke suchen...',
+    sortByRevenue: 'Sortieren: Umsatz',
+    sortByUnits: 'Sortieren: Stück',
+    sortByMargin: 'Sortieren: Marge%',
+    sortByCancelRate: 'Sortieren: Storno%',
+    colSku: 'SKU',
+    colUnits: 'Stück',
+    colMargin: 'Marge',
+    colMarginPct: 'Marge%',
+    colAvgPrice: 'Durchschn. Preis',
+    colCancelShort: 'Storno%',
+    colReturnShort: 'Retoure%',
+    storeTrends: 'Store-Trends',
+    storeTrendsSubtitle: 'Umsatztrends pro Store im Zeitverlauf',
+    perWeek: 'Pro Woche',
+    perMonth: 'Pro Monat',
+    revenueOverTimeTitle: 'Umsatz pro Store im Zeitverlauf',
+    storeOverviewTitle: 'Store-Übersicht',
+    selectAtLeastOneStore: 'Mindestens einen Store auswählen',
+    colCancellations: 'Stornierungen',
+    colAvgOrder: 'Durchschn. Bestellung',
+    channelProfitability: 'Kanal-Rentabilität',
+    channelProfitabilitySubtitle: 'Brutto- und Nettomarge pro Verkaufskanal',
+    revenueVsCostsTitle: 'Umsatz vs. Kosten pro Kanal',
+    channelDetailTitle: 'Kanal-Detail',
+    colPurchase: 'Einkauf',
+    colPlatform: 'Plattform',
+    colAdsShort: 'Werbung',
+    colGrossMargin: 'Bruttomarge',
+    colNetMargin: 'Nettomarge',
+    colNetProfit: 'Nettogewinn',
+    colCountries: 'Länder',
+    targetsForecast: 'Ziele & Prognose',
+    targetsForecastSubtitle: 'Ziele versus Ist-Werte pro Monat',
+    targetsTab: 'Ziele',
+    targetsTitle: 'Monatliche Umsatzziele',
+    targetsSubtitle: 'Legen Sie pro Monat ein Umsatzziel fest. Analytics stellt die Ist-Zahlen gegenüber.',
+    targetsSaved: 'Ziele gespeichert',
+    errorLoadingTargets: 'Ziele konnten nicht geladen werden',
+    errorSavingTargets: 'Ziele konnten nicht gespeichert werden',
+    spreadJanuary: 'Januar übernehmen',
+    fillJanuaryFirst: 'Bitte zuerst Januar ausfüllen',
+    yearTotal: 'Jahressumme',
+    noTargetsYetHint: 'Für dieses Jahr sind noch keine Ziele festgelegt. Ergänzen Sie sie unter Settings > Ziele.',
+    kpiYearTarget: 'Jahresziel',
+    kpiRealised: 'Erreicht',
+    kpiStillToGo: 'Noch offen',
+    kpiAboveTarget: 'Über Ziel',
+    kpiForecast: 'Prognose',
+    ofTarget: 'vom Ziel',
+    basedOn: 'basierend auf',
+    basedOnLast: 'basierend auf letzten',
+    daysLabel: 'Tagen',
+    monthsLabel: 'Monaten',
+    targetVsActualTitle: 'Ziel versus Ist',
+    monthDetailTitle: 'Monatsdetail',
+    forecastLabel: 'Prognose',
+    colMonth: 'Monat',
+    colTarget: 'Ziel',
+    colRealised: 'Erreicht',
+    colGap: 'Differenz',
+    colProgress: 'Fortschritt',
+    colStatus: 'Status',
+    statusAchieved: 'Erreicht',
+    statusNearly: 'Fast',
+    statusBehind: 'Zurück',
+    statusUpcoming: 'Ausstehend',
+    statusNoTarget: 'Kein Ziel',
+    dailySummary: 'Tagesübersicht',
+    dailySummarySubtitle: 'Finanzielle Tagesübersicht pro Bestellung',
+    noOrdersThisDay: 'Keine Bestellungen an diesem Tag',
+    ordersOfDay: 'Bestellungen dieses Tages',
+    cancelledLabel: 'storniert',
+    colOrderType: 'Typ',
+    colPurchased: 'Bestellt',
+    colGrossProfit: 'Bruttogewinn',
+    colCountry: 'Land',
+    purchaseStock: 'Lager',
+    purchaseOrdered: 'Ja',
+    purchasePartial: 'Teilweise',
+    purchaseNotOrdered: 'Nein',
+    totalCosts: 'Gesamtkosten',
+    vatCollected: 'Erhobene MwSt. (nicht in der Marge)',
+    monthlySummary: 'Monatsübersicht',
+    monthlySummarySubtitle: 'Monatliche Gewinn- und Verlustrechnung',
+    revenueAndProfitTitle: 'Umsatz und Nettogewinn pro Monat',
+    marginTrendTitle: 'Nettomarge pro Monat',
+    monthlyPnlTitle: 'Monatliche GuV',
+    totalLabel: 'Gesamt',
+    vatOverview: 'MwSt.-Übersicht',
+    vatOverviewSubtitle: 'MwSt. pro Land, pro Quartal',
+    vatEuTitle: 'EU-Länder',
+    vatNonEuTitle: 'Außerhalb der EU',
+    vatNonEuHint: 'Für diese Länder wird keine europäische MwSt. berechnet.',
+    noNonEuOrders: 'Keine Bestellungen außerhalb der EU in diesem Quartal',
+    kpiVatToDeclare: 'Abzuführende MwSt. (EU)',
+    kpiEuRevenue: 'EU-Umsatz (ohne MwSt.)',
+    kpiNonEuRevenue: 'Nicht-EU-Umsatz',
+    colRevenueIncl: 'Umsatz brutto',
+    colRevenueExcl: 'Umsatz netto',
+    colVatAmount: 'MwSt.-Betrag',
+    payouts: 'Auszahlungen',
+    payoutsSubtitle: 'Auszahlungen der Marktplätze',
+    payoutsLabel: 'Auszahlungen',
+    newPayout: 'Neue Auszahlung',
+    editPayout: 'Auszahlung bearbeiten',
+    payoutCreated: 'Auszahlung hinzugefügt',
+    payoutUpdated: 'Auszahlung aktualisiert',
+    payoutDeleted: 'Auszahlung gelöscht',
+    deletePayoutTitle: 'Auszahlung löschen',
+    deletePayoutConfirm: 'Möchten Sie diese Auszahlung wirklich löschen?',
+    errorLoadingPayouts: 'Auszahlungen konnten nicht geladen werden',
+    errorSavingPayout: 'Auszahlung konnte nicht gespeichert werden',
+    errorDeletingPayout: 'Auszahlung konnte nicht gelöscht werden',
+    noPayoutsYet: 'Noch keine Auszahlungen erfasst',
+    payoutsPerDateTitle: 'Auszahlungen pro Datum',
+    payoutHistoryTitle: 'Auszahlungshistorie',
+    kpiTotalPaidOut: 'Gesamt ausgezahlt',
+    kpiLastPayout: 'Letzte Auszahlung',
+    kpiAvgPayout: 'Durchschn. Auszahlung',
+    colPayoutDate: 'Auszahlungsdatum',
+    colPeriod: 'Zeitraum',
+    colChannel: 'Channel',
+    colAmount: 'Betrag',
+    periodFrom: 'Zeitraum von',
+    periodTo: 'Zeitraum bis',
+    noChannelSelected: 'Kein Channel',
+    fillAllRequiredFields: 'Bitte alle Pflichtfelder ausfüllen',
+    amountMustBePositive: 'Betrag muss größer als 0 sein',
+    kpiPayoutCount: 'Anzahl Auszahlungen',
+    adSpend: 'Werbekosten',
+    adSpendSubtitle: 'Werbekosten und Rendite pro Channel',
+    modeOverview: 'Übersicht',
+    modeEntry: 'Eingabe',
+    enterAdSpendTitle: 'Werbekosten erfassen',
+    spreadFirstDay: 'Ersten Tag übernehmen',
+    fillFirstDayFirst: 'Bitte zuerst einen Tag ausfüllen',
+    monthTotal: 'Monatssumme',
+    adSpendSaved: 'Werbekosten gespeichert',
+    errorLoadingAdSpend: 'Werbekosten konnten nicht geladen werden',
+    errorSavingAdSpend: 'Werbekosten konnten nicht gespeichert werden',
+    noAdSpendYet: 'Noch keine Werbekosten erfasst',
+    noChannelsAvailable: 'Keine Channels verfügbar',
+    roasShort: 'ROAS',
+    entriesLabel: 'Tage erfasst',
+    kpiTotalAdSpend: 'Gesamte Werbekosten',
+    kpiRoasCalculated: 'ROAS (berechnet)',
+    kpiRoasReported: 'ROAS (gemeldet)',
+    kpiAdRatio: 'Werbung / Umsatz',
+    basedOnOwnRevenue: 'basierend auf eigenem Umsatz',
+    asReportedByPlatform: 'laut Plattform',
+    adSpendVsRevenueTitle: 'Werbekosten versus Umsatz',
+    spendPerChannelTitle: 'Spend pro Channel',
+    roasPerChannelTitle: 'ROAS pro Channel',
+    colSpend: 'Spend',
+    colShare: 'Anteil',
+    colRoasCalculated: 'ROAS berechnet',
+    colRoasReported: 'ROAS gemeldet',
+    colAdRatio: 'Werbung/Umsatz',
+    fixedCosts: 'Fixkosten',
+    fixedCostsSubtitle: 'Monatliche Fixkosten pro Kategorie',
+    newCategory: 'Neue Kategorie',
+    categoryNamePlaceholder: 'Name der Kategorie, z. B. Personal',
+    itemNamePlaceholder: 'Name der Kostenposition',
+    addCostItem: 'Position hinzufügen',
+    createFirstCategory: 'Legen Sie zuerst eine Kategorie an',
+    noItemsInCategory: 'Noch keine Positionen in dieser Kategorie',
+    noFixedCostsYet: 'Noch keine Fixkosten erfasst',
+    deleteGroupConfirm: 'Kategorie "{name}" löschen? Alle Positionen darunter werden ebenfalls entfernt.',
+    groupDeleted: 'Kategorie gelöscht',
+    errorLoadingFixedCosts: 'Fixkosten konnten nicht geladen werden',
+    errorSavingFixedCosts: 'Fixkosten konnten nicht gespeichert werden',
+    distributionTitle: 'Verteilung pro Kategorie',
+    totalPerMonth: 'Gesamt pro Monat',
+    kpiPerMonth: 'Gesamt pro Monat',
+    kpiPerYear: 'Gesamt pro Jahr',
+    kpiLargestPost: 'Größte Position',
+    kpiSecondLargestPost: 'Zweitgrößte',
+    costItemsLabel: 'Positionen',
+    twelveMonths: '12 Monate',
+    ofTotal: 'vom Gesamt',
+    signals: 'Signale',
+    signalsSubtitle: 'Was jetzt Aufmerksamkeit braucht',
+    severityCritical: 'Kritisch',
+    severityWarning: 'Warnung',
+    severityInfo: 'Information',
+    activeSignals: 'aktive Signale',
+    showAll: 'Alle anzeigen',
+    goToPage: 'Zur Seite',
+    noSignalsFound: 'Alles sieht gut aus',
+    noSignalsHint: 'Keine Signale für diesen Zeitraum und diese Filter.',
+    errorLoadingSignals: 'Signale konnten nicht geladen werden',
+    signalCategory_purchasing: 'Einkauf',
+    signalCategory_fulfilment: 'Fulfilment',
+    signalCategory_margin: 'Marge',
+    signalCategory_quality: 'Qualität',
+    signalCategory_marketing: 'Marketing',
+    signalCategory_setup: 'Einstellungen',
+    signalUnorderedDeadlineTitle: 'Dropship-Bestellungen noch nicht eingekauft',
+    signalUnorderedDeadlineDetail: '{count} Bestellungen müssen in {days} Tagen geliefert werden, sind aber noch nicht bestellt',
+    signalOverdueTitle: 'Lieferdatum überschritten',
+    signalOverdueDetail: '{count} Bestellungen sind über dem Lieferdatum und noch nicht versendet',
+    signalStaleNotOrderedTitle: 'Bleibt auf nicht bestellt liegen',
+    signalStaleNotOrderedDetail: '{count} Bestellungen stehen seit mehr als {days} Tagen auf nicht bestellt ohne Entscheidung',
+    signalCancelRateTitle: 'Hohe Stornoquote bei {store}',
+    signalCancelRateDetail: '{cancelled} von {total} Bestellungen storniert',
+    signalNegativeMarginTitle: 'Verlust bei {product}',
+    signalNegativeMarginDetail: '{revenue} Umsatz mit {loss} Verlust',
+    signalThinMarginTitle: 'Dünne Marge bei {product}',
+    signalThinMarginDetail: '{revenue} Umsatz mit einer Marge unter 5%',
+    signalMissingCostTitle: 'Einkaufspreis unbekannt',
+    signalMissingCostDetail: '{units} verkaufte Stück ohne bekannten Einkaufspreis — {revenue} Umsatz ohne Margenberechnung',
+    signalReturnRateTitle: 'Hohe Retourenquote bei {product}',
+    signalReturnRateDetail: '{returned} retour von {sold} verkauften Stück',
+    signalMissingShippingRateTitle: 'Länder ohne Versandtarif',
+    signalMissingShippingRateDetail: 'Kein Tarif festgelegt für: {countries}',
+    signalLowRoasTitle: 'Niedriger ROAS bei {store}',
+    signalLowRoasDetail: '{spend} Werbekosten gegenüber {revenue} Umsatz',
+    signalHighAdRatioTitle: 'Werbekosten hoch im Verhältnis zum Umsatz',
+    signalHighAdRatioDetail: '{spend} für Werbung bei {revenue} Umsatz',
+    cancelAnalysis: 'Stornoanalyse',
+    cancelAnalysisSubtitle: 'Wo Bestellungen storniert werden',
+    viewPerStore: 'Pro Store',
+    viewPerProduct: 'Pro Produkt',
+    noCancellations: 'Keine Stornierungen in diesem Zeitraum',
+    kpiCancelledTotal: 'Gesamt storniert',
+    kpiLostRevenue: 'Entgangener Umsatz',
+    kpiAvgCancelValue: 'Durchschn. Stornobetrag',
+    cancelRatePerStoreTitle: 'Stornoquote pro Store',
+    cancelRatePerProductTitle: 'Stornoquote pro Produkt',
+    storeDetailTitle: 'Detail pro Store',
+    productDetailTitle: 'Detail pro Produkt',
+    colTotalOrders: 'Bestellungen gesamt',
+    colCancelled: 'Storniert',
+    colLostRevenue: 'Entgangener Umsatz',
+    ofLabel: 'von',
+    returnsAnalytics: 'Retourenanalyse',
+    returnsAnalyticsSubtitle: 'Retouren pro Store',
+    noReturnsInPeriod: 'Keine Retouren in diesem Zeitraum',
+    kpiTotalReturns: 'Retouren gesamt',
+    kpiReturnRate: 'Retourenquote',
+    kpiReturnValue: 'Retourenwert',
+    kpiProcessed: 'Bearbeitet',
+    relativeToOrders: 'im Verhältnis zu Bestellungen',
+    avgLabel: 'durchschn.',
+    stillOpen: 'noch offen',
+    returnsOverTimeTitle: 'Retouren im Zeitverlauf',
+    returnsPerStoreTitle: 'Retouren pro Store',
+    returnsStoreDetailTitle: 'Detail pro Store',
+    colReturns: 'Retouren',
+    colReturnValue: 'Retourenwert',
+    colOrdersInPeriod: 'Bestellungen',
+    colProcessed: 'Bearbeitet',
+    analyticsExports: 'Analytics Exports',
+    analyticsExportsSubtitle: 'Datensätze als Excel-Datei herunterladen',
+    exportPeriodTitle: 'Exportzeitraum',
+    fromLabel: 'Von',
+    toLabel: 'Bis einschließlich',
+    currentQuarter: 'Dieses Quartal',
+    rowsInPeriod: 'Zeilen in diesem Zeitraum',
+    rowsLabel: 'Zeilen',
+    downloadXlsx: 'Download .xlsx',
+    busyLabel: 'Läuft...',
+    loadingLabel: 'Wird geladen...',
+    exportDownloaded: 'Export heruntergeladen',
+    exportFailed: 'Export fehlgeschlagen',
+    exportOrders: 'Bestellungen',
+    exportOrdersDesc: 'Alle Bestellungen mit Betrag, MwSt., Status, Typ und Tracking',
+    exportOrderItems: 'Bestellpositionen',
+    exportOrderItemsDesc: 'Jede Position einzeln mit EAN, SKU, Menge und Preis',
+    exportProducts: 'Produktleistung',
+    exportProductsDesc: 'Umsatz, Marge, Stornierungen und Retouren pro Produkt',
+    exportPurchaseOrders: 'Bestellungen Einkauf',
+    exportPurchaseOrdersDesc: 'Bearbeiteter Einkauf mit Lieferant, Preisen und Marge',
+    exportVat: 'MwSt. pro Land',
+    exportVatDesc: 'Umsatz und MwSt.-Betrag pro Land, EU und außerhalb',
+    exportPnl: 'Monatliche GuV',
+    exportPnlDesc: 'Umsatz, Kosten und Nettogewinn pro Monat',
+    exportReturns: 'Retouren',
+    exportReturnsDesc: 'Retouren mit Grund, Status und Artikeln',
+    exportPayouts: 'Auszahlungen',
+    exportPayoutsDesc: 'Auszahlungen pro Channel mit Zeitraum und Betrag',
+    exportAdSpend: 'Werbekosten',
+    exportAdSpendDesc: 'Werbekosten pro Tag pro Channel mit ROAS',
+    exportFixedCosts: 'Fixkosten',
+    exportFixedCostsDesc: 'Alle Fixkosten pro Kategorie, pro Monat und pro Jahr',
   },
 };
 

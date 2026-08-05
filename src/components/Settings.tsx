@@ -16,6 +16,7 @@ import {
   Warehouse,
   Truck,
   Euro,
+  Target,
   Settings as SettingsIcon,
   Loader2,
   Save,
@@ -25,12 +26,13 @@ import { api } from '../services/api';
 import { useLanguage } from '../contexts/LanguageContext';
 import { SupplierSettings } from './SupplierSettings';
 import { ShippingRateSettings } from './ShippingRateSettings';
+import { TargetSettings } from './TargetSettings';
 
 interface SettingsProps {
   activeProfile: string;
 }
 
-type SettingsTab = 'warehouse' | 'suppliers' | 'shipping';
+type SettingsTab = 'warehouse' | 'suppliers' | 'shipping' | 'targets';
 
 const EU_COUNTRIES = [
   { code: 'NL', name: 'Nederland' },
@@ -118,6 +120,7 @@ export function Settings({ activeProfile }: SettingsProps) {
     { id: 'warehouse' as SettingsTab, label: t('warehouseTab'), icon: Warehouse },
     { id: 'suppliers' as SettingsTab, label: t('suppliersTab'), icon: Truck },
     { id: 'shipping' as SettingsTab, label: t('shippingRatesTab'), icon: Euro },
+    { id: 'targets' as SettingsTab, label: t('targetsTab'), icon: Target },
   ];
 
   if (!activeProfile) {
@@ -297,6 +300,9 @@ export function Settings({ activeProfile }: SettingsProps) {
 
       {/* Shipping rates tab */}
       {activeTab === 'shipping' && <ShippingRateSettings activeProfile={activeProfile} />}
+
+      {/* Targets tab */}
+      {activeTab === 'targets' && <TargetSettings activeProfile={activeProfile} />}
     </div>
   );
 }

@@ -28,8 +28,16 @@ export const VAT_RATES = {
   SK: 0.23,   // Slowakije
 };
 
-// Onbekend of leeg land: terugvallen op het Nederlandse tarief.
-export const DEFAULT_VAT_RATE = 0.21;
+/*
+ * Buiten de EU geldt geen Europese btw. Een land dat niet in de lijst hierboven
+ * staat krijgt daarom 0% — dat is correcter dan een willekeurig EU-tarief
+ * opleggen aan bijvoorbeeld een Britse of Zwitserse order.
+ */
+export const DEFAULT_VAT_RATE = 0;
+
+// Voor weergave: is dit een EU-land met een eigen btw-tarief?
+export const isEuCountry = (country) =>
+  Object.prototype.hasOwnProperty.call(VAT_RATES, normalizeCountryCode(country));
 
 // EU-documenten schrijven Griekenland als EL, ISO gebruikt GR.
 const COUNTRY_ALIASES = {
