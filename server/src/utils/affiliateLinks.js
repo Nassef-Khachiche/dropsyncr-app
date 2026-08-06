@@ -8,10 +8,33 @@
  * Tags kunnen via environment variables worden overschreven.
  */
 
-const getAmazonAffiliateConfig = () => ({
-  tag: String(process.env.AMAZON_TAG || '').trim(),
-  ascSubTag: String(process.env.AMAZON_ASCSUBTAG || '').trim(),
-});
+const DEFAULT_AMAZON_TAG = 'woolsocks-21';
+const DEFAULT_AMAZON_ASCSUBTAG = '167-OBS-3b1a48d5d41843cd95a41550fd32067b';
+
+const firstEnvValue = (...candidates) => {
+  for (const candidate of candidates) {
+    const value = String(candidate || '').trim();
+    if (value) return value;
+  }
+  return '';
+};
+
+const getAmazonAffiliateConfig = () => {
+  const tag = firstEnvValue(
+    process.env.AMAZON_TAG,
+    process.env.AMAZON_AFFILIATE_TAG,
+    process.env.AFFILIATE_AMAZON_TAG,
+  ) || DEFAULT_AMAZON_TAG;
+
+  const ascSubTag = firstEnvValue(
+    process.env.AMAZON_ASCSUBTAG,
+    process.env.AMAZON_SUBTAG,
+    process.env.AMAZON_AFFILIATE_SUBTAG,
+    process.env.AFFILIATE_AMAZON_SUBTAG,
+  ) || DEFAULT_AMAZON_ASCSUBTAG;
+
+  return { tag, ascSubTag };
+};
 
 const extractAmazonTld = (url) => {
   const match = String(url).match(/https?:\/\/[^/]*amazon\.([a-z.]+)\//i);
