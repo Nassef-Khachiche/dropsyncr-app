@@ -8,8 +8,10 @@
  * Tags kunnen via environment variables worden overschreven.
  */
 
-const AMAZON_TAG = String(process.env.AMAZON_TAG || '').trim();
-const AMAZON_ASCSUBTAG = String(process.env.AMAZON_ASCSUBTAG || '').trim();
+const getAmazonAffiliateConfig = () => ({
+  tag: String(process.env.AMAZON_TAG || '').trim(),
+  ascSubTag: String(process.env.AMAZON_ASCSUBTAG || '').trim(),
+});
 
 const extractAmazonTld = (url) => {
   const match = String(url).match(/https?:\/\/[^/]*amazon\.([a-z.]+)\//i);
@@ -25,19 +27,21 @@ const extractAsin = (url) => {
 export const isAmazonUrl = (url) => String(url || '').toLowerCase().includes('amazon.');
 
 const isAlreadyTagged = (url) => {
-  if (!AMAZON_TAG) return false;
-  return new RegExp(`[?&]tag=${AMAZON_TAG}(&|$)`, 'i').test(String(url || ''));
+  const { tag } = getAmazonAffiliateConfig();
+  if (!tag) return false;
+  return new RegExp(`[?&]tag=${tag}(&|$)`, 'i').test(String(url || ''));
 };
 
 export const buildAmazonAffiliateLink = (url) => {
-  if (!AMAZON_TAG || !AMAZON_ASCSUBTAG) return String(url || '').trim();
+  const { tag, ascSubTag } = getAmazonAffiliateConfig();
+  if (!tag || !ascSubTag) return String(url || '').trim();
   const asin = extractAsin(url);
   if (!asin) return String(url || '').trim();
   const tld = extractAmazonTld(url);
   return `https://www.amazon.${tld}/dp/${asin}`
-    + `?tag=${encodeURIComponent(AMAZON_TAG)}`
-    + `&ascsubtag=${encodeURIComponent(AMAZON_ASCSUBTAG)}`
-    + `&sub_id_1=${encodeURIComponent(AMAZON_ASCSUBTAG)}`;
+    + `?tag=${encodeURIComponent(tag)}`
+    + `&ascsubtag=${encodeURIComponent(ascSubTag)}`
+    + `&sub_id_1=${encodeURIComponent(ascSubTag)}`;
 };
 
 /**
