@@ -137,6 +137,9 @@ class ApiService {
     expiringTomorrow?: boolean;
     storeName?: string;
     vvbWindow?: string;
+    channels?: string[];
+    countries?: string[];
+    shippingVia?: string[];
   }) {
     const queryParams = new URLSearchParams();
     if (params?.installationId) queryParams.append('installationId', params.installationId);
@@ -149,6 +152,15 @@ class ApiService {
     if (params?.expiringTomorrow) queryParams.append('expiringTomorrow', 'true');
     if (params?.storeName && params.storeName !== 'all') queryParams.append('storeName', params.storeName);
     if (params?.vvbWindow) queryParams.append('vvbWindow', params.vvbWindow);
+    if (Array.isArray(params?.channels)) {
+      params.channels.filter(Boolean).forEach((channel) => queryParams.append('channels', channel));
+    }
+    if (Array.isArray(params?.countries)) {
+      params.countries.filter(Boolean).forEach((country) => queryParams.append('countries', country));
+    }
+    if (Array.isArray(params?.shippingVia)) {
+      params.shippingVia.filter(Boolean).forEach((value) => queryParams.append('shippingVia', value));
+    }
 
     return this.request<{ orders: any[]; pagination: any; stats: any }>(
       `/orders?${queryParams.toString()}`
@@ -1538,11 +1550,11 @@ class ApiService {
     );
   }
 
-  async pickOrders(orderIds: number[], installationId: string) {
+  async pickOrders(orderIds: number[], installationId?: string) {
     return this.request<{ success: boolean; processed: number; errors: number; results: any[] }>(
       '/orders/pick', {
         method: 'POST',
-        body: JSON.stringify({ orderIds, installationId }),
+        body: JSON.stringify({ orderIds, ...(installationId ? { installationId } : {}) }),
       }
     );
   }

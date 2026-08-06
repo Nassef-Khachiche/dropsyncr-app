@@ -8,12 +8,10 @@ export const pickOrders = async (req, res) => {
       return res.status(400).json({ error: 'orderIds is required and must be a non-empty array' });
     }
 
-    if (!installationId) {
-      return res.status(400).json({ error: 'installationId is required' });
-    }
-
-    const parsedInstallationId = parseInt(installationId, 10);
-    if (Number.isNaN(parsedInstallationId)) {
+    const installationScopeRaw = String(installationId || '').trim();
+    const isAllStoresScope = !installationScopeRaw || installationScopeRaw.toLowerCase() === 'all';
+    const parsedInstallationId = isAllStoresScope ? null : parseInt(installationScopeRaw, 10);
+    if (!isAllStoresScope && Number.isNaN(parsedInstallationId)) {
       return res.status(400).json({ error: 'Invalid installationId' });
     }
 
@@ -25,12 +23,30 @@ export const pickOrders = async (req, res) => {
       return res.status(400).json({ error: 'No valid orderIds provided' });
     }
 
+    const targetOrders = await prisma.order.findMany({
+      where: {
+        id: { in: parsedOrderIds },
+        ...(isAllStoresScope ? {} : { installationId: parsedInstallationId }),
+      },
+      select: { id: true, installationId: true, status: true, orderStatus: true },
+    });
+
+    if (targetOrders.length === 0) {
+      return res.status(404).json({ error: 'No matching orders found for the selected installation scope' });
+    }
+
+    const targetOrderById = new Map(targetOrders.map((order) => [order.id, order]));
+
     if (!req.user.isGlobalAdmin) {
-      const hasAccess = await prisma.userInstallation.findFirst({
-        where: { userId: req.user.id, installationId: parsedInstallationId },
+      const userInstallations = await prisma.userInstallation.findMany({
+        where: { userId: req.user.id },
+        select: { installationId: true },
       });
-      if (!hasAccess) {
-        return res.status(403).json({ error: 'Access denied to this installation' });
+      const allowedInstallationIds = new Set(userInstallations.map((entry) => entry.installationId));
+
+      const unauthorizedOrder = targetOrders.find((order) => !allowedInstallationIds.has(order.installationId));
+      if (unauthorizedOrder) {
+        return res.status(403).json({ error: 'Access denied to one or more selected installations' });
       }
     }
 
@@ -39,6 +55,17 @@ export const pickOrders = async (req, res) => {
 
     for (const orderId of parsedOrderIds) {
       try {
+        const targetOrder = targetOrderById.get(orderId);
+        if (!targetOrder) {
+          errors.push({ orderId, error: 'Order not found in current installation scope' });
+          continue;
+        }
+
+        if (String(targetOrder.status || '').toLowerCase() === 'gepickt' || String(targetOrder.orderStatus || '').toLowerCase() === 'gepickt') {
+          results.push({ orderId, success: true, reservationsProcessed: 0, alreadyPicked: true });
+          continue;
+        }
+
         const reservations = await prisma.stockReservation.findMany({
           where: { orderId, cancelled: false, pickedAt: null },
         });
@@ -48,7 +75,7 @@ export const pickOrders = async (req, res) => {
           // Een positieve picked mutatie wordt afgetrokken van de voorraad
           await prisma.stockMutation.create({
             data: {
-              installationId: parsedInstallationId,
+              installationId: targetOrder.installationId,
               productId: reservation.productId,
               type: 'picked',
               quantity: reservation.quantity, // positief — wordt afgetrokken door calculateStockForProducts
@@ -61,7 +88,7 @@ export const pickOrders = async (req, res) => {
 
           // Verlaag StockBatch van de oudste batch (FIFO)
           const oldestBatch = await prisma.stockBatch.findFirst({
-            where: { productId: reservation.productId },
+            where: { productId: reservation.productId, installationId: targetOrder.installationId },
             orderBy: { receivedAt: 'asc' },
           });
           if (oldestBatch) {
@@ -118,6 +145,23 @@ export const getPicklist = async (req, res) => {
 
     if (parsedOrderIds.length === 0) {
       return res.status(400).json({ error: 'No valid orderIds provided' });
+    }
+
+    const scopedOrders = await prisma.order.findMany({
+      where: { id: { in: parsedOrderIds } },
+      select: { id: true, installationId: true },
+    });
+
+    if (!req.user.isGlobalAdmin) {
+      const userInstallations = await prisma.userInstallation.findMany({
+        where: { userId: req.user.id },
+        select: { installationId: true },
+      });
+      const allowedInstallationIds = new Set(userInstallations.map((entry) => entry.installationId));
+      const unauthorized = scopedOrders.find((order) => !allowedInstallationIds.has(order.installationId));
+      if (unauthorized) {
+        return res.status(403).json({ error: 'Access denied to one or more selected installations' });
+      }
     }
 
     const orders = await prisma.order.findMany({

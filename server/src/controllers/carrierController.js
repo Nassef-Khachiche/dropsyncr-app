@@ -123,6 +123,61 @@ const pushTrackingWithRetry = async ({
   throw lastError || new Error(`Tracking push failed for ${platform} order ${orderNumber}`);
 };
 
+const persistTrackingPushResult = async ({
+  orderId,
+  trackingCode,
+  platform,
+  success,
+  errorMessage = null,
+}) => {
+  const normalizedOrderId = Number(orderId);
+  const normalizedTrackingCode = String(trackingCode || '').trim();
+  if (!Number.isInteger(normalizedOrderId) || normalizedOrderId <= 0 || !normalizedTrackingCode) return;
+
+  const source = success ? `${platform}_tracking_push` : `${platform}_tracking_push_failed`;
+  const status = success ? 'linked' : 'sync_failed';
+
+  await prisma.tracking.upsert({
+    where: { orderId: normalizedOrderId },
+    update: {
+      trackingCode: normalizedTrackingCode,
+      supplier: platform,
+      source,
+      status,
+    },
+    create: {
+      orderId: normalizedOrderId,
+      trackingCode: normalizedTrackingCode,
+      supplier: platform,
+      source,
+      status,
+    },
+  });
+
+  if (!success && platform === 'bol.com') {
+    await prisma.order.updateMany({
+      where: {
+        id: normalizedOrderId,
+        status: 'verzonden',
+      },
+      data: {
+        status: 'label-aangemaakt',
+        orderStatus: 'label-aangemaakt',
+        orderStatusCode: 'OPEN',
+      },
+    });
+  }
+
+  if (!success) {
+    console.error('[TRACKING PUSH] Persisted failed tracking sync state', {
+      platform,
+      orderId: normalizedOrderId,
+      trackingCode: normalizedTrackingCode,
+      message: errorMessage,
+    });
+  }
+};
+
 const normalizeDpdCredentials = (rawCredentials = {}) => {
   const credentials = { ...rawCredentials };
   const trimMaybe = (value) => (value === undefined || value === null ? value : String(value).trim());
@@ -1069,7 +1124,25 @@ export const generateCarrierLabels = async (req, res) => {
                 carrier.carrierType,
                 selectedShippingMethod,
               ),
-            }).catch((err) => console.error('[KAUFLAND TRACKING] Retry failed:', err.message));
+            })
+              .then(async () => {
+                await persistTrackingPushResult({
+                  orderId,
+                  trackingCode: generatedLabel.trackingCode,
+                  platform: 'kaufland',
+                  success: true,
+                });
+              })
+              .catch(async (err) => {
+                await persistTrackingPushResult({
+                  orderId,
+                  trackingCode: generatedLabel.trackingCode,
+                  platform: 'kaufland',
+                  success: false,
+                  errorMessage: err?.message || null,
+                });
+                console.error('[KAUFLAND TRACKING] Retry failed:', err.message);
+              });
           }
           if (orderRecord?.platform === 'bol.com' && generatedLabel?.trackingCode) {
             await pushTrackingWithRetry({
@@ -1083,7 +1156,25 @@ export const generateCarrierLabels = async (req, res) => {
                 carrier.carrierType,
                 selectedShippingMethod,
               ),
-            }).catch((err) => console.error('[BOL TRACKING] Retry failed:', err.message));
+            })
+              .then(async () => {
+                await persistTrackingPushResult({
+                  orderId,
+                  trackingCode: generatedLabel.trackingCode,
+                  platform: 'bol.com',
+                  success: true,
+                });
+              })
+              .catch(async (err) => {
+                await persistTrackingPushResult({
+                  orderId,
+                  trackingCode: generatedLabel.trackingCode,
+                  platform: 'bol.com',
+                  success: false,
+                  errorMessage: err?.message || null,
+                });
+                console.error('[BOL TRACKING] Retry failed:', err.message);
+              });
           }
           if (orderRecord?.platform === 'bricobravo' && generatedLabel?.trackingCode) {
             await pushTrackingWithRetry({
@@ -1098,7 +1189,25 @@ export const generateCarrierLabels = async (req, res) => {
                 selectedShippingMethod,
                 generatedLabel.trackingUrl || null,
               ),
-            }).catch((err) => console.error('[BRICOBRAVO TRACKING] Retry failed:', err.message));
+            })
+              .then(async () => {
+                await persistTrackingPushResult({
+                  orderId,
+                  trackingCode: generatedLabel.trackingCode,
+                  platform: 'bricobravo',
+                  success: true,
+                });
+              })
+              .catch(async (err) => {
+                await persistTrackingPushResult({
+                  orderId,
+                  trackingCode: generatedLabel.trackingCode,
+                  platform: 'bricobravo',
+                  success: false,
+                  errorMessage: err?.message || null,
+                });
+                console.error('[BRICOBRAVO TRACKING] Retry failed:', err.message);
+              });
           }
           if (orderRecord?.platform === 'shopify' && generatedLabel?.trackingCode) {
             await pushTrackingWithRetry({
@@ -1112,7 +1221,25 @@ export const generateCarrierLabels = async (req, res) => {
                 carrier.carrierType,
                 generatedLabel.trackingUrl || null,
               ),
-            }).catch((err) => console.error('[SHOPIFY TRACKING] Retry failed:', err.message));
+            })
+              .then(async () => {
+                await persistTrackingPushResult({
+                  orderId,
+                  trackingCode: generatedLabel.trackingCode,
+                  platform: 'shopify',
+                  success: true,
+                });
+              })
+              .catch(async (err) => {
+                await persistTrackingPushResult({
+                  orderId,
+                  trackingCode: generatedLabel.trackingCode,
+                  platform: 'shopify',
+                  success: false,
+                  errorMessage: err?.message || null,
+                });
+                console.error('[SHOPIFY TRACKING] Retry failed:', err.message);
+              });
           }
         }
       }

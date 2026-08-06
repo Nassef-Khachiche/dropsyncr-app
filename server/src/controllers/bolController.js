@@ -2172,6 +2172,93 @@ const enrichBolProductData = async ({ credentials, ean }) => {
   }
 };
 
+const reconcileBolCancelledOrdersForInstallation = async ({ installationId, credentials } = {}) => {
+  const installationIdNumber = parseInt(installationId, 10);
+  if (!Number.isFinite(installationIdNumber)) {
+    return { checked: 0, cancelled: 0, unchanged: 0, failed: 0 };
+  }
+
+  const maxCandidatesRaw = parseInt(process.env.BOL_CANCEL_RECONCILE_MAX_ORDERS || '200', 10);
+  const maxCandidates = Number.isFinite(maxCandidatesRaw) && maxCandidatesRaw > 0
+    ? maxCandidatesRaw
+    : 200;
+
+  const candidates = await prisma.order.findMany({
+    where: {
+      installationId: installationIdNumber,
+      platform: 'bol.com',
+      NOT: {
+        OR: [
+          { status: 'geannuleerd' },
+          { orderStatus: 'geannuleerd' },
+          { orderStatusCode: 'CANCELLED' },
+        ],
+      },
+    },
+    select: { id: true, orderNumber: true, status: true, orderStatus: true, orderStatusCode: true },
+    orderBy: { updatedAt: 'desc' },
+    take: maxCandidates,
+  });
+
+  if (candidates.length === 0) {
+    return { checked: 0, cancelled: 0, unchanged: 0, failed: 0 };
+  }
+
+  let cancelled = 0;
+  let unchanged = 0;
+  let failed = 0;
+
+  for (const order of candidates) {
+    const normalizedOrderNumber = String(order.orderNumber || '').trim();
+    if (!normalizedOrderNumber) {
+      unchanged += 1;
+      continue;
+    }
+
+    try {
+      const payload = await bolApiRequest(credentials, `/orders/${encodeURIComponent(normalizedOrderNumber)}`);
+      const statusCandidates = [
+        firstNonEmptyString(payload?.status),
+        findStringValueByKey(payload, /(^|_)(status|order.?status|shipment.?status)$/i),
+      ].filter(Boolean);
+
+      const resolvedInternalStatus = resolveBolStatusToInternal({
+        statuses: statusCandidates,
+        hasTrackAndTrace: false,
+      });
+
+      if (resolvedInternalStatus !== 'geannuleerd') {
+        unchanged += 1;
+        continue;
+      }
+
+      await prisma.order.update({
+        where: { id: order.id },
+        data: {
+          status: 'geannuleerd',
+          orderStatus: 'geannuleerd',
+          orderStatusCode: 'CANCELLED',
+          shippingStatus: resolvePrimaryBolStatus(statusCandidates) || 'CANCELLED',
+        },
+      });
+
+      cancelled += 1;
+      console.log('[BOL RECONCILE] Marked order as cancelled', {
+        orderNumber: normalizedOrderNumber,
+        orderId: order.id,
+      });
+    } catch (error) {
+      failed += 1;
+      console.warn('[BOL RECONCILE] Failed to verify order status', {
+        orderNumber: normalizedOrderNumber,
+        message: error?.message || String(error),
+      });
+    }
+  }
+
+  return { checked: candidates.length, cancelled, unchanged, failed };
+};
+
 /**
  * Core sync logic — pure async function, no Express req/res dependency.
  * Called by both the HTTP route handler and the cron job.
@@ -2693,11 +2780,23 @@ async function syncBolOrdersCore({ installationId, integrationId = null, userId 
     }
   }
 
+  let cancellationReconciliation = null;
+  try {
+    cancellationReconciliation = await reconcileBolCancelledOrdersForInstallation({
+      installationId: installationIdNumber,
+      credentials,
+    });
+    console.log('[BOL SYNC] Cancellation reconciliation completed', cancellationReconciliation);
+  } catch (reconcileError) {
+    console.warn('[BOL SYNC] Cancellation reconciliation failed (non-fatal):', reconcileError?.message || reconcileError);
+  }
+
   return {
     success: true,
     imported: importedCount,
     updated: updatedCount,
     total: importedCount + updatedCount,
+    cancellationReconciliation,
   };
 }
 

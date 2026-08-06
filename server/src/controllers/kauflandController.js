@@ -87,6 +87,24 @@ const isUnitShippedOrDelivered = (unit) => {
   return internal === 'verzonden' || internal === 'afgeleverd';
 };
 
+const resolveKauflandOrderInternalStatusFromUnits = (orderUnits = []) => {
+  const units = Array.isArray(orderUnits) ? orderUnits : [];
+  if (units.length === 0) return 'openstaand';
+
+  if (units.every((unit) => isUnitCancelled(unit))) {
+    return 'geannuleerd';
+  }
+
+  if (units.every((unit) => !isUnitCancelled(unit) && isUnitShippedOrDelivered(unit))) {
+    const allDelivered = units.every(
+      (unit) => mapKauflandUnitToInternalStatus(unit) === 'afgeleverd'
+    );
+    return allDelivered ? 'afgeleverd' : 'verzonden';
+  }
+
+  return 'openstaand';
+};
+
 async function getKauflandIntegration(installationId, integrationId = null) {
   const installationIdNumber = parseInt(installationId, 10);
   if (!Number.isFinite(installationIdNumber)) {
@@ -254,8 +272,7 @@ async function fetchKauflandOrderUnitsByStatuses(
 }
 
 async function fetchAllKauflandOrders(credentials) {
-  // Behoudt het oorspronkelijke gedrag: alleen orders die verstuurd moeten worden.
-  return fetchKauflandOrderUnitsByStatuses(credentials, ['need_to_be_sent']);
+  return fetchKauflandOrderUnitsByStatuses(credentials, ['open', 'need_to_be_sent', 'sent', 'received']);
 }
 
 export async function syncKauflandOrdersForInstallation({ installationId, integrationId, userId = null, reconcile = true }) {
@@ -307,11 +324,10 @@ export async function syncKauflandOrdersForInstallation({ installationId, integr
         orderNumber,
         installationId: parseInt(installationId),
       },
-      select: { id: true, fulfillmentType: true },
+      select: { id: true, fulfillmentType: true, status: true },
     });
 
-    const defaultImportedStatus = 'verzonden';
-    const effectiveStatus = existingOrder ? 'openstaand' : defaultImportedStatus;
+    const effectiveStatus = resolveKauflandOrderInternalStatusFromUnits(orderUnits);
 
     const orderData = {
       orderNumber,
@@ -341,10 +357,15 @@ export async function syncKauflandOrdersForInstallation({ installationId, integr
       fulfillmentType: existingOrder ? existingOrder.fulfillmentType : null,
     };
 
+    const shouldSkipStatusOnlyUpdate = existingOrder
+      && String(existingOrder.status || '').toLowerCase() === String(effectiveStatus || '').toLowerCase();
+
     const savedOrder = existingOrder
       ? await prisma.order.update({
           where: { id: existingOrder.id },
-          data: orderData,
+          data: shouldSkipStatusOnlyUpdate
+            ? { ...orderData, status: existingOrder.status, orderStatus: existingOrder.status, orderStatusCode: toKauflandOrderStatusCode(existingOrder.status) }
+            : orderData,
           select: { id: true },
         })
       : await prisma.order.create({

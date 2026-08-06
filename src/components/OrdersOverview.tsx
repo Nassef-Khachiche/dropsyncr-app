@@ -532,11 +532,34 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
     if (activeProfile) {
       loadOrders();
     }
-  }, [activeProfile, filterStatus, searchQuery, currentPage, filterFulfillmentType, filterExpiringTomorrow, filterStore, filterVvbWindow]);
+  }, [
+    activeProfile,
+    filterStatus,
+    searchQuery,
+    currentPage,
+    filterFulfillmentType,
+    filterExpiringTomorrow,
+    filterStore,
+    filterVvbWindow,
+    filterKanalen,
+    filterLanden,
+    filterVerzendVia,
+  ]);
 
   useEffect(() => {
     setCurrentPage(1);
-}, [activeProfile, filterStatus, searchQuery, filterFulfillmentType, filterExpiringTomorrow, filterStore]);
+}, [
+  activeProfile,
+  filterStatus,
+  searchQuery,
+  filterFulfillmentType,
+  filterExpiringTomorrow,
+  filterStore,
+  filterVvbWindow,
+  filterKanalen,
+  filterLanden,
+  filterVerzendVia,
+]);
 
   useEffect(() => {
     setFilterStore('all');
@@ -810,6 +833,9 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
           expiringTomorrow: filterExpiringTomorrow || undefined,
           storeName: filterStore !== 'all' ? filterStore : undefined,
           vvbWindow: filterVvbWindow || undefined,
+          channels: filterKanalen.length > 0 ? filterKanalen : undefined,
+          countries: filterLanden.length > 0 ? filterLanden : undefined,
+          shippingVia: filterVerzendVia.length > 0 ? filterVerzendVia : undefined,
         }),
         isAllStoresSelected ? api.getIntegrations(undefined, !isGlobalAdmin) : Promise.resolve(null),
       ]);
@@ -1571,32 +1597,28 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
     }
   };
 
-  const filteredOrders = orders
-    .filter(order => {
-      const orderInstallationId = order.installation?.id ?? order.installationId;
-      const orderStoreName = String(order.storeName || '');
+  const getPrimaryOrderEan = (order: any): string => {
+    const orderItems = Array.isArray(order?.orderItems) ? order.orderItems : [];
+    const firstEan = orderItems
+      .map((item: any) => String(item?.ean || '').trim())
+      .find((value: string) => Boolean(value));
+    return firstEan || '';
+  };
 
-      const matchesIntegrationScope = !isAllStoresSelected
-        ? true
-        : (
-            allowedIntegrationStoreNames.includes(orderStoreName) ||
-            allowedIntegrationInstallationIds.includes(orderInstallationId)
-          );
+  const getOrderEanDisplay = (order: any): string => {
+    const orderItems = Array.isArray(order?.orderItems) ? order.orderItems : [];
+    const uniqueEans: string[] = Array.from(new Set(
+      orderItems
+        .map((item: any) => String(item?.ean || '').trim())
+        .filter(Boolean)
+    )) as string[];
 
-      const matchesStore = isAllStoresSelected
-        ? (filterStore === 'all' || orderStoreName === filterStore)
-        : (filterStore === 'all' || order.storeName === filterStore);
+    if (uniqueEans.length === 0) return '-';
+    if (uniqueEans.length === 1) return uniqueEans[0];
+    return `${uniqueEans[0]} +${uniqueEans.length - 1}`;
+  };
 
-      if (filterFulfillmentType && order.fulfillmentType !== filterFulfillmentType) return false;
-      if (filterKanalen.length > 0 && !filterKanalen.includes(String(order.platform || ''))) return false;
-      if (filterLanden.length > 0 && !filterLanden.includes(String(order.country || ''))) return false;
-      if (filterVerzendVia.length > 0) {
-        const isVvb = String(order.shippingMethod || '').toLowerCase().includes('bol');
-        const verzendViaValue = isVvb ? 'bol' : 'eigen';
-        if (!filterVerzendVia.includes(verzendViaValue)) return false;
-      }
-      return matchesIntegrationScope && matchesStore;
-    })
+  const filteredOrders = [...orders]
     .sort((a, b) => {
       let aVal: any, bVal: any;
       if (sortField === 'orderDate') { aVal = a.orderDate ? new Date(a.orderDate).getTime() : 0; bVal = b.orderDate ? new Date(b.orderDate).getTime() : 0; }
@@ -1607,11 +1629,22 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
         aVal = aDate ? new Date(aDate).getTime() : 0;
         bVal = bDate ? new Date(bDate).getTime() : 0;
       }
+      else if (sortField === 'ean') {
+        aVal = getPrimaryOrderEan(a).toLowerCase();
+        bVal = getPrimaryOrderEan(b).toLowerCase();
+      }
       else if (sortField === 'storeName') { aVal = String(a.storeName || ''); bVal = String(b.storeName || ''); }
       else { aVal = a.orderDate ? new Date(a.orderDate).getTime() : 0; bVal = b.orderDate ? new Date(b.orderDate).getTime() : 0; }
       if (typeof aVal === 'string') return sortDir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
       return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
     });
+
+  const selectableOrdersOnPage = filteredOrders.filter((order) => (
+    order.fulfillmentType === 'fulfillment'
+    && normalizeOrderStatus(order) === 'openstaand'
+    && String(order.status || '').toLowerCase() !== 'gepickt'
+    && String(order.orderStatus || '').toLowerCase() !== 'gepickt'
+  ));
   const uniqueKanalen = Array.from(new Set(orders.map(o => String(o.platform || '')).filter(Boolean)));
   const uniqueLanden = Array.from(new Set(orders.map(o => String(o.country || '')).filter(Boolean))); 
 
@@ -1649,7 +1682,8 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
     if (selectedOrders.length === 0) return;
     try {
       setPickingOrders(true);
-      const result = await api.pickOrders(selectedOrders, activeProfile);
+      const installationScope = activeProfile === 'all' ? undefined : activeProfile;
+      const result = await api.pickOrders(selectedOrders, installationScope);
       toast.success(`${result.processed} order(s) gepickt`);
       if (result.errors > 0) {
         toast.error(`${result.errors} order(s) mislukt`);
@@ -2013,7 +2047,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
                 <Download className="w-4 h-4" />
                 <span className="orders-action-label">Exporteren</span>
               </Button>
-              {isGlobalAdmin && selectedOrders.length > 0 && (
+              {selectedOrders.length > 0 && (
                 <Button
                   size="sm"
                   className="gap-2 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600"
@@ -2089,6 +2123,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
               <span className="text-sm text-slate-600 font-medium">Sorteren:</span>
               {[
                 { value: 'storeName', label: 'Store' },
+                { value: 'ean', label: 'EAN' },
                 { value: 'deliveryDate', label: 'Uiterste leverdatum' },
                 { value: 'orderDate', label: 'Besteldatum' },
               ].map(opt => (
@@ -2222,13 +2257,13 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
               <TableHeader>
                 <TableRow className="bg-slate-50/50">
                   <TableHead className="w-8">
-                    {isGlobalAdmin && filterFulfillmentType === 'fulfillment' && filteredOrders.length > 0 && (
+                    {selectableOrdersOnPage.length > 0 && (
                       <input
                         type="checkbox"
                         className="w-4 h-4 accent-indigo-600 cursor-pointer"
-                        checked={filteredOrders.filter(o => String(o.status || '').toLowerCase() !== 'gepickt' && String(o.orderStatus || '').toLowerCase() !== 'gepickt').every(o => selectedOrders.includes(o.id))}
+                        checked={selectableOrdersOnPage.every(o => selectedOrders.includes(o.id))}
                         onChange={() => {
-                          const allIds = filteredOrders.filter(o => String(o.status || '').toLowerCase() !== 'gepickt' && String(o.orderStatus || '').toLowerCase() !== 'gepickt').map(o => o.id);
+                          const allIds = selectableOrdersOnPage.map(o => o.id);
                           const allSelected = allIds.every(id => selectedOrders.includes(id));
                           setSelectedOrders(allSelected ? [] : allIds);
                         }}
@@ -2240,6 +2275,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
                   <TableHead>Klantnaam</TableHead>
                   <TableHead>Land</TableHead>
                   <TableHead>Store naam</TableHead>
+                  <TableHead>EAN</TableHead>
                   <TableHead className="text-center">Aantal items</TableHead>
                   <TableHead>Uiterste leverdatum</TableHead>
                   <TableHead>Tracking</TableHead>
@@ -2251,13 +2287,13 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={12} className="text-center py-8">
+                    <TableCell colSpan={13} className="text-center py-8">
                       <Loader2 className="h-6 w-6 animate-spin text-indigo-600 mx-auto" />
                     </TableCell>
                   </TableRow>
                 ) : filteredOrders.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={12} className="text-center py-8 text-slate-500">
+                    <TableCell colSpan={13} className="text-center py-8 text-slate-500">
                       Geen orders gevonden
                     </TableCell>
                   </TableRow>
@@ -2269,7 +2305,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
                         onClick={() => toggleOrderDetails(order.orderNumber)}
                       >
                         <TableCell onClick={(e) => e.stopPropagation()}>
-                          {isGlobalAdmin && order.fulfillmentType === 'fulfillment' && normalizeOrderStatus(order) === 'openstaand' && String(order.status || '').toLowerCase() !== 'gepickt' && String(order.orderStatus || '').toLowerCase() !== 'gepickt' && (
+                          {order.fulfillmentType === 'fulfillment' && normalizeOrderStatus(order) === 'openstaand' && String(order.status || '').toLowerCase() !== 'gepickt' && String(order.orderStatus || '').toLowerCase() !== 'gepickt' && (
                             <input
                               type="checkbox"
                               checked={selectedOrders.includes(order.id)}
@@ -2319,6 +2355,9 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
                           <Badge variant="outline" className="border-indigo-200 text-indigo-700 bg-indigo-50">
                             {order.storeName}
                           </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <span className="font-mono text-xs text-slate-700">{getOrderEanDisplay(order)}</span>
                         </TableCell>
                         <TableCell>
                           <div className="text-center">
@@ -2520,7 +2559,7 @@ export function OrdersOverview({ activeProfile, isGlobalAdmin = false }: OrdersO
                       {/* Expanded Details Row */}
                       {expandedOrder === order.orderNumber && (
                         <TableRow className="bg-gradient-to-r from-slate-50/80 to-indigo-50/30">
-                          <TableCell colSpan={12} className="p-6">
+                          <TableCell colSpan={13} className="p-6">
                             <div className="flex gap-6">
                               {/* Left Column - Basic Info */}
                               <div className="flex-1 space-y-6">

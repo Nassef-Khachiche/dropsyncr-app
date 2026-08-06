@@ -102,7 +102,20 @@ const getShippingMethodMapForOrderIds = async (orderIds = []) => {
 
 export const getOrders = async (req, res) => {
   try {
-    const { installationId, userScoped, status, search, page = 1, limit = 50, fulfillmentType, storeName, vvbWindow } = req.query;
+    const {
+      installationId,
+      userScoped,
+      status,
+      search,
+      page = 1,
+      limit = 50,
+      fulfillmentType,
+      storeName,
+      vvbWindow,
+      channels,
+      countries,
+      shippingVia,
+    } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const isAllStoresMode = !installationId || installationId === 'all';
     const forceUserScope = userScoped === 'true';
@@ -159,6 +172,48 @@ export const getOrders = async (req, res) => {
     if (fulfillmentType) andConditions.push({ fulfillmentType: String(fulfillmentType) });
     if (storeName && storeName !== 'all') andConditions.push({ storeName: String(storeName) });
 
+    const selectedChannels = Array.isArray(channels)
+      ? channels.map((value) => String(value || '').trim()).filter(Boolean)
+      : (String(channels || '').trim() ? [String(channels).trim()] : []);
+    if (selectedChannels.length > 0) {
+      andConditions.push({ platform: { in: selectedChannels } });
+    }
+
+    const selectedCountries = Array.isArray(countries)
+      ? countries.map((value) => String(value || '').trim()).filter(Boolean)
+      : (String(countries || '').trim() ? [String(countries).trim()] : []);
+    if (selectedCountries.length > 0) {
+      andConditions.push({ country: { in: selectedCountries } });
+    }
+
+    const selectedShippingVia = Array.isArray(shippingVia)
+      ? shippingVia.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean)
+      : (String(shippingVia || '').trim() ? [String(shippingVia).trim().toLowerCase()] : []);
+    if (selectedShippingVia.length > 0 && selectedShippingVia.length < 2) {
+      const includesBol = selectedShippingVia.includes('bol');
+      const includesEigen = selectedShippingVia.includes('eigen');
+
+      if (includesBol && !includesEigen) {
+        andConditions.push({
+          OR: [
+            { isVVB: true },
+            { shippingMethod: { contains: 'bol' } },
+          ],
+        });
+      }
+
+      if (includesEigen && !includesBol) {
+        andConditions.push({
+          NOT: {
+            OR: [
+              { isVVB: true },
+              { shippingMethod: { contains: 'bol' } },
+            ],
+          },
+        });
+      }
+    }
+
     if (vvbWindow === 'ochtend' || vvbWindow === 'avond') {
       // Vandaag (UTC dag-range)
       const dayStart = new Date();
@@ -203,6 +258,9 @@ export const getOrders = async (req, res) => {
           { orderNumber: { contains: search } },
           { customerName: { contains: search } },
           { supplierTracking: { contains: search } },
+          { orderItems: { some: { ean: { contains: search } } } },
+          { orderItems: { some: { sku: { contains: search } } } },
+          { orderItems: { some: { productName: { contains: search } } } },
         ],
       });
     }
