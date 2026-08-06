@@ -1025,7 +1025,7 @@ export const generateCarrierLabels = async (req, res) => {
           if (isReturnBatch) {
             return prisma.$executeRaw`
               UPDATE \`Order\` SET updatedAt = NOW()
-              WHERE id = ${orderId} AND installationId = ${carrier.installationId}
+              WHERE id = ${orderId}
             `;
           }
 
@@ -1034,12 +1034,12 @@ export const generateCarrierLabels = async (req, res) => {
               return prisma.$executeRaw`
                 UPDATE \`Order\` SET shippingMethod = ${selectedShippingMethod}, orderStatus = 'label-aangemaakt',
                 status = 'label-aangemaakt', updatedAt = NOW()
-                WHERE id = ${orderId} AND installationId = ${carrier.installationId}
+                WHERE id = ${orderId}
               `;
             }
             return prisma.$executeRaw`
               UPDATE \`Order\` SET orderStatus = 'label-aangemaakt', status = 'label-aangemaakt', updatedAt = NOW()
-              WHERE id = ${orderId} AND installationId = ${carrier.installationId}
+              WHERE id = ${orderId}
             `;
           }
 
@@ -1047,13 +1047,13 @@ export const generateCarrierLabels = async (req, res) => {
             return prisma.$executeRaw`
               UPDATE \`Order\` SET shippingMethod = ${selectedShippingMethod}, orderStatus = 'verzonden',
               status = 'verzonden', orderStatusCode = 'SHIPPED', supplierTracking = ${generatedTrackingCode || null}, updatedAt = NOW()
-              WHERE id = ${orderId} AND installationId = ${carrier.installationId}
+              WHERE id = ${orderId}
             `;
           }
           return prisma.$executeRaw`
             UPDATE \`Order\` SET orderStatus = 'verzonden', status = 'verzonden', orderStatusCode = 'SHIPPED',
             supplierTracking = ${generatedTrackingCode || null}, updatedAt = NOW()
-            WHERE id = ${orderId} AND installationId = ${carrier.installationId}
+            WHERE id = ${orderId}
           `;
         }),
       ];
