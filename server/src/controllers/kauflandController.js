@@ -373,7 +373,21 @@ export async function syncKauflandOrdersForInstallation({ installationId, integr
           select: { id: true },
         });
 
-    await prisma.orderItem.deleteMany({ where: { orderId: savedOrder.id } });
+    const existingItems = await prisma.orderItem.findMany({
+      where: { orderId: savedOrder.id },
+      select: { id: true, externalId: true },
+    });
+
+    const existingItemByExternalId = new Map();
+    const itemsWithoutExternalId = [];
+
+    for (const item of existingItems) {
+      const key = String(item.externalId || '').trim();
+      if (key) existingItemByExternalId.set(key, item.id);
+      else itemsWithoutExternalId.push(item.id);
+    }
+
+    const seenExternalIds = new Set();
 
     for (const unit of orderUnits) {
       const product = unit?.product || {};
@@ -428,27 +442,55 @@ export async function syncKauflandOrdersForInstallation({ installationId, integr
         });
       }
 
-      await prisma.orderItem.create({
-        data: {
-          orderId: savedOrder.id,
-          productId: existingProduct.id,
-          productName,
-          productImage,
-          ean,
-          sku,
-          quantity,
-          price: itemPrice,
-          unitPrice: itemPrice,
-          externalId: String(unit?.id_order_unit || '').trim() || null,
-        },
+      const externalId = String(unit?.id_order_unit || '').trim() || null;
+
+      const itemData = {
+        productId: existingProduct.id,
+        productName,
+        productImage,
+        ean,
+        sku,
+        quantity,
+        price: itemPrice,
+        unitPrice: itemPrice,
+        externalId,
+      };
+
+      const existingItemId = externalId ? existingItemByExternalId.get(externalId) : null;
+
+      if (existingItemId) {
+        await prisma.orderItem.update({
+          where: { id: existingItemId },
+          data: itemData,
+        });
+      } else {
+        await prisma.orderItem.create({
+          data: { orderId: savedOrder.id, ...itemData },
+        });
+      }
+
+      if (externalId) seenExternalIds.add(externalId);
+    }
+
+    const staleItemIds = existingItems
+      .filter((item) => {
+        const key = String(item.externalId || '').trim();
+        return key && !seenExternalIds.has(key);
+      })
+      .map((item) => item.id);
+
+    if (staleItemIds.length > 0) {
+      console.log('[KAUFLAND SYNC] Verwijder vervallen orderregels', {
+        orderNumber,
+        count: staleItemIds.length,
       });
+      await prisma.orderItem.deleteMany({ where: { id: { in: staleItemIds } } });
     }
 
     existingOrder ? updatedCount++ : importedCount++;
   }
 
-  // Na het importeren van need_to_be_sent: verzoen orders die bij ons nog open
-  // staan maar die intussen elders verzonden of geannuleerd zijn.
+
   let reconciliation = null;
   if (reconcile) {
     try {
