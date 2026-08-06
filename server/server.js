@@ -44,7 +44,8 @@ import { startBricoBravoSyncCronJob } from './src/jobs/bricoBravoSyncJob.js';
 import { startShopifySyncCronJob } from './src/jobs/shopifySyncJob.js';
 import { startStockReservationJob } from './src/jobs/stockReservationJob.js';
 
-dotenv.config();
+// Load the server-local .env explicitly so production starts the same way as local dev.
+dotenv.config({ path: path.join(__dirname, '.env') });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
