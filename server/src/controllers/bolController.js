@@ -1396,13 +1396,21 @@ async function getBolLabelWithFallbackInternal(
         // First fetch the DETAILED shipment — its transport field often has shippingLabelId
         try {
           const detailPayload = await bolApiRequest(credentials, `/shipments/${encodeURIComponent(shipmentId)}`);
+          const detailTrackingDetails = extractShipmentTrackingDetails(detailPayload);
           const detailLabelIds = extractShippingLabelIdsFromResponse(detailPayload);
           console.log(`[BOL LABEL VVB] /shipments/${shipmentId} detail label IDs: ${JSON.stringify(detailLabelIds)}`);
           for (const detailLabelId of detailLabelIds) {
             const endpoint = `/shipping-labels/${encodeURIComponent(detailLabelId)}`;
             try {
               const response = await fetchBolShippingLabelById(credentials, detailLabelId);
-              return { labelData: response, endpoint };
+              return {
+                labelData: {
+                  ...response,
+                  trackingCode: response?.trackingCode || detailTrackingDetails.trackingCode || null,
+                  transporterCode: response?.transporterCode || detailTrackingDetails.transporterCode || null,
+                },
+                endpoint,
+              };
             } catch (error) {
               errors.push({ endpoint, error });
             }
@@ -1417,7 +1425,16 @@ async function getBolLabelWithFallbackInternal(
         ]) {
           try {
             const response = await bolApiRequest(credentials, endpoint);
-            return { labelData: { ...response, shipmentId }, endpoint };
+            const shipmentTrackingDetails = extractShipmentTrackingDetails(shipmentsPayload);
+            return {
+              labelData: {
+                ...response,
+                shipmentId,
+                trackingCode: response?.trackingCode || shipmentTrackingDetails.trackingCode || null,
+                transporterCode: response?.transporterCode || shipmentTrackingDetails.transporterCode || null,
+              },
+              endpoint,
+            };
           } catch (error) {
             errors.push({ endpoint, error });
           }
@@ -1964,6 +1981,31 @@ const findStringValueByKey = (input, keyRegex) => {
   return null;
 };
 
+const extractShipmentTrackingDetails = (payload = null) => {
+  if (!payload) {
+    return { trackingCode: null, transporterCode: null };
+  }
+
+  const trackingCode = firstNonEmptyString(
+    payload?.trackAndTrace,
+    payload?.trackingCode,
+    payload?.trackingNumber,
+    payload?.transport?.trackAndTrace,
+    payload?.transport?.trackingCode,
+    payload?.transport?.trackingNumber,
+    findStringValueByKey(payload, /(track.?and.?trace|tracking.?code|tracking.?number|parcel.?label.?number)/i),
+  );
+
+  const transporterCode = firstNonEmptyString(
+    payload?.transporterCode,
+    payload?.transport?.transporterCode,
+    payload?.transporter,
+    findStringValueByKey(payload, /(transporter.?code|carrier.?code|carrier)/i),
+  );
+
+  return { trackingCode, transporterCode };
+};
+
 const extractProductImage = (item = {}) => {
   const images = item?.product?.images;
 
@@ -2172,7 +2214,7 @@ const enrichBolProductData = async ({ credentials, ean }) => {
   }
 };
 
-const reconcileBolCancelledOrdersForInstallation = async ({ installationId, credentials } = {}) => {
+const reconcileBolCancelledOrdersForInstallation = async ({ installationId } = {}) => {
   const installationIdNumber = parseInt(installationId, 10);
   if (!Number.isFinite(installationIdNumber)) {
     return { checked: 0, cancelled: 0, unchanged: 0, failed: 0 };
@@ -2216,7 +2258,11 @@ const reconcileBolCancelledOrdersForInstallation = async ({ installationId, cred
     }
 
     try {
-      const payload = await bolApiRequest(credentials, `/orders/${encodeURIComponent(normalizedOrderNumber)}`);
+      const { credentials: orderCredentials } = await resolveBolIntegrationForOrder(
+        installationIdNumber,
+        normalizedOrderNumber,
+      );
+      const payload = await bolApiRequest(orderCredentials, `/orders/${encodeURIComponent(normalizedOrderNumber)}`);
       const statusCandidates = [
         firstNonEmptyString(payload?.status),
         findStringValueByKey(payload, /(^|_)(status|order.?status|shipment.?status)$/i),
@@ -2784,7 +2830,6 @@ async function syncBolOrdersCore({ installationId, integrationId = null, userId 
   try {
     cancellationReconciliation = await reconcileBolCancelledOrdersForInstallation({
       installationId: installationIdNumber,
-      credentials,
     });
     console.log('[BOL SYNC] Cancellation reconciliation completed', cancellationReconciliation);
   } catch (reconcileError) {
@@ -3500,6 +3545,20 @@ export const getBolLabelPdf = async (req, res) => {
     }
 
     const result = await fetchBolShippingLabelById(credentials, normalizedShippingLabelId);
+    let shipmentTrackingDetails = { trackingCode: null, transporterCode: null };
+    if (orderId) {
+      try {
+        const shipmentsPayload = await bolApiRequest(credentials, `/shipments?order-id=${encodeURIComponent(String(orderId).trim())}`);
+        const rawShipments = Array.isArray(shipmentsPayload)
+          ? shipmentsPayload
+          : (shipmentsPayload?.shipments || shipmentsPayload?.results || []);
+        shipmentTrackingDetails = extractShipmentTrackingDetails(rawShipments[0] || shipmentsPayload);
+      } catch (shipmentLookupError) {
+        console.warn('[BOL LABEL PDF] Failed to resolve shipment tracking fallback:', shipmentLookupError?.message);
+      }
+    }
+    const resolvedTrackingCode = result?.trackingCode || shipmentTrackingDetails.trackingCode || null;
+    const resolvedTransporterCode = result?.transporterCode || shipmentTrackingDetails.transporterCode || null;
 
     if (!result?.labelUrl) {
       // PDF not ready yet — client should retry later
@@ -3524,13 +3583,13 @@ export const getBolLabelPdf = async (req, res) => {
       }
     }
 
-    if (result?.trackingCode && orderId) {
+    if (resolvedTrackingCode && orderId) {
       try {
         await persistBolTrackingForOrders({
           orderNumber: String(orderId || '').trim(),
           installationId,
-          trackingCode: result.trackingCode,
-          transporterCode: result.transporterCode || 'bol.com',
+          trackingCode: resolvedTrackingCode,
+          transporterCode: resolvedTransporterCode || 'bol.com',
           source: 'bol_label_pdf_poll',
         });
       } catch (persistError) {
@@ -3560,8 +3619,8 @@ export const getBolLabelPdf = async (req, res) => {
     res.json({
       ready: true,
       labelUrl: persistedLabelUrl,
-      trackingCode: result.trackingCode || null,
-      transporterCode: result.transporterCode || null,
+      trackingCode: resolvedTrackingCode,
+      transporterCode: resolvedTransporterCode,
     });
   } catch (error) {
     console.error('Get Bol label PDF error:', error);

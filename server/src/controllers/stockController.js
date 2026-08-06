@@ -419,6 +419,19 @@ export const pickStock = async (req, res) => {
       },
     });
 
+    // Boek de picking ook af op de oudste batch, net als bij de bulk-pick flow.
+    const oldestBatch = await prisma.stockBatch.findFirst({
+      where: { productId: reservation.productId, installationId: reservation.installationId },
+      orderBy: { receivedAt: 'asc' },
+    });
+
+    if (oldestBatch) {
+      await prisma.stockBatch.update({
+        where: { id: oldestBatch.id },
+        data: { quantity: { decrement: reservation.quantity } },
+      });
+    }
+
     res.json({ reservation: updated, message: 'Stock picked successfully' });
   } catch (error) {
     console.error('Pick stock error:', error);
