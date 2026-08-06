@@ -31,6 +31,11 @@ import stockRoutes from './src/routes/StockRoutes.js';
 import supplierRoutes from './src/routes/supplierRoutes.js';
 import purchaseOrderRoutes from './src/routes/purchaseOrderRoutes.js';
 import shippingRateRoutes from './src/routes/shippingRateRoutes.js';
+import analyticsRoutes from './src/routes/analyticsRoutes.js';
+import revenueTargetRoutes from './src/routes/revenueTargetRoutes.js';
+import payoutRoutes from './src/routes/payoutRoutes.js';
+import adSpendRoutes from './src/routes/adSpendRoutes.js';
+import fixedCostRoutes from './src/routes/fixedCostRoutes.js';
 
 // Cron jobs
 import { startBolSyncCronJob } from './src/jobs/bolSyncJob.js';
@@ -150,6 +155,11 @@ app.use('/api/stock', stockRoutes);
 app.use('/api/suppliers', supplierRoutes);
 app.use('/api/purchase-orders', purchaseOrderRoutes);
 app.use('/api/shipping-rates', shippingRateRoutes);
+app.use('/api/analytics', analyticsRoutes);
+app.use('/api/revenue-targets', revenueTargetRoutes);
+app.use('/api/payouts', payoutRoutes);
+app.use('/api/ad-spend', adSpendRoutes);
+app.use('/api/fixed-costs', fixedCostRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

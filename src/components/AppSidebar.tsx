@@ -13,6 +13,19 @@ import {
   Workflow,
   Warehouse,
   BarChart3,
+  LayoutDashboard,
+  PieChart,
+  Target,
+  CalendarDays,
+  CalendarRange,
+  Landmark,
+  CreditCard,
+  Megaphone,
+  Building2,
+  AlertTriangle,
+  PackageX,
+  Undo2,
+  Download,
   Settings,
   RotateCcw,
   MapPin,
@@ -30,15 +43,33 @@ interface AppSidebarProps {
   className?: string;
 }
 
+type MenuLabelKey =
+  | 'orders' | 'tracking' | 'labels' | 'shipments' | 'integrations' | 'carriers'
+  | 'settings' | 'automationRules' | 'administrative' | 'dashboard' | 'klkAnalytics'
+  | 'fulfillmentAnalytics' | 'warehouseManagement' | 'inventoryManagement'
+  | 'inventoryAnalysis' | 'returns' | 'locationManagement' | 'productManagement'
+  | 'purchasing' | 'analyticsOverview' | 'productAnalytics' | 'storeTrends'
+  | 'channelProfitability' | 'targetsForecast' | 'dailySummary' | 'monthlySummary' | 'vatOverview' | 'payouts' | 'adSpend' | 'fixedCosts' | 'signals' | 'cancelAnalysis' | 'returnsAnalytics' | 'analyticsExports'
+  | 'salesSection' | 'financeSection' | 'operationsSection' | 'exportsSection';
+
 interface MenuItem {
   id: string;
-  labelKey: 'orders' | 'tracking' | 'labels' | 'shipments' | 'integrations' | 'carriers' | 'settings' | 'automationRules' | 'administrative' | 'dashboard' | 'klkAnalytics' | 'fulfillmentAnalytics' | 'warehouseManagement' | 'inventoryManagement' | 'inventoryAnalysis' | 'returns' | 'locationManagement' | 'productManagement' | 'purchasing';
-  icon: any;
+  labelKey: MenuLabelKey;
+  icon?: any;
   adminOnly?: boolean;
+  /** Met children wordt dit een uitklapbare subgroep in plaats van een link. */
   children?: MenuItem[];
 }
 
-const menuItems: { sectionKey: 'orderManagement' | 'warehouseManagement' | 'analytics' | 'system' | 'administrativeSection'; items: MenuItem[] }[] = [
+const menuItems: {
+  sectionKey:
+    | 'orderManagement'
+    | 'warehouseManagement'
+    | 'analytics'
+    | 'system'
+    | 'administrativeSection';
+  items: MenuItem[];
+}[] = [
   {
     sectionKey: 'orderManagement',
     items: [
@@ -63,9 +94,50 @@ const menuItems: { sectionKey: 'orderManagement' | 'warehouseManagement' | 'anal
   {
     sectionKey: 'analytics',
     items: [
-      { id: 'dashboard', labelKey: 'dashboard', icon: BarChart2, adminOnly: true },
-      { id: 'klk-analytics', labelKey: 'klkAnalytics', icon: TrendingUp, adminOnly: true },
-      { id: 'fulfillment-analytics', labelKey: 'fulfillmentAnalytics', icon: Package, adminOnly: true },
+      // Subgroepen. Per tab die we bouwen komt hier een item bij.
+      {
+        id: 'group-sales',
+        labelKey: 'salesSection',
+        adminOnly: true,
+        children: [
+          { id: 'analytics-overview', labelKey: 'analyticsOverview', icon: LayoutDashboard, adminOnly: true },
+          { id: 'product-analytics', labelKey: 'productAnalytics', icon: BarChart3, adminOnly: true },
+          { id: 'store-trends', labelKey: 'storeTrends', icon: TrendingUp, adminOnly: true },
+          { id: 'channel-profitability', labelKey: 'channelProfitability', icon: PieChart, adminOnly: true },
+          { id: 'targets-forecast', labelKey: 'targetsForecast', icon: Target, adminOnly: true },
+        ],
+      },
+      {
+        id: 'group-finance',
+        labelKey: 'financeSection',
+        adminOnly: true,
+        children: [
+          { id: 'daily-summary', labelKey: 'dailySummary', icon: CalendarDays, adminOnly: true },
+          { id: 'monthly-summary', labelKey: 'monthlySummary', icon: CalendarRange, adminOnly: true },
+          { id: 'vat-overview', labelKey: 'vatOverview', icon: Landmark, adminOnly: true },
+          { id: 'payouts', labelKey: 'payouts', icon: CreditCard, adminOnly: true },
+          { id: 'ad-spend', labelKey: 'adSpend', icon: Megaphone, adminOnly: true },
+          { id: 'fixed-costs', labelKey: 'fixedCosts', icon: Building2, adminOnly: true },
+        ],
+      },
+      {
+        id: 'group-operations',
+        labelKey: 'operationsSection',
+        adminOnly: true,
+        children: [
+          { id: 'signals', labelKey: 'signals', icon: AlertTriangle, adminOnly: true },
+          { id: 'cancel-analysis', labelKey: 'cancelAnalysis', icon: PackageX, adminOnly: true },
+          { id: 'returns-analytics', labelKey: 'returnsAnalytics', icon: Undo2, adminOnly: true },
+        ],
+      },
+      {
+        id: 'group-exports',
+        labelKey: 'exportsSection',
+        adminOnly: true,
+        children: [
+          { id: 'analytics-exports', labelKey: 'analyticsExports', icon: Download, adminOnly: true },
+        ],
+      },
     ],
   },
   {
@@ -103,10 +175,18 @@ export function AppSidebar({ activeView, onViewChange, className }: AppSidebarPr
       return null;
     }
 
-    const filteredItems = group.items.filter(item => {
-      if (item.adminOnly && !isGlobalAdmin) return false;
-      return true;
-    });
+    const filteredItems = group.items
+      .filter(item => {
+        if (item.adminOnly && !isGlobalAdmin) return false;
+        return true;
+      })
+      .map(item => {
+        if (!item.children) return item;
+        // Een subgroep zonder zichtbare items heeft geen bestaansrecht.
+        const children = item.children.filter(child => !(child.adminOnly && !isGlobalAdmin));
+        return children.length > 0 ? { ...item, children } : null;
+      })
+      .filter(Boolean) as MenuItem[];
 
     if (filteredItems.length === 0) return null;
 
@@ -139,6 +219,18 @@ export function AppSidebar({ activeView, onViewChange, className }: AppSidebarPr
 
       {/* Navigation */}
       <nav className="flex-1 min-h-0 overflow-y-auto p-4">
+        {/* Losstaand bovenaan, opent het analytics-overzicht. */}
+        {isGlobalAdmin && (
+          <div className="mb-6">
+            <SidebarLink
+              item={{ id: 'dashboard', labelKey: 'dashboard', icon: LayoutDashboard }}
+              isActive={activeView === 'dashboard'}
+              label={t('dashboard')}
+              onClick={() => onViewChange('dashboard')}
+            />
+          </div>
+        )}
+
         {filteredMenuItems.map((group) => {
           const isAdminSection = group.sectionKey === 'administrativeSection';
           const shouldBeExpanded = isSectionExpanded(group.sectionKey);
@@ -170,34 +262,84 @@ export function AppSidebar({ activeView, onViewChange, className }: AppSidebarPr
               {shouldBeExpanded && (
                 <div className="space-y-1">
                   {group.items.map((item) => {
-                    const Icon = item.icon;
-                    const isActive = activeView === item.id;
-                    
+                    if (item.children) {
+                      const subExpanded = isSectionExpanded(item.id);
+                      return (
+                        <div key={item.id}>
+                          <button
+                            onClick={() => toggleSection(item.id)}
+                            className="flex items-center justify-between w-full px-3 py-2 text-xs uppercase tracking-wider text-slate-400 hover:text-slate-600 transition-colors"
+                          >
+                            <span>{t(item.labelKey)}</span>
+                            {subExpanded ? (
+                              <ChevronDown className="w-3 h-3" />
+                            ) : (
+                              <ChevronRight className="w-3 h-3" />
+                            )}
+                          </button>
+                          {subExpanded && (
+                            <div className="space-y-1 pl-3 ml-3 border-l border-slate-100">
+                              {item.children.map((child) => (
+                                <SidebarLink
+                                  key={child.id}
+                                  item={child}
+                                  isActive={activeView === child.id}
+                                  label={t(child.labelKey)}
+                                  onClick={() => onViewChange(child.id)}
+                                />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+
                     return (
-                      <button
+                      <SidebarLink
                         key={item.id}
+                        item={item}
+                        isActive={activeView === item.id}
+                        label={t(item.labelKey)}
                         onClick={() => onViewChange(item.id)}
-                        className={cn(
-                          "flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm transition-all",
-                          isActive
-                            ? "bg-gradient-to-r from-indigo-50 to-purple-50 text-indigo-700 shadow-sm"
-                            : "text-slate-700 hover:bg-slate-50"
-                        )}
-                      >
-                        <Icon className={cn(
-                          "w-4 h-4",
-                          isActive ? "text-indigo-600" : "text-slate-400"
-                        )} />
-                        <span>{t(item.labelKey)}</span>
-                      </button>
+                      />
                     );
                   })}
                 </div>
               )}
-            </div>
+           </div>
           );
         })}
       </nav>
     </aside>
+  );
+}
+
+function SidebarLink({
+  item,
+  isActive,
+  label,
+  onClick,
+}: {
+  item: MenuItem;
+  isActive: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  const Icon = item.icon;
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm transition-all",
+        isActive
+          ? "bg-gradient-to-r from-indigo-50 to-purple-50 text-indigo-700 shadow-sm"
+          : "text-slate-700 hover:bg-slate-50"
+      )}
+    >
+      {Icon && (
+        <Icon className={cn("w-4 h-4", isActive ? "text-indigo-600" : "text-slate-400")} />
+      )}
+      <span>{label}</span>
+    </button>
   );
 }

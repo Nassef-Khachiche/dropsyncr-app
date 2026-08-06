@@ -49,6 +49,11 @@ model Installation {
   suppliers          Supplier[]
   purchaseOrders     PurchaseOrder[]
   shippingRates      ShippingRate[]
+  revenueTargets     RevenueTarget[]
+  payouts            Payout[]
+  adSpendEntries     AdSpend[]
+  fixedCostGroups    FixedCostGroup[]
+  fixedCostItems     FixedCostItem[]
 }
 
 model AutomationRule {
@@ -556,4 +561,89 @@ model ShippingRate {
 
   @@unique([installationId, countryCode])
   @@index([installationId])
+}
+
+model RevenueTarget {
+  id             Int      @id @default(autoincrement())
+  installationId Int
+  year           Int
+  month          Int      // 1 t/m 12
+  revenueTarget  Float    @db.Float
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  installation   Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+
+  @@unique([installationId, year, month])
+  @@index([installationId])
+  @@index([year])
+}
+
+model Payout {
+  id             Int      @id @default(autoincrement())
+  installationId Int
+  payoutDate     DateTime
+  periodFrom     DateTime
+  periodTo       DateTime
+  amount         Float    @db.Float
+  storeName      String?  @db.VarChar(191)
+  note           String?  @db.Text
+  createdById    Int?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  installation   Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+
+  @@index([installationId])
+  @@index([payoutDate])
+}
+
+model AdSpend {
+  id             Int      @id @default(autoincrement())
+  installationId Int
+  date           DateTime
+  storeName      String   @db.VarChar(191)
+  amount         Float    @db.Float
+  // ROAS zoals het advertentieplatform hem rapporteert; wij kunnen die niet
+  // afleiden omdat het platform met zijn eigen toegeschreven omzet rekent.
+  reportedRoas   Float?   @db.Float
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  installation   Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+
+  @@unique([installationId, date, storeName])
+  @@index([installationId])
+  @@index([date])
+}
+
+model FixedCostGroup {
+  id             Int      @id @default(autoincrement())
+  installationId Int
+  name           String   @db.VarChar(191)
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  installation   Installation    @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  items          FixedCostItem[]
+
+  @@index([installationId])
+}
+
+model FixedCostItem {
+  id              Int      @id @default(autoincrement())
+  installationId  Int
+  groupId         Int
+  name            String   @db.VarChar(191)
+  amountPerMonth  Float    @db.Float
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  installation    Installation   @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  group           FixedCostGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@index([installationId])
+  @@index([groupId])
 }

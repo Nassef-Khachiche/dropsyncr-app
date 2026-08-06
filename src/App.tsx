@@ -12,9 +12,6 @@ import { GlobalTextTranslator } from './components/GlobalTextTranslator';
 import { Login } from './components/Login';
 import { Administrative } from './components/Administrative';
 import { AutomatiseringsRegels } from './components/AutomatiseringsRegels';
-import { Dashboard } from './components/Dashboard';
-import { FulfillmentAnalytics } from './components/FulfillmentAnalytics';
-import { KLKAnalytics } from './components/KLKAnalytics';
 import { useAuth } from './contexts/AuthContext';
 import { useLanguage } from './contexts/LanguageContext';
 import { InventoryManagement } from './components/InventoryManagement';
@@ -24,6 +21,22 @@ import { Retouren } from './components/Retouren';
 import { LocationManager } from './components/LocationManager';
 import { ProductManagement } from './components/ProductManagement';
 import { OrderManagement } from './components/OrderManagement';
+import { AnalyticsOverview } from './components/analytics/overview/AnalyticsOverview';
+import { ProductAnalytics } from './components/analytics/sales/ProductAnalytics';
+import { StoreTrends } from './components/analytics/sales/StoreTrends';
+import { ChannelProfitability } from './components/analytics/sales/ChannelProfitability';
+import { TargetsForecast } from './components/analytics/sales/TargetsForecast';
+import { DailySummary } from './components/analytics/finance/DailySummary';
+import { MonthlySummary } from './components/analytics/finance/MonthlySummary';
+import { VatOverview } from './components/analytics/finance/VatOverview';
+import { Payouts } from './components/analytics/finance/Payouts';
+import { AdSpend } from './components/analytics/finance/AdSpend';
+import { FixedCosts } from './components/analytics/finance/FixedCosts';
+import { Signals } from './components/analytics/operations/Signals';
+import { CancelAnalysis } from './components/analytics/operations/CancelAnalysis';
+import { ReturnsAnalytics } from './components/analytics/operations/ReturnsAnalytics';
+import { AnalyticsExports } from './components/analytics/exports/AnalyticsExports';
+import { AnalyticsProvider } from './contexts/AnalyticsContext';
 import { Loader2, Menu, X } from 'lucide-react';
 import { Toaster } from 'sonner';
 import { Button } from './components/ui/button';
@@ -39,7 +52,7 @@ export default function App() {
     localStorage.setItem('activeProfile', profileId);
     setActiveProfile(profileId);
   };
-  const [activeView, setActiveView] = useState('orders');
+  const [activeView, setActiveView] = useState('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const isGlobalAdmin =
@@ -82,11 +95,36 @@ export default function App() {
       case 'automation-rules':
         return <AutomatiseringsRegels activeProfile={activeProfile} />;
       case 'dashboard':
-        return <Dashboard activeProfile={activeProfile} />;
-      case 'klk-analytics':
-        return <KLKAnalytics activeProfile={activeProfile} />;
-      case 'fulfillment-analytics':
-        return <FulfillmentAnalytics activeProfile={activeProfile} />;
+      case 'analytics-overview':
+        return <AnalyticsOverview activeProfile={activeProfile || ''} />;
+      case 'product-analytics':
+        return <ProductAnalytics activeProfile={activeProfile || ''} />;
+      case 'store-trends':
+        return <StoreTrends activeProfile={activeProfile || ''} />;
+      case 'channel-profitability':
+        return <ChannelProfitability activeProfile={activeProfile || ''} />;
+      case 'targets-forecast':
+        return <TargetsForecast activeProfile={activeProfile || ''} />;
+      case 'daily-summary':
+        return <DailySummary activeProfile={activeProfile || ''} />;
+      case 'monthly-summary':
+        return <MonthlySummary activeProfile={activeProfile || ''} />;
+      case 'vat-overview':
+        return <VatOverview activeProfile={activeProfile || ''} />;
+      case 'payouts':
+        return <Payouts activeProfile={activeProfile || ''} />;
+      case 'ad-spend':
+        return <AdSpend activeProfile={activeProfile || ''} />;
+      case 'fixed-costs':
+        return <FixedCosts activeProfile={activeProfile || ''} />;
+      case 'signals':
+        return <Signals activeProfile={activeProfile || ''} onNavigate={setActiveView} />;
+      case 'cancel-analysis':
+        return <CancelAnalysis activeProfile={activeProfile || ''} />;
+      case 'returns-analytics':
+        return <ReturnsAnalytics activeProfile={activeProfile || ''} />;
+      case 'analytics-exports':
+        return <AnalyticsExports activeProfile={activeProfile || ''} />;
       case 'inventory-management':
         return <InventoryManagement activeProfile={activeProfile} isGlobalAdmin={isGlobalAdmin} />;
       case 'inventory-analysis':
@@ -118,6 +156,7 @@ export default function App() {
   }
 
   return (
+    <AnalyticsProvider activeProfile={activeProfile}>
     <div className="app-shell flex min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/30 overflow-hidden">
       <GlobalTextTranslator />
       <Toaster richColors position="top-right" />
@@ -171,5 +210,6 @@ export default function App() {
         </main>
       </div>
     </div>
+    </AnalyticsProvider>
   );
 }

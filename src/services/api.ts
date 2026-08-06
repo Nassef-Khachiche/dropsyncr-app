@@ -897,6 +897,410 @@ class ApiService {
     });
   }
 
+  // Analytics
+  async getAnalyticsFilters(installationId: string) {
+    return this.request<{ stores: string[]; countries: string[] }>(
+      `/analytics/filters?installationId=${installationId}`
+    );
+  }
+
+  async getAnalyticsOverview(params: {
+    installationId: string;
+    from: string;
+    to: string;
+    stores?: string[];
+    countries?: string[];
+  }) {
+    const queryParams = new URLSearchParams();
+    queryParams.append('installationId', params.installationId);
+    queryParams.append('from', params.from);
+    queryParams.append('to', params.to);
+    if (params.stores?.length) queryParams.append('stores', params.stores.join(','));
+    if (params.countries?.length) queryParams.append('countries', params.countries.join(','));
+
+    return this.request<any>(`/analytics/overview?${queryParams.toString()}`);
+  }
+
+  async getProductAnalytics(params: {
+    installationId: string;
+    from: string;
+    to: string;
+    stores?: string[];
+    countries?: string[];
+  }) {
+    const queryParams = new URLSearchParams();
+    queryParams.append('installationId', params.installationId);
+    queryParams.append('from', params.from);
+    queryParams.append('to', params.to);
+    if (params.stores?.length) queryParams.append('stores', params.stores.join(','));
+    if (params.countries?.length) queryParams.append('countries', params.countries.join(','));
+
+    return this.request<any>(`/analytics/products?${queryParams.toString()}`);
+  }
+
+  async getStoreTrends(params: {
+    installationId: string;
+    from: string;
+    to: string;
+    granularity?: 'week' | 'month';
+    stores?: string[];
+    countries?: string[];
+  }) {
+    const queryParams = new URLSearchParams();
+    queryParams.append('installationId', params.installationId);
+    queryParams.append('from', params.from);
+    queryParams.append('to', params.to);
+    if (params.granularity) queryParams.append('granularity', params.granularity);
+    if (params.stores?.length) queryParams.append('stores', params.stores.join(','));
+    if (params.countries?.length) queryParams.append('countries', params.countries.join(','));
+
+    return this.request<any>(`/analytics/store-trends?${queryParams.toString()}`);
+  }
+
+  async getChannelProfitability(params: {
+    installationId: string;
+    from: string;
+    to: string;
+    stores?: string[];
+    countries?: string[];
+  }) {
+    const queryParams = new URLSearchParams();
+    queryParams.append('installationId', params.installationId);
+    queryParams.append('from', params.from);
+    queryParams.append('to', params.to);
+    if (params.stores?.length) queryParams.append('stores', params.stores.join(','));
+    if (params.countries?.length) queryParams.append('countries', params.countries.join(','));
+
+    return this.request<any>(`/analytics/channel-profitability?${queryParams.toString()}`);
+  }
+
+  async getTargetsForecast(params: {
+    installationId: string;
+    year: number;
+    stores?: string[];
+    countries?: string[];
+  }) {
+    const queryParams = new URLSearchParams();
+    queryParams.append('installationId', params.installationId);
+    queryParams.append('year', String(params.year));
+    if (params.stores?.length) queryParams.append('stores', params.stores.join(','));
+    if (params.countries?.length) queryParams.append('countries', params.countries.join(','));
+
+    return this.request<any>(`/analytics/targets?${queryParams.toString()}`);
+  }
+
+  async getDailySummaryPeriods(installationId: string) {
+    return this.request<{ months: { month: string; days: string[] }[] }>(
+      `/analytics/daily-summary/periods?installationId=${installationId}`
+    );
+  }
+
+  async getDailySummary(params: {
+    installationId: string;
+    day: string;
+    stores?: string[];
+    countries?: string[];
+  }) {
+    const queryParams = new URLSearchParams();
+    queryParams.append('installationId', params.installationId);
+    queryParams.append('day', params.day);
+    if (params.stores?.length) queryParams.append('stores', params.stores.join(','));
+    if (params.countries?.length) queryParams.append('countries', params.countries.join(','));
+
+    return this.request<any>(`/analytics/daily-summary?${queryParams.toString()}`);
+  }
+
+  async getMonthlySummary(params: {
+    installationId: string;
+    year: number;
+    stores?: string[];
+    countries?: string[];
+  }) {
+    const queryParams = new URLSearchParams();
+    queryParams.append('installationId', params.installationId);
+    queryParams.append('year', String(params.year));
+    if (params.stores?.length) queryParams.append('stores', params.stores.join(','));
+    if (params.countries?.length) queryParams.append('countries', params.countries.join(','));
+
+    return this.request<any>(`/analytics/monthly-summary?${queryParams.toString()}`);
+  }
+
+ async getVatOverview(params: {
+    installationId: string;
+    year: number;
+    quarter: number;
+    stores?: string[];
+    countries?: string[];
+  }) {
+    const queryParams = new URLSearchParams();
+    queryParams.append('installationId', params.installationId);
+    queryParams.append('year', String(params.year));
+    queryParams.append('quarter', String(params.quarter));
+    if (params.stores?.length) queryParams.append('stores', params.stores.join(','));
+    if (params.countries?.length) queryParams.append('countries', params.countries.join(','));
+
+    return this.request<any>(`/analytics/vat-overview?${queryParams.toString()}`);
+  }
+
+ async getSignals(params: {
+    installationId: string;
+    from: string;
+    to: string;
+    stores?: string[];
+    countries?: string[];
+  }) {
+    const queryParams = new URLSearchParams();
+    queryParams.append('installationId', params.installationId);
+    queryParams.append('from', params.from);
+    queryParams.append('to', params.to);
+    if (params.stores?.length) queryParams.append('stores', params.stores.join(','));
+    if (params.countries?.length) queryParams.append('countries', params.countries.join(','));
+
+    return this.request<any>(`/analytics/signals?${queryParams.toString()}`);
+  }
+
+  async getCancelAnalysis(params: {
+    installationId: string;
+    from: string;
+    to: string;
+    stores?: string[];
+    countries?: string[];
+  }) {
+    const queryParams = new URLSearchParams();
+    queryParams.append('installationId', params.installationId);
+    queryParams.append('from', params.from);
+    queryParams.append('to', params.to);
+    if (params.stores?.length) queryParams.append('stores', params.stores.join(','));
+    if (params.countries?.length) queryParams.append('countries', params.countries.join(','));
+
+    return this.request<any>(`/analytics/cancel-analysis?${queryParams.toString()}`);
+  }
+
+  async getReturnsAnalytics(params: {
+    installationId: string;
+    from: string;
+    to: string;
+    stores?: string[];
+    countries?: string[];
+  }) {
+    const queryParams = new URLSearchParams();
+    queryParams.append('installationId', params.installationId);
+    queryParams.append('from', params.from);
+    queryParams.append('to', params.to);
+    if (params.stores?.length) queryParams.append('stores', params.stores.join(','));
+    if (params.countries?.length) queryParams.append('countries', params.countries.join(','));
+
+    return this.request<any>(`/analytics/returns?${queryParams.toString()}`);
+  }
+
+  // Analytics Exports
+  async getExportCounts(params: {
+    installationId: string;
+    from: string;
+    to: string;
+  }) {
+    const queryParams = new URLSearchParams();
+    queryParams.append('installationId', params.installationId);
+    queryParams.append('from', params.from);
+    queryParams.append('to', params.to);
+
+    return this.request<{ counts: Record<string, number> }>(
+      `/analytics/exports/counts?${queryParams.toString()}`
+    );
+  }
+
+  async downloadAnalyticsExport(params: {
+    installationId: string;
+    type: string;
+    from: string;
+    to: string;
+  }) {
+    const queryParams = new URLSearchParams();
+    queryParams.append('installationId', params.installationId);
+    queryParams.append('from', params.from);
+    queryParams.append('to', params.to);
+
+    return this.request<{
+      type: string;
+      sheetName: string;
+      filename: string;
+      headers: string[];
+      rows: any[][];
+      rowCount: number;
+    }>(`/analytics/exports/${params.type}?${queryParams.toString()}`);
+  }
+
+  // Fixed Costs
+  async getFixedCosts(installationId: string) {
+    return this.request<{
+      groups: { id: number; name: string; total: number; items: { id: number; name: string; amountPerMonth: number }[] }[];
+      totals: { perMonth: number; perYear: number; groupCount: number; itemCount: number };
+    }>(`/fixed-costs?installationId=${installationId}`);
+  }
+
+  async createFixedCostGroup(data: { installationId: number; name: string }) {
+    return this.request<{ success: boolean }>('/fixed-costs/groups', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateFixedCostGroup(id: number, name: string) {
+    return this.request<{ success: boolean }>(`/fixed-costs/groups/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ name }),
+    });
+  }
+
+  async deleteFixedCostGroup(id: number) {
+    return this.request<{ success: boolean }>(`/fixed-costs/groups/${id}`, { method: 'DELETE' });
+  }
+
+  async createFixedCostItem(data: {
+    installationId: number;
+    groupId: number;
+    name: string;
+    amountPerMonth: number;
+  }) {
+    return this.request<{ success: boolean }>('/fixed-costs/items', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateFixedCostItem(id: number, data: { name?: string; amountPerMonth?: number }) {
+    return this.request<{ success: boolean }>(`/fixed-costs/items/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteFixedCostItem(id: number) {
+    return this.request<{ success: boolean }>(`/fixed-costs/items/${id}`, { method: 'DELETE' });
+  }
+
+  // Ad Spend
+  async getAdSpendMonth(params: {
+    installationId: string;
+    year: number;
+    month: number;
+    storeName: string;
+  }) {
+    const queryParams = new URLSearchParams();
+    queryParams.append('installationId', params.installationId);
+    queryParams.append('year', String(params.year));
+    queryParams.append('month', String(params.month));
+    queryParams.append('storeName', params.storeName);
+
+    return this.request<{
+      year: number;
+      month: number;
+      storeName: string;
+      days: { date: string; amount: number; reportedRoas: number | null; configured: boolean }[];
+      total: number;
+    }>(`/ad-spend/month?${queryParams.toString()}`);
+  }
+
+  async saveAdSpendMonth(data: {
+    installationId: number;
+    storeName: string;
+    days: { date: string; amount: number; reportedRoas: number | null }[];
+  }) {
+    return this.request<{ success: boolean }>('/ad-spend/month', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getAdSpendAnalytics(params: {
+    installationId: string;
+    from: string;
+    to: string;
+    stores?: string[];
+    countries?: string[];
+  }) {
+    const queryParams = new URLSearchParams();
+    queryParams.append('installationId', params.installationId);
+    queryParams.append('from', params.from);
+    queryParams.append('to', params.to);
+    if (params.stores?.length) queryParams.append('stores', params.stores.join(','));
+    if (params.countries?.length) queryParams.append('countries', params.countries.join(','));
+
+    return this.request<any>(`/analytics/ad-spend?${queryParams.toString()}`);
+  }
+
+  // Payouts
+  async getPayouts(params: {
+    installationId: string;
+    from?: string;
+    to?: string;
+    stores?: string[];
+  }) {
+    const queryParams = new URLSearchParams();
+    queryParams.append('installationId', params.installationId);
+    if (params.from) queryParams.append('from', params.from);
+    if (params.to) queryParams.append('to', params.to);
+    if (params.stores?.length) queryParams.append('stores', params.stores.join(','));
+
+    return this.request<any>(`/payouts?${queryParams.toString()}`);
+  }
+
+  async createPayout(data: {
+    installationId: number;
+    payoutDate: string;
+    periodFrom: string;
+    periodTo: string;
+    amount: number;
+    storeName?: string;
+    note?: string;
+  }) {
+    return this.request<{ success: boolean; payout: any }>('/payouts', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updatePayout(id: number, data: {
+    payoutDate: string;
+    periodFrom: string;
+    periodTo: string;
+    amount: number;
+    storeName?: string;
+    note?: string;
+  }) {
+    return this.request<{ success: boolean; payout: any }>(`/payouts/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deletePayout(id: number) {
+    return this.request<{ success: boolean }>(`/payouts/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Revenue Targets
+  async getRevenueTargets(installationId: string, year: number) {
+    return this.request<{
+      year: number;
+      months: { month: number; revenueTarget: number; configured: boolean }[];
+      years: number[];
+      total: number;
+    }>(`/revenue-targets?installationId=${installationId}&year=${year}`);
+  }
+
+  async saveRevenueTargets(data: {
+    installationId: number;
+    year: number;
+    months: { month: number; revenueTarget: number }[];
+  }) {
+    return this.request<{ success: boolean; targets: any[] }>('/revenue-targets', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
   // Shipping Rates
   async getShippingRates(installationId: string) {
     return this.request<{ rates: { countryCode: string; amount: number; configured: boolean }[] }>(
